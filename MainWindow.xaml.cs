@@ -15,6 +15,7 @@ public partial class MainWindow : Window
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["diamond"] = "钻石",
+            ["skull"] = "骷髅",
             ["sparkle"] = "闪光",
             ["shield"] = "盾",
             ["sword"] = "剑",
@@ -23,6 +24,8 @@ public partial class MainWindow : Window
 
     private CancellationTokenSource? _cancellation;
     private readonly string _configPath = ConfigStore.EnsureUserConfigPath();
+    private readonly string _logFilePath = ConfigStore.EnsureLogFilePath();
+    private readonly object _logFileLock = new();
     private HwndSource? _windowSource;
 
     public MainWindow()
@@ -33,6 +36,7 @@ public partial class MainWindow : Window
         InitializeShopPanel();
         LoadMazeRunLimit();
         AppendLog("配置文件：" + _configPath);
+        AppendLog("日志文件：" + _logFilePath);
         AppendLog("等待开始。");
     }
 
@@ -43,10 +47,10 @@ public partial class MainWindow : Window
 
         PersistShopPurchases(quiet: true);
         PersistMazeRunLimit(quiet: true);
+        PersistTreasurePriority(quiet: true);
 
         StartButton.IsEnabled = false;
         StopButton.IsEnabled = true;
-        StatusText.Text = "运行中";
         _cancellation = new CancellationTokenSource();
 
         try
@@ -54,17 +58,14 @@ public partial class MainWindow : Window
             AutomationConfig config = ConfigStore.Load();
             var automation = new MazeAutomation(config, AppendLog);
             await automation.RunOnceAsync(_cancellation.Token);
-            StatusText.Text = "已完成";
         }
         catch (OperationCanceledException)
         {
             AppendLog("流程已停止。");
-            StatusText.Text = "已停止";
         }
         catch (Exception exception)
         {
             AppendLog("错误：" + exception.Message);
-            StatusText.Text = "失败";
         }
         finally
         {
@@ -124,17 +125,23 @@ public partial class MainWindow : Window
         TreasurePriorityList.Items.RemoveAt(index);
         TreasurePriorityList.Items.Insert(target, item);
         TreasurePriorityList.SelectedIndex = target;
+        PersistTreasurePriority();
     }
 
-    private void SavePriority_Click(object sender, RoutedEventArgs e)
+    private void PersistTreasurePriority(bool quiet = false)
     {
         AutomationConfig config = ConfigStore.Load();
-        config.TreasurePriority = TreasurePriorityList.Items
+        var next = TreasurePriorityList.Items
             .Cast<string>()
             .Select(display => TreasureNames.First(pair => pair.Value == display).Key)
             .ToList();
+        if (config.TreasurePriority.SequenceEqual(next, StringComparer.OrdinalIgnoreCase))
+            return;
+
+        config.TreasurePriority = next;
         ConfigStore.Save(config);
-        AppendLog("宝物优先级已保存：" + string.Join(" → ", TreasurePriorityList.Items.Cast<string>()));
+        if (!quiet)
+            AppendLog("宝物优先级已保存：" + string.Join(" → ", TreasurePriorityList.Items.Cast<string>()));
     }
 
     private void LoadTreasurePriority()
@@ -199,19 +206,43 @@ public partial class MainWindow : Window
     {
         PersistShopPurchases(quiet: true);
         PersistMazeRunLimit(quiet: true);
+        PersistTreasurePriority(quiet: true);
         _cancellation?.Cancel();
         ReleaseHotkey();
     }
 
     private void AppendLog(string message)
     {
+        string line = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {message}";
+        WriteLogFile(line);
+
         if (!Dispatcher.CheckAccess())
         {
-            Dispatcher.Invoke(() => AppendLog(message));
+            Dispatcher.Invoke(() => AppendLogToUi(line));
             return;
         }
 
-        LogBox.AppendText($"[{DateTime.Now:HH:mm:ss}] {message}{Environment.NewLine}");
+        AppendLogToUi(line);
+    }
+
+    private void AppendLogToUi(string line)
+    {
+        LogBox.AppendText(line + Environment.NewLine);
         LogBox.ScrollToEnd();
+    }
+
+    private void WriteLogFile(string line)
+    {
+        try
+        {
+            // 跨午夜时落到新文件；每次追加立即落盘，无需重启或手动保存。
+            string path = ConfigStore.EnsureLogFilePath();
+            lock (_logFileLock)
+                File.AppendAllText(path, line + Environment.NewLine);
+        }
+        catch
+        {
+            // 日志写盘失败不影响自动化。
+        }
     }
 }

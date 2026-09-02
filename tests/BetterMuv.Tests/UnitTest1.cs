@@ -65,7 +65,7 @@ public class AutomationConfigTests
         Assert.Equal(new ConfigPoint(1322, 486), config.RouteTreasureOptionsTopLeft);
         Assert.Equal(new ConfigSize(418, 1108), config.RouteTreasureOptionsSize);
         Assert.Equal(
-            ["diamond", "sparkle", "shield", "sword", "heart"],
+            ["diamond", "shield", "sword", "heart", "skull", "sparkle"],
             config.TreasurePriority);
         Assert.Equal("F10", config.ToggleHotkey);
     }
@@ -128,9 +128,9 @@ public class AutomationConfigTests
     public void TreasureOptionDefaultsUseTightIconStrip()
     {
         var config = new AutomationConfig();
-        Assert.Equal(new ConfigSize(2162, 200), config.TreasureOptionsSize);
-        Assert.Equal(0.62, config.TreasureMatchThreshold);
-        Assert.Equal(new ConfigPoint(0, 70), config.TreasureClickOffset);
+        Assert.Equal(new ConfigSize(2162, 180), config.TreasureOptionsSize);
+        Assert.Equal(0.58, config.TreasureMatchThreshold);
+        Assert.Equal(new ConfigPoint(-80, 110), config.TreasureClickOffset);
     }
 
     [Fact]

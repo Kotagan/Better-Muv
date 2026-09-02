@@ -53,7 +53,59 @@ public sealed class WindowCaptureService
         };
     }
 
-    public BitmapSource Capture(ScreenRect screenRect)
+    public BitmapSource Capture(ScreenRect screenRect) =>
+        CaptureFromDesktop(screenRect);
+
+    /// <summary>
+    /// 从游戏窗口客户区截图（不受本工具窗口遮挡影响）。
+    /// </summary>
+    public BitmapSource Capture(GameWindow window, ScreenRect screenRect)
+    {
+        int x = screenRect.Left - window.ClientRect.Left;
+        int y = screenRect.Top - window.ClientRect.Top;
+        int width = screenRect.Width;
+        int height = screenRect.Height;
+        if (x < 0 || y < 0 ||
+            x + width > window.ClientRect.Width ||
+            y + height > window.ClientRect.Height)
+        {
+            // 越界时回退桌面截图，兼容客户区小于整屏的情况。
+            return CaptureFromDesktop(screenRect);
+        }
+
+        nint sourceDc = GetDC(window.Handle);
+        if (sourceDc == 0)
+            return CaptureFromDesktop(screenRect);
+
+        nint memoryDc = 0;
+        nint bitmap = 0;
+        nint oldObject = 0;
+        try
+        {
+            memoryDc = CreateCompatibleDC(sourceDc);
+            bitmap = CreateCompatibleBitmap(sourceDc, width, height);
+            if (memoryDc == 0 || bitmap == 0)
+                return CaptureFromDesktop(screenRect);
+
+            oldObject = SelectObject(memoryDc, bitmap);
+            if (!BitBlt(memoryDc, 0, 0, width, height, sourceDc, x, y, SourceCopy))
+                return CaptureFromDesktop(screenRect);
+
+            BitmapSource source = Imaging.CreateBitmapSourceFromHBitmap(
+                bitmap, 0, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+            source.Freeze();
+            return source;
+        }
+        finally
+        {
+            if (oldObject != 0) SelectObject(memoryDc, oldObject);
+            if (bitmap != 0) DeleteObject(bitmap);
+            if (memoryDc != 0) DeleteDC(memoryDc);
+            ReleaseDC(window.Handle, sourceDc);
+        }
+    }
+
+    private static BitmapSource CaptureFromDesktop(ScreenRect screenRect)
     {
         nint sourceDc = GetDC(0);
         if (sourceDc == 0)

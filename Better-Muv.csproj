@@ -30,6 +30,7 @@
     <Content Include="Assets\Templates\treasure-state.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\treasure-diamond.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\treasure-sparkle.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\treasure-skull.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\treasure-shield.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\treasure-heart.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\treasure-heart-half.png" CopyToOutputDirectory="PreserveNewest" />
@@ -38,6 +39,7 @@
     <Content Include="Assets\Templates\route-selection.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\route-diamond.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\route-sparkle.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\route-skull.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\route-shield.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\route-heart.png" CopyToOutputDirectory="PreserveNewest" />
     <None Include="config.json">

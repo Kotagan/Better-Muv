@@ -17,6 +17,8 @@ publish/
 diagnostics/
 diagnostics-analysis/
 **/diagnostics/
+logs/
+**/logs/
 
 ## IDE / OS
 .vs/

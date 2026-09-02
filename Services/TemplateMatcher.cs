@@ -37,6 +37,13 @@ public sealed class TemplateMatcher
         return MatchGray(source, logicalWidth, logicalHeight, _template, _templateWidth, _templateHeight);
     }
 
+    /// <summary>将搜索图预处理为逻辑分辨率灰度，供多模板并行匹配复用。</summary>
+    public static byte[] PrepareGray(BitmapSource searchImage, int logicalWidth, int logicalHeight) =>
+        ToGray(searchImage, logicalWidth, logicalHeight);
+
+    public TemplateMatchResult MatchPrepared(byte[] sourceGray, int logicalWidth, int logicalHeight) =>
+        MatchGray(sourceGray, logicalWidth, logicalHeight, _template, _templateWidth, _templateHeight);
+
     public static TemplateMatchResult MatchGray(
         byte[] source, int sourceWidth, int sourceHeight,
         byte[] template, int templateWidth, int templateHeight)

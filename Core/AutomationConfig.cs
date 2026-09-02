@@ -62,20 +62,20 @@ public sealed class AutomationConfig
     public SettlementPurchases SettlementPurchases { get; set; } = new();
     public ConfigPoint TreasureStateTopLeft { get; set; } = new(1582, 100);
     public int TreasureStatePadding { get; set; } = 32;
-    // 仅覆盖三选一图标条（原 956,632–3118,792）；过大 ROI 会在说明区产生钻石假阳性。
-    public ConfigPoint TreasureOptionsTopLeft { get; set; } = new(956, 620);
-    public ConfigSize TreasureOptionsSize { get; set; } = new(2162, 200);
-    // 真图标实机常见 ≥0.80；0.55 易把说明区弱匹配当成钻石。
-    public double TreasureMatchThreshold { get; set; } = 0.62;
-    public int TreasureMatchRetryCount { get; set; } = 5;
-    public int TreasureMatchRetryDelayMs { get; set; } = 350;
-    // 点击略偏卡片本体；勿大幅左移以免点出 ROI。
-    public ConfigPoint TreasureClickOffset { get; set; } = new(0, 70);
+    // 原用户标定：956,632 → 3118,792（高约 160）；略放宽避免裁切图标。
+    public ConfigPoint TreasureOptionsTopLeft { get; set; } = new(956, 632);
+    public ConfigSize TreasureOptionsSize { get; set; } = new(2162, 180);
+    // 真图标实机常见 ≥0.80；过低易假阳，过高（0.62）会漏掉 0.61 档。
+    public double TreasureMatchThreshold { get; set; } = 0.58;
+    public int TreasureMatchRetryCount { get; set; } = 3;
+    public int TreasureMatchRetryDelayMs { get; set; } = 150;
+    // 相对图标中心略向左下，点在卡片可点区域。
+    public ConfigPoint TreasureClickOffset { get; set; } = new(-80, 110);
     public ConfigPoint RouteSelectionTopLeft { get; set; } = new(3190, 1848);
-    public int RouteSelectionPadding { get; set; } = 48;
+    public int RouteSelectionPadding { get; set; } = 80;
     public ConfigPoint RouteTreasureOptionsTopLeft { get; set; } = new(1322, 486);
     public ConfigSize RouteTreasureOptionsSize { get; set; } = new(418, 1108);
-    public List<string> TreasurePriority { get; set; } = ["diamond", "sparkle", "shield", "sword", "heart"];
+    public List<string> TreasurePriority { get; set; } = ["diamond", "shield", "sword", "heart", "skull", "sparkle"];
     public ConfigPoint FirstClick { get; set; } = new(2296, 1930);
     public int DoubleClickIntervalMs { get; set; } = 100;
     public int DetectionPollIntervalMs { get; set; } = 250;

@@ -195,24 +195,6 @@
                             </Grid>
                         </Border>
 
-                        <Border Style="{StaticResource Card}" Margin="0,14,0,0">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <StackPanel>
-                                    <TextBlock Text="运行状态" FontSize="16" />
-                                    <TextBlock Margin="0,5,0,0" Text="识别与点击状态会实时显示在下方日志中。"
-                                               Foreground="#9EA7B3" />
-                                </StackPanel>
-                                <Border Grid.Column="1" Padding="14,7" Background="#202A35" CornerRadius="16">
-                                    <TextBlock x:Name="StatusText" Text="就绪" Foreground="#67C8FF"
-                                               FontWeight="SemiBold" />
-                                </Border>
-                            </Grid>
-                        </Border>
-
                         <Border Style="{StaticResource Card}" Margin="0,14,0,0" Padding="0">
                             <Grid>
                                 <Grid.RowDefinitions>
@@ -285,7 +267,7 @@
                     <StackPanel Margin="42,32,42,30">
                         <TextBlock Text="宝物优先级" FontSize="28" FontWeight="SemiBold" />
                         <TextBlock Margin="0,7,0,22"
-                                   Text="列表越靠上优先级越高；缺少模板的宝物会自动跳过。"
+                                   Text="列表越靠上优先级越高；调整后自动写入配置，缺少模板的宝物会自动跳过。"
                                    Foreground="#9EA7B3" />
                         <Border Style="{StaticResource Card}">
                             <Grid>
@@ -310,8 +292,6 @@
                                             Content="↑ 上移" Click="MovePriorityUp_Click" />
                                     <Button Style="{StaticResource PrimaryButton}" Width="92" Margin="0,10,0,0"
                                             Content="↓ 下移" Click="MovePriorityDown_Click" />
-                                    <Button Style="{StaticResource PrimaryButton}" Width="92" Margin="0,26,0,0"
-                                            Content="保存" Click="SavePriority_Click" />
                                 </StackPanel>
                             </Grid>
                         </Border>
