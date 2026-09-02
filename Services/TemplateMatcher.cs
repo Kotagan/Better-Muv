@@ -51,7 +51,8 @@ public sealed class TemplateMatcher
         if (source.Length != sourceWidth * sourceHeight || template.Length != templateWidth * templateHeight)
             throw new ArgumentException("灰度图数据长度与尺寸不一致。");
         if (templateWidth > sourceWidth || templateHeight > sourceHeight)
-            throw new ArgumentException("模板尺寸不能大于搜索图。");
+            throw new ArgumentException(
+                $"模板尺寸不能大于搜索图（模板 {templateWidth}×{templateHeight}，搜索 {sourceWidth}×{sourceHeight}）。");
 
         (_, int coarseX, int coarseY) =
             Search(source, sourceWidth, sourceHeight, template, templateWidth, templateHeight, 2,

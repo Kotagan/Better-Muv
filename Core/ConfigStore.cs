@@ -53,24 +53,30 @@ public static class ConfigStore
     private static bool MigrateTreasureRecognitionDefaults(AutomationConfig config)
     {
         bool changed = false;
-        if (config.TreasureOptionsSize.Height != 180 ||
-            config.TreasureOptionsTopLeft.Y != 632 ||
-            config.TreasureOptionsTopLeft.X != 956)
+
+        // PowerShell ConvertTo-Json 等曾把「マブラヴ」写成字面 \uXXXX 或乱码。
+        const string expectedTitle = "マブラヴ";
+        if (string.IsNullOrWhiteSpace(config.WindowTitleKeyword) ||
+            !config.WindowTitleKeyword.Contains('マ'))
         {
-            config.TreasureOptionsTopLeft = new ConfigPoint(956, 632);
-            config.TreasureOptionsSize = new ConfigSize(2162, 180);
+            config.WindowTitleKeyword = expectedTitle;
+            changed = true;
+        }
+
+        // 旧 4K 宝物条 → 1080p 默认。
+        if (config.TreasureOptionsTopLeft is { X: 956, Y: 632 } ||
+            config.TreasureOptionsSize is { Width: 2162, Height: 180 } ||
+            config.TreasureClickOffset is { X: -80, Y: 110 } or { X: 0, Y: 70 } or { X: -120, Y: 90 })
+        {
+            config.TreasureOptionsTopLeft = new ConfigPoint(478, 316);
+            config.TreasureOptionsSize = new ConfigSize(1081, 90);
+            config.TreasureClickOffset = new ConfigPoint(-40, 55);
             changed = true;
         }
 
         if (Math.Abs(config.TreasureMatchThreshold - 0.58) > 0.001)
         {
             config.TreasureMatchThreshold = 0.58;
-            changed = true;
-        }
-
-        if (config.TreasureClickOffset is { X: 0, Y: 70 } or { X: -120, Y: 90 })
-        {
-            config.TreasureClickOffset = new ConfigPoint(-80, 110);
             changed = true;
         }
 
@@ -107,6 +113,92 @@ public static class ConfigStore
             changed = true;
         }
 
+        // 配置基准改为 1080p；旧 4K 坐标整表迁移。
+        if (config.ReferenceWidth >= 3000 ||
+            config.SearchTopLeft is { X: 2230, Y: 1836 } or { X: 2198, Y: 1804 } or { X: 1099, Y: 902 } ||
+            config.FourthSearchTopLeft is { X: 3204, Y: 1854 } or { X: 3254, Y: 1856 })
+        {
+            ApplyFixedSearchRegions(config);
+            changed = true;
+        }
+
+        // 主页 ROI：4K (2226,1838)→(2356,1938) → 1080p (1113,919) 65×50。
+        if (config.SearchTopLeft is not { X: 1113, Y: 919 } ||
+            config.FirstSearchSize is not { Width: 65, Height: 50 })
+        {
+            config.SearchTopLeft = new ConfigPoint(1113, 919);
+            config.FirstSearchSize = new ConfigSize(65, 50);
+            changed = true;
+        }
+
+        // 探索准备 ROI 高需 ≥ 模板逻辑高 38（原 31 会触发模板大于搜索图）。
+        if (config.FourthSearchSize.Height < 38)
+        {
+            config.FourthSearchSize = new ConfigSize(
+                Math.Max(config.FourthSearchSize.Width, 182), 38);
+            changed = true;
+        }
+
         return changed;
+    }
+
+    private static void ApplyFixedSearchRegions(AutomationConfig config)
+    {
+        var defaults = new AutomationConfig();
+        config.ReferenceWidth = defaults.ReferenceWidth;
+        config.ReferenceHeight = defaults.ReferenceHeight;
+        config.SearchTopLeft = defaults.SearchTopLeft;
+        config.FirstSearchSize = defaults.FirstSearchSize;
+        config.SecondSearchTopLeft = defaults.SecondSearchTopLeft;
+        config.SecondSearchSize = defaults.SecondSearchSize;
+        config.ThirdSearchTopLeft = defaults.ThirdSearchTopLeft;
+        config.ThirdSearchSize = defaults.ThirdSearchSize;
+        config.FourthSearchTopLeft = defaults.FourthSearchTopLeft;
+        config.FourthSearchSize = defaults.FourthSearchSize;
+        config.FifthSearchTopLeft = defaults.FifthSearchTopLeft;
+        config.FifthSearchSize = defaults.FifthSearchSize;
+        config.PartnerSelectionTopLeft = defaults.PartnerSelectionTopLeft;
+        config.PartnerSelectionSize = defaults.PartnerSelectionSize;
+        config.BattleSkipTopLeft = defaults.BattleSkipTopLeft;
+        config.BattleSkipSize = defaults.BattleSkipSize;
+        config.EventChoiceTopLeft = defaults.EventChoiceTopLeft;
+        config.EventChoiceSize = defaults.EventChoiceSize;
+        config.EventChoiceFirstOption = defaults.EventChoiceFirstOption;
+        config.EventChoiceSecondOption = defaults.EventChoiceSecondOption;
+        config.SettlementTopLeft = defaults.SettlementTopLeft;
+        config.SettlementSearchTopLeft = defaults.SettlementSearchTopLeft;
+        config.SettlementSearchSize = defaults.SettlementSearchSize;
+        config.SettlementCategoryDaily = defaults.SettlementCategoryDaily;
+        config.SettlementCategoryEquipment = defaults.SettlementCategoryEquipment;
+        config.SettlementCategoryExcavation = defaults.SettlementCategoryExcavation;
+        config.SettlementCategoryArtifactor = defaults.SettlementCategoryArtifactor;
+        config.SettlementSubcategoryTabs = [.. defaults.SettlementSubcategoryTabs];
+        config.SettlementBuyButtons = [.. defaults.SettlementBuyButtons];
+        config.SettlementMultiplierToggle = defaults.SettlementMultiplierToggle;
+        config.SettlementMultiplierTopLeft = defaults.SettlementMultiplierTopLeft;
+        config.SettlementMultiplierSize = defaults.SettlementMultiplierSize;
+        config.SettlementBuyButtonSearchInset = defaults.SettlementBuyButtonSearchInset;
+        config.SettlementBuyButtonSearchSize = defaults.SettlementBuyButtonSearchSize;
+        config.SettlementConfirmTopLeft = defaults.SettlementConfirmTopLeft;
+        config.SettlementConfirmSize = defaults.SettlementConfirmSize;
+        config.SettlementConfirmCancel = defaults.SettlementConfirmCancel;
+        config.SettlementConfirmOk = defaults.SettlementConfirmOk;
+        config.TreasureStateTopLeft = defaults.TreasureStateTopLeft;
+        config.TreasureStateSize = defaults.TreasureStateSize;
+        config.TreasureOptionsTopLeft = defaults.TreasureOptionsTopLeft;
+        config.TreasureOptionsSize = defaults.TreasureOptionsSize;
+        config.TreasureClickOffset = defaults.TreasureClickOffset;
+        config.RouteSelectionTopLeft = defaults.RouteSelectionTopLeft;
+        config.RouteSelectionSize = defaults.RouteSelectionSize;
+        config.RouteTreasureOptionsTopLeft = defaults.RouteTreasureOptionsTopLeft;
+        config.RouteTreasureOptionsSize = defaults.RouteTreasureOptionsSize;
+        config.FirstClick = defaults.FirstClick;
+        config.SecondClick = defaults.SecondClick;
+        config.ThirdClick = defaults.ThirdClick;
+        config.FourthClick = defaults.FourthClick;
+        config.FifthClick = defaults.FifthClick;
+        config.PartnerClick = defaults.PartnerClick;
+        config.BattleSkipClick = defaults.BattleSkipClick;
+        config.RouteClick = defaults.RouteClick;
     }
 }

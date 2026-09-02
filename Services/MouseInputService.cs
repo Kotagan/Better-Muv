@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Windows;
+using BetterMuv.Core;
 
 namespace BetterMuv.Services;
 
@@ -13,8 +14,6 @@ public sealed class MouseInputService
     private const uint KeyUp = 0x0002;
     private const uint VirtualDesk = 0x4000;
     private const uint Absolute = 0x8000;
-    private const int Restore = 9;
-    private const int Show = 5;
     private const ushort VkMenu = 0x12;
 
     public async Task ClickAsync(nint windowHandle, Point screenPoint, CancellationToken cancellationToken)
@@ -23,10 +22,9 @@ public sealed class MouseInputService
         if (!IsWindow(windowHandle))
             throw new InvalidOperationException("点击前发现游戏窗口已经关闭。");
 
-        // 仅在最小化时 SW_RESTORE。对已最大化/全屏窗口无条件 Restore
-        // 会把它缩回“还原”尺寸，表现为启动自动化后游戏窗突然变小。
-        FocusWindow(windowHandle);
-        await Task.Delay(80, cancellationToken);
+        // 点击只保证前台，绝不 ShowWindow / 改尺寸。
+        EnsureForeground(windowHandle);
+        await Task.Delay(40, cancellationToken);
         SendMove((int)Math.Round(screenPoint.X), (int)Math.Round(screenPoint.Y));
         await Task.Delay(40, cancellationToken);
 
@@ -44,22 +42,38 @@ public sealed class MouseInputService
         }
     }
 
-    public async Task FocusWindowAsync(nint windowHandle, CancellationToken cancellationToken)
+    public async Task<bool> FocusWindowAsync(nint windowHandle, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (!IsWindow(windowHandle))
             throw new InvalidOperationException("聚焦前发现游戏窗口已经关闭。");
 
-        FocusWindow(windowHandle);
-        await Task.Delay(150, cancellationToken);
+        if (IsIconic(windowHandle))
+            return false;
+
+        for (int attempt = 0; attempt < 12; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            EnsureForeground(windowHandle);
+            if (GetForegroundWindow() == windowHandle)
+            {
+                await Task.Delay(120, cancellationToken);
+                return GetForegroundWindow() == windowHandle;
+            }
+            await Task.Delay(50, cancellationToken);
+        }
+
+        return GetForegroundWindow() == windowHandle;
     }
 
-    private static void FocusWindow(nint windowHandle)
+    public static bool IsForeground(nint windowHandle) =>
+        IsWindow(windowHandle) && GetForegroundWindow() == windowHandle;
+
+    private static void EnsureForeground(nint windowHandle)
     {
+        // 绝不调用 ShowWindow：最小化/全屏游戏被 Restore/Show 后会变成窗口化小尺寸。
         if (IsIconic(windowHandle))
-            ShowWindow(windowHandle, Restore);
-        else
-            ShowWindow(windowHandle, Show);
+            return; // 最小化时不擅自还原，避免缩窗；由用户手动恢复全屏。
 
         nint foreground = GetForegroundWindow();
         if (foreground == windowHandle)
@@ -73,9 +87,7 @@ public sealed class MouseInputService
 
         try
         {
-            // 松开一次 Alt，绕过部分前台锁定限制。
             SendKey(VkMenu, KeyUp);
-            BringWindowToTop(windowHandle);
             SetForegroundWindow(windowHandle);
         }
         finally
@@ -160,9 +172,7 @@ public sealed class MouseInputService
 
     [DllImport("user32.dll")] private static extern uint SendInput(uint count, Input[] inputs, int size);
     [DllImport("user32.dll")] private static extern int GetSystemMetrics(int index);
-    [DllImport("user32.dll")] private static extern bool ShowWindow(nint handle, int command);
     [DllImport("user32.dll")] private static extern bool SetForegroundWindow(nint handle);
-    [DllImport("user32.dll")] private static extern bool BringWindowToTop(nint handle);
     [DllImport("user32.dll")] private static extern nint GetForegroundWindow();
     [DllImport("user32.dll")] private static extern bool IsWindow(nint handle);
     [DllImport("user32.dll")] private static extern bool IsIconic(nint handle);

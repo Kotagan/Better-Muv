@@ -6,77 +6,89 @@ public sealed class AutomationConfig
 {
     public string WindowTitleKeyword { get; set; } = "マブラヴ";
     public double MatchThreshold { get; set; } = 0.78;
-    public bool SaveDiagnostics { get; set; } = true;
+    public bool SaveDiagnostics { get; set; } = false;
     public string DiagnosticDirectory { get; set; } = "diagnostics";
-    public int ReferenceWidth { get; set; } = 3840;
-    public int ReferenceHeight { get; set; } = 2160;
-    public ConfigPoint SearchTopLeft { get; set; } = new(2240, 1844);
-    public int FirstSearchPadding { get; set; } = 32;
-    public ConfigPoint SecondSearchTopLeft { get; set; } = new(3026, 912);
-    public int SecondSearchPadding { get; set; } = 24;
-    public ConfigPoint ThirdSearchTopLeft { get; set; } = new(3200, 1657);
-    public int ThirdSearchPadding { get; set; } = 64;
-    public ConfigPoint FourthSearchTopLeft { get; set; } = new(3296, 1900);
-    public int FourthSearchPadding { get; set; } = 32;
-    public ConfigPoint FifthSearchTopLeft { get; set; } = new(3274, 1886);
-    public int FifthSearchPadding { get; set; } = 32;
-    public ConfigPoint PartnerSelectionTopLeft { get; set; } = new(3314, 1886);
-    public int PartnerSelectionPadding { get; set; } = 32;
-    public ConfigPoint BattleSkipTopLeft { get; set; } = new(3552, 112);
-    public int BattleSkipPadding { get; set; } = 32;
-    public ConfigPoint EventChoiceTopLeft { get; set; } = new(2100, 1320);
-    public int EventChoicePadding { get; set; } = 64;
-    public ConfigPoint EventChoiceFirstOption { get; set; } = new(2600, 1400);
-    public ConfigPoint EventChoiceSecondOption { get; set; } = new(2600, 1650);
-    public ConfigPoint SettlementTopLeft { get; set; } = new(3284, 1866);
-    public int SettlementPadding { get; set; } = 32;
-    public ConfigPoint SettlementCategoryDaily { get; set; } = new(140, 676);
-    public ConfigPoint SettlementCategoryEquipment { get; set; } = new(116, 912);
-    public ConfigPoint SettlementCategoryExcavation { get; set; } = new(192, 1144);
-    public ConfigPoint SettlementCategoryArtifactor { get; set; } = new(134, 1348);
+    /// <summary>配置坐标基准分辨率（1080p）。屏幕点击 = Display 原点 + 点 × (Display/Reference)。</summary>
+    public int ReferenceWidth { get; set; } = 1920;
+    public int ReferenceHeight { get; set; } = 1080;
+
+    // 搜索区：1080p 写死矩形（左上 + 宽高）。主页 ROI 对应 4K (2226,1838)→(2356,1938)。
+    public ConfigPoint SearchTopLeft { get; set; } = new(1113, 919);
+    public ConfigSize FirstSearchSize { get; set; } = new(65, 50);
+    public ConfigPoint SecondSearchTopLeft { get; set; } = new(1501, 444);
+    public ConfigSize SecondSearchSize { get; set; } = new(220, 59);
+    public ConfigPoint ThirdSearchTopLeft { get; set; } = new(1568, 796);
+    public ConfigSize ThirdSearchSize { get; set; } = new(208, 98);
+    public ConfigPoint FourthSearchTopLeft { get; set; } = new(1602, 927);
+    /// <summary>4K 用户框高 62，但模板 76→逻辑 38，搜索高至少盖住模板。</summary>
+    public ConfigSize FourthSearchSize { get; set; } = new(182, 38);
+    public ConfigPoint FifthSearchTopLeft { get; set; } = new(1621, 927);
+    public ConfigSize FifthSearchSize { get; set; } = new(103, 64);
+    public ConfigPoint PartnerSelectionTopLeft { get; set; } = new(1633, 919);
+    public ConfigSize PartnerSelectionSize { get; set; } = new(183, 75);
+    public ConfigPoint BattleSkipTopLeft { get; set; } = new(1760, 40);
+    public ConfigSize BattleSkipSize { get; set; } = new(112, 51);
+    public ConfigPoint EventChoiceTopLeft { get; set; } = new(1018, 628);
+    public ConfigSize EventChoiceSize { get; set; } = new(814, 367);
+    public ConfigPoint EventChoiceFirstOption { get; set; } = new(1300, 700);
+    public ConfigPoint EventChoiceSecondOption { get; set; } = new(1300, 825);
+    /// <summary>结算「完了」点击坐标（1080p）。</summary>
+    public ConfigPoint SettlementTopLeft { get; set; } = new(1674, 948);
+    public ConfigPoint SettlementSearchTopLeft { get; set; } = new(1626, 917);
+    public ConfigSize SettlementSearchSize { get; set; } = new(97, 62);
+    public ConfigPoint SettlementCategoryDaily { get; set; } = new(70, 338);
+    public ConfigPoint SettlementCategoryEquipment { get; set; } = new(58, 456);
+    public ConfigPoint SettlementCategoryExcavation { get; set; } = new(96, 572);
+    public ConfigPoint SettlementCategoryArtifactor { get; set; } = new(67, 674);
     public List<ConfigPoint> SettlementSubcategoryTabs { get; set; } =
     [
-        new(832, 400),
-        new(1250, 400),
-        new(1680, 400),
-        new(2100, 400)
+        new(416, 200),
+        new(625, 200),
+        new(840, 200),
+        new(1050, 200)
     ];
     public List<ConfigPoint> SettlementBuyButtons { get; set; } =
     [
-        new(1780, 710),
-        new(3260, 710),
-        new(1780, 1090),
-        new(3260, 1090),
-        new(1780, 1440),
-        new(3260, 1440)
+        new(890, 355),
+        new(1630, 355),
+        new(890, 545),
+        new(1630, 545),
+        new(890, 720),
+        new(1630, 720)
     ];
-    public ConfigPoint SettlementMultiplierToggle { get; set; } = new(3220, 400);
-    public ConfigPoint SettlementMultiplierTopLeft { get; set; } = new(3370, 386);
-    public int SettlementMultiplierPadding { get; set; } = 24;
-    public int SettlementBuyButtonPadding { get; set; } = 24;
-    public ConfigPoint SettlementConfirmTopLeft { get; set; } = new(1450, 1120);
-    public int SettlementConfirmPadding { get; set; } = 80;
-    public ConfigPoint SettlementConfirmCancel { get; set; } = new(1620, 1580);
-    public ConfigPoint SettlementConfirmOk { get; set; } = new(2230, 1580);
+    public ConfigPoint SettlementMultiplierToggle { get; set; } = new(1610, 200);
+    public ConfigPoint SettlementMultiplierTopLeft { get; set; } = new(1673, 181);
+    public ConfigSize SettlementMultiplierSize { get; set; } = new(81, 49);
+    public ConfigPoint SettlementBuyButtonSearchInset { get; set; } = new(12, 12);
+    public ConfigSize SettlementBuyButtonSearchSize { get; set; } = new(301, 119);
+    public ConfigPoint SettlementConfirmTopLeft { get; set; } = new(685, 520);
+    public ConfigSize SettlementConfirmSize { get; set; } = new(592, 424);
+    public ConfigPoint SettlementConfirmCancel { get; set; } = new(810, 790);
+    public ConfigPoint SettlementConfirmOk { get; set; } = new(1115, 790);
     public bool SettlementConfirmLeftover { get; set; } = true;
     public SettlementPurchases SettlementPurchases { get; set; } = new();
-    public ConfigPoint TreasureStateTopLeft { get; set; } = new(1582, 100);
-    public int TreasureStatePadding { get; set; } = 32;
-    // 原用户标定：956,632 → 3118,792（高约 160）；略放宽避免裁切图标。
-    public ConfigPoint TreasureOptionsTopLeft { get; set; } = new(956, 632);
-    public ConfigSize TreasureOptionsSize { get; set; } = new(2162, 180);
-    // 真图标实机常见 ≥0.80；过低易假阳，过高（0.62）会漏掉 0.61 档。
+    public ConfigPoint TreasureStateTopLeft { get; set; } = new(775, 34);
+    public ConfigSize TreasureStateSize { get; set; } = new(376, 82);
+    public ConfigPoint TreasureOptionsTopLeft { get; set; } = new(478, 316);
+    public ConfigSize TreasureOptionsSize { get; set; } = new(1081, 90);
     public double TreasureMatchThreshold { get; set; } = 0.58;
     public int TreasureMatchRetryCount { get; set; } = 3;
     public int TreasureMatchRetryDelayMs { get; set; } = 150;
-    // 相对图标中心略向左下，点在卡片可点区域。
-    public ConfigPoint TreasureClickOffset { get; set; } = new(-80, 110);
-    public ConfigPoint RouteSelectionTopLeft { get; set; } = new(3190, 1848);
-    public int RouteSelectionPadding { get; set; } = 80;
-    public ConfigPoint RouteTreasureOptionsTopLeft { get; set; } = new(1322, 486);
-    public ConfigSize RouteTreasureOptionsSize { get; set; } = new(418, 1108);
+    public ConfigPoint TreasureClickOffset { get; set; } = new(-40, 55);
+    public ConfigPoint RouteSelectionTopLeft { get; set; } = new(1595, 924);
+    public ConfigSize RouteSelectionSize { get; set; } = new(181, 37);
+    public ConfigPoint RouteTreasureOptionsTopLeft { get; set; } = new(661, 243);
+    public ConfigSize RouteTreasureOptionsSize { get; set; } = new(209, 554);
     public List<string> TreasurePriority { get; set; } = ["diamond", "shield", "sword", "heart", "skull", "sparkle"];
-    public ConfigPoint FirstClick { get; set; } = new(2296, 1930);
+    // 写死点击点（1080p）；实际点击 = Display 原点 + 点 × (Display宽高 / Reference宽高)。
+    public ConfigPoint FirstClick { get; set; } = new(1143, 961);
+    public ConfigPoint SecondClick { get; set; } = new(1611, 473);
+    public ConfigPoint ThirdClick { get; set; } = new(1667, 836);
+    public ConfigPoint FourthClick { get; set; } = new(1693, 942);
+    public ConfigPoint FifthClick { get; set; } = new(1672, 959);
+    public ConfigPoint PartnerClick { get; set; } = new(1724, 956);
+    public ConfigPoint BattleSkipClick { get; set; } = new(1816, 65);
+    public ConfigPoint RouteClick { get; set; } = new(1680, 940);
     public int DoubleClickIntervalMs { get; set; } = 100;
     public int DetectionPollIntervalMs { get; set; } = 250;
     public int DetectionTimeoutMs { get; set; } = 10000;
@@ -123,18 +135,19 @@ public sealed class AutomationConfig
             throw new InvalidDataException("treasureMatchRetryDelayMs 不能为负。");
         if (ReferenceWidth <= 0 || ReferenceHeight <= 0)
             throw new InvalidDataException("参考分辨率必须大于零。");
-        if (FirstSearchPadding < 0 || SecondSearchPadding < 0 ||
-            ThirdSearchPadding < 0 || FourthSearchPadding < 0 ||
-            FifthSearchPadding < 0 || PartnerSelectionPadding < 0 || BattleSkipPadding < 0 ||
-            EventChoicePadding < 0 || SettlementPadding < 0 || SettlementMultiplierPadding < 0 ||
-            SettlementBuyButtonPadding < 0 || SettlementConfirmPadding < 0 ||
-            TreasureStatePadding < 0 || RouteSelectionPadding < 0)
-            throw new InvalidDataException("模板搜索余量不能为负数。");
         if (SettlementSubcategoryTabs.Count < 4 || SettlementBuyButtons.Count < 6)
             throw new InvalidDataException("结算小类页签至少 4 个，购买格至少 6 个。");
-        if (TreasureOptionsSize.Width <= 0 || TreasureOptionsSize.Height <= 0 ||
-            RouteTreasureOptionsSize.Width <= 0 || RouteTreasureOptionsSize.Height <= 0)
-            throw new InvalidDataException("宝物选项区域和路线宝物区域尺寸必须大于零。");
+        ConfigSize[] requiredSizes =
+        [
+            FirstSearchSize, SecondSearchSize, ThirdSearchSize, FourthSearchSize, FifthSearchSize,
+            PartnerSelectionSize, BattleSkipSize, EventChoiceSize, SettlementSearchSize,
+            SettlementMultiplierSize, SettlementBuyButtonSearchSize, SettlementConfirmSize,
+            TreasureStateSize, TreasureOptionsSize, RouteSelectionSize, RouteTreasureOptionsSize
+        ];
+        if (requiredSizes.Any(s => s.Width <= 0 || s.Height <= 0))
+            throw new InvalidDataException("所有搜索区域尺寸必须大于零。");
+        if (SettlementBuyButtonSearchInset.X < 0 || SettlementBuyButtonSearchInset.Y < 0)
+            throw new InvalidDataException("settlementBuyButtonSearchInset 不能为负。");
         if (TreasurePriority.Count == 0)
             throw new InvalidDataException("宝物优先级不能为空。");
         TreasurePriority = NormalizeTreasurePriority(TreasurePriority);

@@ -20,10 +20,15 @@ public sealed class MazeAutomation
     private const string RouteSelectionTaskName = "识别路线选择界面";
     /// <summary>迷宫内界面存在判定阈值（略低于点击用 MatchThreshold，避免开局入环后空转）。</summary>
     private const double MazePresenceThreshold = 0.68;
+    /// <summary>路线选择标题判定阈值（需更高，避免主界面等误匹配）。</summary>
+    private const double RoutePresenceThreshold = 0.80;
+    /// <summary>开局识别：持续未命中超过此时长则停止。</summary>
+    private const int StartupMissTimeoutMs = 30000;
+    /// <summary>迷宫探索：持续未命中超过此时长则停止。</summary>
+    private const int MazeMissTimeoutMs = 10000;
 
     private readonly AutomationConfig _config;
-    private readonly WindowCaptureService _capture;
-    private readonly MouseInputService _mouse;
+    private readonly ScreenAutomation _screen;
     private readonly TemplateMatcher _firstMatcher;
     private readonly TemplateMatcher _secondMatcher;
     private readonly TemplateMatcher _thirdMatcher;
@@ -43,8 +48,7 @@ public sealed class MazeAutomation
     {
         _config = config;
         _log = log;
-        _capture = new WindowCaptureService();
-        _mouse = new MouseInputService();
+        _screen = new ScreenAutomation(config, log);
         string templateDirectory = Path.Combine(AppContext.BaseDirectory, "Assets", "Templates");
         _firstMatcher = new TemplateMatcher(Path.Combine(templateDirectory, "quest.png"));
         _secondMatcher = new TemplateMatcher(Path.Combine(templateDirectory, "maze-search.png"));
@@ -54,8 +58,7 @@ public sealed class MazeAutomation
         _partnerSelectionMatcher = new TemplateMatcher(Path.Combine(templateDirectory, "partner-leave.png"));
         _battleSkipMatcher = new TemplateMatcher(Path.Combine(templateDirectory, "battle-skip.png"));
         _eventChoiceMatcher = new TemplateMatcher(Path.Combine(templateDirectory, "event-choice.png"));
-        _settlementShop = new SettlementShopRunner(
-            config, templateDirectory, log, ProbeTemplateAsync, ClickReferenceAsync);
+        _settlementShop = new SettlementShopRunner(config, _screen, templateDirectory, log);
         _treasureStateMatcher = new TemplateMatcher(Path.Combine(templateDirectory, "treasure-state.png"));
         _routeSelectionMatcher = new TemplateMatcher(Path.Combine(templateDirectory, "route-selection.png"));
         // 宝物选择用大图标；路线预览图标更小，用 route-* / treasure-sword（小剑）。
@@ -86,13 +89,21 @@ public sealed class MazeAutomation
     public async Task RunOnceAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        GameWindow window = _capture.FindWindow(_config.WindowTitleKeyword);
+        GameWindow window = _screen.FindWindow(_config.WindowTitleKeyword);
         _log($"已找到窗口：{window.Title}");
-        await _mouse.FocusWindowAsync(window.Handle, cancellationToken);
-        _log("已尝试将游戏窗口置于前台。");
+        bool focused = await _screen.FocusAsync(window.Handle, cancellationToken);
+        window = _screen.Refresh(window);
+        if (!focused)
+        {
+            _log("未能将游戏置于前台（可能已最小化）。请先手动点一下游戏窗口恢复完整全屏后再启动。");
+            return;
+        }
+        _log("游戏已置于前台，等待界面稳定后再截图识别。");
+        await Task.Delay(1500, cancellationToken);
+        window = _screen.Refresh(window);
+        _log("开始截图识别。");
 
-        var geometry = new CaptureGeometry(window.DisplayRect);
-        EnsureDisplayAspectRatio(geometry);
+        _screen.EnsureSixteenByNine(window);
         _log($"客户区：{window.ClientRect.Width}×{window.ClientRect.Height}");
         _log($"基准显示器：{window.DisplayRect.Width}×{window.DisplayRect.Height}，16:9 校验通过");
 
@@ -107,7 +118,11 @@ public sealed class MazeAutomation
                 ? "开始识别当前界面并进入本轮迷宫。"
                 : $"开始第 {completedRuns + 1} 轮：识别迷宫开始界面并继续。");
 
-            await IdentifyAndEnterMazeAsync(window, cancellationToken);
+            if (!await IdentifyAndEnterMazeAsync(window, cancellationToken))
+            {
+                _log("识别流程已停止，结束本次运行。");
+                return;
+            }
             completedRuns++;
             _log($"第 {completedRuns} 轮迷宫已结算完成。");
 
@@ -123,207 +138,216 @@ public sealed class MazeAutomation
         }
     }
 
-    private async Task IdentifyAndEnterMazeAsync(GameWindow window, CancellationToken cancellationToken)
+    private async Task<bool> IdentifyAndEnterMazeAsync(GameWindow window, CancellationToken cancellationToken)
     {
-        _log("开始循环识别当前任务；确认状态前不会执行任何动作。");
-        // 开局判定“已在迷宫中”可用略低于点击阈值，避免路线/商店等漏检。
-        const double presenceThreshold = MazePresenceThreshold;
-        int identificationRounds = 0;
+        _log("开始循环识别当前任务（全场景并发匹配）；确认状态前不会执行任何动作。");
+        Stopwatch? missClock = null;
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            identificationRounds++;
 
-            // —— 已在迷宫流程中的界面：只入环，由迷宫循环负责点击 ——
-            TemplateProbeResult treasureProbe = await ProbeTemplateAsync(
-                window, _treasureStateMatcher, _config.TreasureStateTopLeft,
-                _config.TreasureStatePadding, cancellationToken, presenceThreshold);
-            if (treasureProbe.IsMatch)
-            {
-                _log($"{TreasureTaskName}识别成功（{treasureProbe.Score:F4}），进入迷宫循环。");
-                await RunMazeLoopAsync(window, 0, cancellationToken, preferredScreen: "treasure");
-                return;
-            }
+            IReadOnlyDictionary<string, TemplateProbeResult> probes =
+                await ProbeManyConcurrentAsync(window, BuildStartupAllProbes(), cancellationToken);
 
-            TemplateProbeResult routeProbe = await ProbeTemplateAsync(
-                window, _routeSelectionMatcher, _config.RouteSelectionTopLeft,
-                Math.Max(_config.RouteSelectionPadding, 80), cancellationToken, presenceThreshold);
-            if (routeProbe.IsMatch)
+            string? hit = PickFirstMatchedScreen(probes, StartupScreenPriority);
+            if (hit is null)
             {
-                _log($"{RouteSelectionTaskName}识别成功（{routeProbe.Score:F4}），进入迷宫循环。");
-                await RunMazeLoopAsync(window, 0, cancellationToken, preferredScreen: "route");
-                return;
-            }
-
-            TemplateProbeResult settlementProbe = await ProbeTemplateAsync(
-                window, _settlementShop.SettlementMatcher, _config.SettlementTopLeft,
-                _config.SettlementPadding, cancellationToken, presenceThreshold);
-            if (settlementProbe.IsMatch ||
-                await _settlementShop.IsSettlementVisibleAsync(window, cancellationToken))
-            {
-                _log($"{SettlementTaskName}识别成功，进入迷宫循环。");
-                await RunMazeLoopAsync(window, 0, cancellationToken, preferredScreen: "settlement");
-                return;
+                missClock ??= Stopwatch.StartNew();
+                double elapsedSec = missClock.Elapsed.TotalSeconds;
+                TemplateProbeResult first = GetProbe(probes, "first");
+                TemplateProbeResult second = GetProbe(probes, "second");
+                TemplateProbeResult third = GetProbe(probes, "third");
+                TemplateProbeResult fourth = GetProbe(probes, "fourth");
+                TemplateProbeResult route = GetProbe(probes, "route");
+                _log($"尚未识别到已知界面（已未命中 {elapsedSec:F1}s / {StartupMissTimeoutMs / 1000}s）。" +
+                     $"（主页 {first.Score:F2} / 任务 {second.Score:F2} / 迷宫开始 {third.Score:F2} / " +
+                     $"探索准备 {fourth.Score:F2} / 路线 {route.Score:F2}）");
+                if (missClock.ElapsedMilliseconds >= StartupMissTimeoutMs)
+                {
+                    _log($"开局持续 {StartupMissTimeoutMs / 1000} 秒未识别到已知界面，停止。");
+                    return false;
+                }
+                await Task.Delay(_config.DetectionPollIntervalMs, cancellationToken);
+                continue;
             }
 
-            TemplateProbeResult partnerProbe = await ProbeTemplateAsync(
-                window, _partnerSelectionMatcher, _config.PartnerSelectionTopLeft,
-                Math.Max(_config.PartnerSelectionPadding, 48), cancellationToken, presenceThreshold);
-            if (partnerProbe.IsMatch)
+            missClock = null;
+            TemplateProbeResult matched = probes[hit];
+            switch (hit)
             {
-                _log($"识别到伙伴/商店界面（{partnerProbe.Score:F4}），进入迷宫循环。");
-                await RunMazeLoopAsync(window, 0, cancellationToken, preferredScreen: "partner");
-                return;
+                case "treasure":
+                    _log($"{TreasureTaskName}识别成功（{matched.Score:F4}），进入迷宫循环。");
+                    return await RunMazeLoopAsync(window, 0, cancellationToken, preferredScreen: "treasure");
+                case "route":
+                    _log($"{RouteSelectionTaskName}识别成功（{matched.Score:F4}），进入迷宫循环。");
+                    return await RunMazeLoopAsync(window, 0, cancellationToken, preferredScreen: "route");
+                case "settlement":
+                    _log($"{SettlementTaskName}识别成功（{matched.Score:F4}），进入迷宫循环。");
+                    return await RunMazeLoopAsync(window, 0, cancellationToken, preferredScreen: "settlement");
+                case "partner":
+                    _log($"识别到伙伴/商店界面（{matched.Score:F4}），进入迷宫循环。");
+                    return await RunMazeLoopAsync(window, 0, cancellationToken, preferredScreen: "partner");
+                case "next":
+                    _log($"识别到迷宫探索中界面（下一步 {matched.Score:F4}），进入迷宫循环。");
+                    return await RunMazeLoopAsync(window, 0, cancellationToken, preferredScreen: "next");
+                case "event":
+                    _log($"识别到迷宫探索中界面（事件选择 {matched.Score:F4}），进入迷宫循环。");
+                    return await RunMazeLoopAsync(window, 0, cancellationToken, preferredScreen: "event");
+                case "battle":
+                    _log($"识别到迷宫探索中界面（战斗 {matched.Score:F4}），进入迷宫循环。");
+                    return await RunMazeLoopAsync(window, 0, cancellationToken, preferredScreen: "battle");
+                case "fourth":
+                    _log($"{FourthTaskName}识别成功（{matched.Score:F4}），点击并进入迷宫循环。");
+                    await _screen.ClickAsync(window, _config.FourthClick, FourthTaskName, cancellationToken);
+                    return await RunMazeLoopAsync(window, 0, cancellationToken);
+                case "third":
+                    _log($"{ThirdTaskName}识别成功（{matched.Score:F4}）。");
+                    await _screen.ClickAsync(window, _config.ThirdClick, ThirdTaskName, cancellationToken);
+                    return await RunFromFourthTaskAsync(window, cancellationToken);
+                case "second":
+                    _log($"{SecondTaskName}识别成功（{matched.Score:F4}）。");
+                    await _screen.ClickAsync(window, _config.SecondClick, SecondTaskName, cancellationToken);
+                    return await RunFromThirdTaskAsync(window, cancellationToken);
+                case "first":
+                    if (!await MatchAndClickFirstTaskOnceAsync(window, cancellationToken))
+                    {
+                        missClock ??= Stopwatch.StartNew();
+                        if (missClock.ElapsedMilliseconds >= StartupMissTimeoutMs)
+                        {
+                            _log($"开局持续 {StartupMissTimeoutMs / 1000} 秒未识别到已知界面，停止。");
+                            return false;
+                        }
+                        await Task.Delay(_config.DetectionPollIntervalMs, cancellationToken);
+                        continue;
+                    }
+                    return await RunFromSecondTaskAsync(window, cancellationToken);
+                default:
+                    continue;
             }
-
-            TemplateProbeResult nextProbe = await ProbeTemplateAsync(
-                window, _fifthMatcher, _config.FifthSearchTopLeft,
-                _config.FifthSearchPadding, cancellationToken, presenceThreshold);
-            if (nextProbe.IsMatch)
-            {
-                _log($"识别到迷宫探索中界面（下一步 {nextProbe.Score:F4}），进入迷宫循环。");
-                await RunMazeLoopAsync(window, 0, cancellationToken, preferredScreen: "next");
-                return;
-            }
-
-            TemplateProbeResult eventProbe = await ProbeTemplateAsync(
-                window, _eventChoiceMatcher, _config.EventChoiceTopLeft,
-                _config.EventChoicePadding, cancellationToken, presenceThreshold);
-            if (eventProbe.IsMatch)
-            {
-                _log($"识别到迷宫探索中界面（事件选择 {eventProbe.Score:F4}），进入迷宫循环。");
-                await RunMazeLoopAsync(window, 0, cancellationToken, preferredScreen: "event");
-                return;
-            }
-
-            TemplateProbeResult battleProbe = await ProbeTemplateAsync(
-                window, _battleSkipMatcher, _config.BattleSkipTopLeft,
-                _config.BattleSkipPadding, cancellationToken, presenceThreshold);
-            if (battleProbe.IsMatch)
-            {
-                _log($"识别到迷宫探索中界面（战斗 {battleProbe.Score:F4}），进入迷宫循环。");
-                await RunMazeLoopAsync(window, 0, cancellationToken, preferredScreen: "battle");
-                return;
-            }
-
-            // —— 尚未进迷宫：入口流程 ——
-            if (await MatchAndClickTemplateAsync(
-                    window, _fourthMatcher, _config.FourthSearchTopLeft, _config.FourthSearchPadding,
-                    FourthTaskName, "exploration-action", cancellationToken,
-                    timeoutMs: 0, quietFailure: true, saveDiagnostics: false))
-            {
-                await RunMazeLoopAsync(window, 0, cancellationToken);
-                return;
-            }
-            if (await MatchAndClickTemplateAsync(
-                    window, _thirdMatcher, _config.ThirdSearchTopLeft, _config.ThirdSearchPadding,
-                    ThirdTaskName, "exploration-ready", cancellationToken,
-                    timeoutMs: 0, quietFailure: true, saveDiagnostics: false))
-            {
-                await RunFromFourthTaskAsync(window, cancellationToken);
-                return;
-            }
-            if (await MatchAndClickTemplateAsync(
-                    window, _secondMatcher, _config.SecondSearchTopLeft, _config.SecondSearchPadding,
-                    SecondTaskName, "maze-search", cancellationToken,
-                    timeoutMs: 0, quietFailure: true, saveDiagnostics: false))
-            {
-                await RunFromThirdTaskAsync(window, cancellationToken);
-                return;
-            }
-            if (await MatchAndClickFirstTaskOnceAsync(window, cancellationToken))
-            {
-                await RunFromSecondTaskAsync(window, cancellationToken);
-                return;
-            }
-
-            if (identificationRounds % 12 == 0)
-            {
-                _log("尚未识别到已知界面，继续扫描。" +
-                     $"（路线 {routeProbe.Score:F2} / 商店结算 {settlementProbe.Score:F2} / " +
-                     $"伙伴商店 {partnerProbe.Score:F2} / 下一步 {nextProbe.Score:F2}）");
-            }
-            await Task.Delay(_config.DetectionPollIntervalMs, cancellationToken);
         }
     }
 
     private async Task<bool> MatchAndClickFirstTaskOnceAsync(
         GameWindow window, CancellationToken cancellationToken)
     {
-        window = _capture.Refresh(window);
-        var geometry = new CaptureGeometry(window.DisplayRect);
-        EnsureDisplayAspectRatio(geometry);
-        int padding = _config.FirstSearchPadding;
-        var topLeft = new ConfigPoint(
-            _config.SearchTopLeft.X - padding,
-            _config.SearchTopLeft.Y - padding);
-        var size = new ConfigSize(
-            _firstMatcher.ReferenceWidth + padding * 2,
-            _firstMatcher.ReferenceHeight + padding * 2);
-        ScreenRect rect = geometry.ReferenceRegionFromTopLeftToScreen(
-            topLeft, size, _config.ReferenceWidth, _config.ReferenceHeight);
-        BitmapSource image = _capture.Capture(window, rect);
-        int logicalWidth = Math.Max(1,
-            (int)Math.Round(size.Width * CaptureGeometry.LogicalWidth / (double)_config.ReferenceWidth));
-        int logicalHeight = Math.Max(1,
-            (int)Math.Round(size.Height * CaptureGeometry.LogicalHeight / (double)_config.ReferenceHeight));
+        window = _screen.Refresh(window);
+        _screen.EnsureSixteenByNine(window);
+        RegionCapture region = _screen.CaptureRegion(window, _config.SearchTopLeft, _config.FirstSearchSize);
         TemplateMatchResult match = await Task.Run(
-            () => _firstMatcher.Match(image, logicalWidth, logicalHeight), cancellationToken);
+            () => _screen.Match(_firstMatcher, region.Image, region.LogicalWidth, region.LogicalHeight),
+            cancellationToken);
         if (match.Score < _config.MatchThreshold)
             return false;
 
         _log($"{FirstTaskName}识别成功，模板分数：{match.Score:F4}。");
-        window = await ClickReferenceAsync(
+        window = await _screen.ClickAsync(
             window, _config.FirstClick, $"{FirstTaskName}点击 1/2", cancellationToken);
         await Task.Delay(_config.DoubleClickIntervalMs, cancellationToken);
-        await ClickReferenceAsync(
+        await _screen.ClickAsync(
             window, _config.FirstClick, $"{FirstTaskName}点击 2/2", cancellationToken);
         return true;
     }
 
-    private async Task RunFromSecondTaskAsync(GameWindow window, CancellationToken cancellationToken)
+    private async Task<bool> RunFromSecondTaskAsync(GameWindow window, CancellationToken cancellationToken)
     {
         _log($"开始任务：{SecondTaskName}。");
         bool secondMatched = await MatchAndClickTemplateAsync(
-            window, _secondMatcher, _config.SecondSearchTopLeft, _config.SecondSearchPadding,
-            SecondTaskName, "maze-search", cancellationToken);
+            window, _secondMatcher, _config.SecondSearchTopLeft, _config.SecondSearchSize,
+            _config.SecondClick, SecondTaskName, "maze-search", cancellationToken);
         if (!secondMatched)
             _log($"{SecondTaskName}识别失败，继续后续任务。");
-        await RunFromThirdTaskAsync(window, cancellationToken);
+        return await RunFromThirdTaskAsync(window, cancellationToken);
     }
 
-    private async Task RunFromThirdTaskAsync(GameWindow window, CancellationToken cancellationToken)
+    private async Task<bool> RunFromThirdTaskAsync(GameWindow window, CancellationToken cancellationToken)
     {
         _log($"开始任务：{ThirdTaskName}。");
         bool thirdMatched = await MatchAndClickTemplateAsync(
-            window, _thirdMatcher, _config.ThirdSearchTopLeft, _config.ThirdSearchPadding,
-            ThirdTaskName, "exploration-ready", cancellationToken);
+            window, _thirdMatcher, _config.ThirdSearchTopLeft, _config.ThirdSearchSize,
+            _config.ThirdClick, ThirdTaskName, "exploration-ready", cancellationToken);
         if (!thirdMatched)
             _log($"{ThirdTaskName}识别失败，等待后继续后续任务。");
-        await RunFromFourthTaskAsync(window, cancellationToken);
+        return await RunFromFourthTaskAsync(window, cancellationToken);
     }
 
-    private async Task RunFromFourthTaskAsync(GameWindow window, CancellationToken cancellationToken)
+    private async Task<bool> RunFromFourthTaskAsync(GameWindow window, CancellationToken cancellationToken)
     {
         _log($"开始任务：{FourthTaskName}。");
         if (!await MatchAndClickTemplateAsync(
-                window, _fourthMatcher, _config.FourthSearchTopLeft, _config.FourthSearchPadding,
-                FourthTaskName, "exploration-action", cancellationToken))
+                window, _fourthMatcher, _config.FourthSearchTopLeft, _config.FourthSearchSize,
+                _config.FourthClick, FourthTaskName, "exploration-action", cancellationToken))
             _log($"{FourthTaskName}识别失败，继续检测迷宫探索流程。");
-        await RunMazeLoopAsync(window, 0, cancellationToken);
+        return await RunMazeLoopAsync(window, 0, cancellationToken);
     }
 
-    private async Task RunMazeLoopAsync(
+    private static readonly string[] StartupScreenPriority =
+    [
+        // 开局先判入口，避免主界面被迷宫弱匹配抢走。
+        "first", "second", "third", "fourth",
+        "treasure", "route", "settlement", "partner", "next", "event", "battle"
+    ];
+
+    private static readonly string[] MazeExplorationScreenPriority =
+    [
+        "battle", "event", "partner", "settlement", "treasure", "route", "next"
+    ];
+
+    private List<NamedProbe> BuildMazeExplorationProbes() =>
+    [
+        new("battle", _battleSkipMatcher, _config.BattleSkipTopLeft, _config.BattleSkipSize, MazePresenceThreshold),
+        new("event", _eventChoiceMatcher, _config.EventChoiceTopLeft, _config.EventChoiceSize, MazePresenceThreshold),
+        new("partner", _partnerSelectionMatcher, _config.PartnerSelectionTopLeft, _config.PartnerSelectionSize,
+            MazePresenceThreshold),
+        new("settlement", _settlementShop.SettlementMatcher, _config.SettlementSearchTopLeft,
+            _config.SettlementSearchSize, MazePresenceThreshold),
+        new("treasure", _treasureStateMatcher, _config.TreasureStateTopLeft, _config.TreasureStateSize,
+            MazePresenceThreshold),
+        new("route", _routeSelectionMatcher, _config.RouteSelectionTopLeft, _config.RouteSelectionSize,
+            RoutePresenceThreshold),
+        new("next", _fifthMatcher, _config.FifthSearchTopLeft, _config.FifthSearchSize, MazePresenceThreshold)
+    ];
+
+    private List<NamedProbe> BuildStartupAllProbes()
+    {
+        var list = BuildMazeExplorationProbes();
+        double entryThreshold = _config.MatchThreshold;
+        list.Add(new("first", _firstMatcher, _config.SearchTopLeft, _config.FirstSearchSize, entryThreshold));
+        list.Add(new("second", _secondMatcher, _config.SecondSearchTopLeft, _config.SecondSearchSize, entryThreshold));
+        list.Add(new("third", _thirdMatcher, _config.ThirdSearchTopLeft, _config.ThirdSearchSize, entryThreshold));
+        list.Add(new("fourth", _fourthMatcher, _config.FourthSearchTopLeft, _config.FourthSearchSize, entryThreshold));
+        return list;
+    }
+
+    private static string? PickFirstMatchedScreen(
+        IReadOnlyDictionary<string, TemplateProbeResult> probes, IReadOnlyList<string> priority)
+    {
+        foreach (string key in priority)
+        {
+            if (probes.TryGetValue(key, out TemplateProbeResult? probe) && probe.IsMatch)
+                return key;
+        }
+        return null;
+    }
+
+    private static TemplateProbeResult GetProbe(
+        IReadOnlyDictionary<string, TemplateProbeResult> probes, string key) =>
+        probes.TryGetValue(key, out TemplateProbeResult? probe)
+            ? probe
+            : new TemplateProbeResult(false, 0, new Point());
+
+    private async Task<bool> RunMazeLoopAsync(
         GameWindow window, int mazeLoopCount, CancellationToken cancellationToken,
         string? preferredScreen = null)
     {
-        _log("进入迷宫循环：随时检测战斗SKIP/立ち去る/结算/下一步，以及宝物与路线选择。");
+        _log("进入迷宫循环：探索场景并发匹配（战斗/事件/伙伴/结算/宝物/路线/下一步）。");
         bool treasureHandled = false;
         bool routeHandled = false;
         bool nextHandled = false;
         bool battleSkipHandled = false;
         bool eventChoiceHandled = false;
         bool preferOnce = preferredScreen is not null;
+        Stopwatch? missClock = null;
+
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -331,12 +355,16 @@ public sealed class MazeAutomation
             if (preferOnce)
             {
                 preferOnce = false;
-                MazeHandleResult handledPreferred = await TryHandleMazeScreenAsync(
-                    window, preferredScreen!, mazeLoopCount,
-                    treasureHandled, routeHandled, nextHandled, battleSkipHandled, eventChoiceHandled,
-                    cancellationToken);
-                if (handledPreferred.Handled)
+                IReadOnlyDictionary<string, TemplateProbeResult> preferredProbes =
+                    await ProbeManyConcurrentAsync(window, BuildMazeExplorationProbes(), cancellationToken);
+                if (preferredScreen is not null &&
+                    preferredProbes.TryGetValue(preferredScreen, out TemplateProbeResult? preferredHit) &&
+                    preferredHit.IsMatch)
                 {
+                    MazeHandleResult handledPreferred = await HandleMazeProbesAsync(
+                        window, preferredProbes, preferredScreen, mazeLoopCount,
+                        treasureHandled, routeHandled, nextHandled, battleSkipHandled, eventChoiceHandled,
+                        cancellationToken);
                     mazeLoopCount = handledPreferred.MazeLoopCount;
                     treasureHandled = handledPreferred.TreasureHandled;
                     routeHandled = handledPreferred.RouteHandled;
@@ -344,14 +372,53 @@ public sealed class MazeAutomation
                     battleSkipHandled = handledPreferred.BattleSkipHandled;
                     eventChoiceHandled = handledPreferred.EventChoiceHandled;
                     if (handledPreferred.ExitLoop)
-                        return;
-                    await Task.Delay(_config.DetectionPollIntervalMs, cancellationToken);
-                    continue;
+                        return true;
+                    if (handledPreferred.Handled)
+                    {
+                        missClock = null;
+                        await Task.Delay(_config.DetectionPollIntervalMs, cancellationToken);
+                        continue;
+                    }
                 }
             }
 
-            var result = await TryHandleMazeScreenAsync(
-                window, screen: null, mazeLoopCount,
+            IReadOnlyDictionary<string, TemplateProbeResult> probes =
+                await ProbeManyConcurrentAsync(window, BuildMazeExplorationProbes(), cancellationToken);
+            bool anyMatch = probes.Values.Any(p => p.IsMatch);
+            if (!anyMatch)
+            {
+                // 全未命中时清空已处理标记，避免「下一步」等短暂消失后再现时只空转不点。
+                treasureHandled = false;
+                routeHandled = false;
+                nextHandled = false;
+                battleSkipHandled = false;
+                eventChoiceHandled = false;
+
+                bool firstMiss = missClock is null;
+                missClock ??= Stopwatch.StartNew();
+                if (_config.SaveDiagnostics && firstMiss)
+                    await SaveMazeMissDiagnosticsAsync(window, probes, cancellationToken);
+
+                TemplateProbeResult battle = GetProbe(probes, "battle");
+                TemplateProbeResult treasure = GetProbe(probes, "treasure");
+                TemplateProbeResult route = GetProbe(probes, "route");
+                TemplateProbeResult next = GetProbe(probes, "next");
+                TemplateProbeResult partner = GetProbe(probes, "partner");
+                _log($"迷宫探索场景均未命中（已未命中 {missClock.Elapsed.TotalSeconds:F1}s / {MazeMissTimeoutMs / 1000}s）。" +
+                     $"（战斗 {battle.Score:F2} / 宝物 {treasure.Score:F2} / 路线 {route.Score:F2} / " +
+                     $"下一步 {next.Score:F2} / 伙伴 {partner.Score:F2}）");
+                if (missClock.ElapsedMilliseconds >= MazeMissTimeoutMs)
+                {
+                    _log($"迷宫探索持续 {MazeMissTimeoutMs / 1000} 秒未命中，停止。");
+                    return false;
+                }
+                await Task.Delay(_config.DetectionPollIntervalMs, cancellationToken);
+                continue;
+            }
+
+            missClock = null;
+            MazeHandleResult result = await HandleMazeProbesAsync(
+                window, probes, screen: null, mazeLoopCount,
                 treasureHandled, routeHandled, nextHandled, battleSkipHandled, eventChoiceHandled,
                 cancellationToken);
             mazeLoopCount = result.MazeLoopCount;
@@ -361,9 +428,9 @@ public sealed class MazeAutomation
             battleSkipHandled = result.BattleSkipHandled;
             eventChoiceHandled = result.EventChoiceHandled;
             if (result.ExitLoop)
-                return;
-            if (!result.Handled)
-                await Task.Delay(_config.DetectionPollIntervalMs, cancellationToken);
+                return true;
+            // 有匹配后稍候再探，避免点完立刻连点。
+            await Task.Delay(_config.DetectionPollIntervalMs, cancellationToken);
         }
     }
 
@@ -377,8 +444,9 @@ public sealed class MazeAutomation
         bool BattleSkipHandled,
         bool EventChoiceHandled);
 
-    private async Task<MazeHandleResult> TryHandleMazeScreenAsync(
+    private async Task<MazeHandleResult> HandleMazeProbesAsync(
         GameWindow window,
+        IReadOnlyDictionary<string, TemplateProbeResult> probes,
         string? screen,
         int mazeLoopCount,
         bool treasureHandled,
@@ -395,21 +463,17 @@ public sealed class MazeAutomation
         bool Is(string name) =>
             screen is null || screen.Equals(name, StringComparison.OrdinalIgnoreCase);
 
+        TemplateProbeResult Probe(string key) => GetProbe(probes, key);
+
         if (Is("battle"))
         {
-            TemplateProbeResult battleSkipProbe = await ProbeTemplateAsync(
-                window, _battleSkipMatcher, _config.BattleSkipTopLeft,
-                _config.BattleSkipPadding, cancellationToken, MazePresenceThreshold);
+            TemplateProbeResult battleSkipProbe = Probe("battle");
             if (battleSkipProbe.IsMatch)
             {
                 if (!battleSkipHandled)
-                {
-                    _log($"{BattleSkipTaskName}识别成功，点击 SKIP。");
-                    await _mouse.ClickAsync(window.Handle, battleSkipProbe.Center, cancellationToken);
-                    battleSkipHandled = true;
-                    await WaitBattleSkipDismissedAsync(window, cancellationToken);
-                    battleSkipHandled = false;
-                }
+                    _log($"{BattleSkipTaskName}识别成功（{battleSkipProbe.Score:F4}），点击 SKIP。");
+                await _screen.ClickAsync(window, _config.BattleSkipClick, "战斗 SKIP", cancellationToken);
+                battleSkipHandled = true;
                 return State(true);
             }
             if (screen is not null)
@@ -419,18 +483,15 @@ public sealed class MazeAutomation
 
         if (Is("event"))
         {
-            TemplateProbeResult eventChoiceProbe = await ProbeTemplateAsync(
-                window, _eventChoiceMatcher, _config.EventChoiceTopLeft,
-                _config.EventChoicePadding, cancellationToken, MazePresenceThreshold);
+            TemplateProbeResult eventChoiceProbe = Probe("event");
             if (eventChoiceProbe.IsMatch)
             {
                 if (!eventChoiceHandled)
                 {
-                    _log($"{EventChoiceTaskName}识别成功，默认选择第二选项。");
-                    window = await ClickReferenceAsync(
+                    _log($"{EventChoiceTaskName}识别成功（{eventChoiceProbe.Score:F4}），默认选择第二选项。");
+                    window = await _screen.ClickAsync(
                         window, _config.EventChoiceSecondOption, "事件第二选项", cancellationToken);
                     eventChoiceHandled = true;
-                    await Task.Delay(500, cancellationToken);
                 }
                 return State(true);
             }
@@ -441,14 +502,11 @@ public sealed class MazeAutomation
 
         if (Is("partner"))
         {
-            TemplateProbeResult partnerProbe = await ProbeTemplateAsync(
-                window, _partnerSelectionMatcher, _config.PartnerSelectionTopLeft,
-                Math.Max(_config.PartnerSelectionPadding, 48), cancellationToken, MazePresenceThreshold);
+            TemplateProbeResult partnerProbe = Probe("partner");
             if (partnerProbe.IsMatch)
             {
-                _log($"{PartnerSelectionTaskName}识别成功，点击中心。");
-                await _mouse.ClickAsync(window.Handle, partnerProbe.Center, cancellationToken);
-                await WaitPartnerOrShopDismissedAsync(window, cancellationToken);
+                _log($"{PartnerSelectionTaskName}识别成功（{partnerProbe.Score:F4}），点击离开。");
+                await _screen.ClickAsync(window, _config.PartnerClick, PartnerSelectionTaskName, cancellationToken);
                 return State(true);
             }
             if (screen is not null)
@@ -457,15 +515,18 @@ public sealed class MazeAutomation
 
         if (Is("settlement"))
         {
-            TemplateProbeResult settlementProbe = await ProbeTemplateAsync(
-                window, _settlementShop.SettlementMatcher, _config.SettlementTopLeft,
-                _config.SettlementPadding, cancellationToken, MazePresenceThreshold);
-            if (settlementProbe.IsMatch ||
-                await _settlementShop.IsSettlementVisibleAsync(window, cancellationToken))
+            TemplateProbeResult settlementProbe = Probe("settlement");
+            if (settlementProbe.IsMatch)
             {
-                await _settlementShop.RunAsync(window, cancellationToken);
-                _log("本轮结算完成，结束迷宫循环。");
-                return State(true, exit: true);
+                bool left = await _settlementShop.RunAsync(window, cancellationToken);
+                if (left)
+                {
+                    _log("本轮结算完成，结束迷宫循环。");
+                    return State(true, exit: true);
+                }
+
+                _log("结算界面仍在，稍后重试完了。");
+                return State(true);
             }
             if (screen is not null)
                 return State(false);
@@ -473,19 +534,16 @@ public sealed class MazeAutomation
 
         if (Is("treasure"))
         {
-            TemplateProbeResult treasureProbe = await ProbeTemplateAsync(
-                window, _treasureStateMatcher, _config.TreasureStateTopLeft,
-                _config.TreasureStatePadding, cancellationToken, MazePresenceThreshold);
+            TemplateProbeResult treasureProbe = Probe("treasure");
             if (treasureProbe.IsMatch && !treasureHandled)
             {
-                _log($"{TreasureTaskName}识别成功，开始按优先级选择。");
+                _log($"{TreasureTaskName}识别成功（{treasureProbe.Score:F4}），开始按优先级选择。");
                 await SelectTreasureAsync(window, cancellationToken);
                 treasureHandled = true;
                 _log("宝物选择完成，继续检测后续界面。");
-                await WaitTreasureDismissedAsync(window, cancellationToken);
-                TemplateProbeResult treasureAfter = await ProbeTemplateAsync(
+                TemplateProbeResult treasureAfter = await _screen.ProbeAsync(
                     window, _treasureStateMatcher, _config.TreasureStateTopLeft,
-                    _config.TreasureStatePadding, cancellationToken, MazePresenceThreshold);
+                    _config.TreasureStateSize, cancellationToken, MazePresenceThreshold);
                 if (!treasureAfter.IsMatch)
                 {
                     treasureHandled = false;
@@ -494,10 +552,9 @@ public sealed class MazeAutomation
 
                 _log("宝物状态仍残留，判定可能未点中，再选一次。");
                 await SelectTreasureAsync(window, cancellationToken);
-                await WaitTreasureDismissedAsync(window, cancellationToken);
-                treasureAfter = await ProbeTemplateAsync(
+                treasureAfter = await _screen.ProbeAsync(
                     window, _treasureStateMatcher, _config.TreasureStateTopLeft,
-                    _config.TreasureStatePadding, cancellationToken, MazePresenceThreshold);
+                    _config.TreasureStateSize, cancellationToken, MazePresenceThreshold);
                 if (!treasureAfter.IsMatch)
                     treasureHandled = false;
                 else
@@ -508,14 +565,11 @@ public sealed class MazeAutomation
                 return State(false);
             if (!treasureProbe.IsMatch)
                 treasureHandled = false;
-            // 状态仍在但本轮已处理过：继续检测路线/下一步。
         }
 
         if (Is("route"))
         {
-            TemplateProbeResult routeProbe = await ProbeTemplateAsync(
-                window, _routeSelectionMatcher, _config.RouteSelectionTopLeft,
-                Math.Max(_config.RouteSelectionPadding, 80), cancellationToken, MazePresenceThreshold);
+            TemplateProbeResult routeProbe = Probe("route");
             if (routeProbe.IsMatch && !routeHandled)
             {
                 _log($"{RouteSelectionTaskName}识别成功，开始按优先级选择路线宝物。");
@@ -524,13 +578,12 @@ public sealed class MazeAutomation
                     _log("路线区域未找到已提供的宝物模板，直接选择路线。");
                 else
                     _log($"已选中路线宝物：{selected}，随后选择路线。");
-                await _mouse.ClickAsync(window.Handle, routeProbe.Center, cancellationToken);
+                await _screen.ClickAsync(window, _config.RouteClick, "选择路线", cancellationToken);
                 routeHandled = true;
                 _log("路线选择完成，继续检测后续界面。");
-                await WaitRouteDismissedAsync(window, cancellationToken);
-                TemplateProbeResult routeAfter = await ProbeTemplateAsync(
+                TemplateProbeResult routeAfter = await _screen.ProbeAsync(
                     window, _routeSelectionMatcher, _config.RouteSelectionTopLeft,
-                    Math.Max(_config.RouteSelectionPadding, 80), cancellationToken, MazePresenceThreshold);
+                    _config.RouteSelectionSize, cancellationToken, RoutePresenceThreshold);
                 if (!routeAfter.IsMatch)
                     routeHandled = false;
                 return State(true);
@@ -543,21 +596,19 @@ public sealed class MazeAutomation
 
         if (Is("next"))
         {
-            TemplateProbeResult nextProbe = await ProbeTemplateAsync(
-                window, _fifthMatcher, _config.FifthSearchTopLeft,
-                _config.FifthSearchPadding, cancellationToken, MazePresenceThreshold);
+            TemplateProbeResult nextProbe = Probe("next");
             if (nextProbe.IsMatch)
             {
+                // 命中就点，但限频，避免 250ms 连点；全未命中时 nextHandled 会被清掉。
                 if (!nextHandled)
                 {
-                    _log($"{FifthTaskName}识别成功，点击模板中心。");
-                    await _mouse.ClickAsync(window.Handle, nextProbe.Center, cancellationToken);
+                    _log($"{FifthTaskName}识别成功，点击下一步。");
+                    await _screen.ClickAsync(window, _config.FifthClick, FifthTaskName, cancellationToken);
                     mazeLoopCount++;
                     _log($"{FifthTaskName}已执行 {mazeLoopCount} 次。");
                     nextHandled = true;
-                    await WaitNextDismissedAsync(window, cancellationToken);
-                    nextHandled = false;
-                    _log("下一步完成，继续检测后续界面。");
+                    _log("下一步已点击，继续检测后续界面（不空等消失）。");
+                    await Task.Delay(900, cancellationToken);
                 }
                 return State(true);
             }
@@ -566,248 +617,173 @@ public sealed class MazeAutomation
             nextHandled = false;
         }
 
+        // 有匹配但都被 handled 跳过时，仍视为本轮已处理，避免误计未命中。
+        if (screen is null && MazeExplorationScreenPriority.Any(k => Probe(k).IsMatch))
+            return State(true);
+
         return State(false);
     }
 
-    private async Task WaitTreasureDismissedAsync(
-        GameWindow window, CancellationToken cancellationToken)
+    private readonly record struct NamedProbe(
+        string Key,
+        TemplateMatcher Matcher,
+        ConfigPoint TopLeft,
+        ConfigSize Size,
+        double Threshold);
+
+    /// <summary>
+    /// 各 ROI 串行截图（GDI），模板匹配并行，避免空等串行探测。
+    /// </summary>
+    private async Task<Dictionary<string, TemplateProbeResult>> ProbeManyConcurrentAsync(
+        GameWindow window,
+        IReadOnlyList<NamedProbe> probeList,
+        CancellationToken cancellationToken)
     {
-        const int dismissTimeoutMs = 2500;
-        var timer = Stopwatch.StartNew();
-        while (timer.ElapsedMilliseconds < dismissTimeoutMs)
+        window = _screen.Refresh(window);
+        // 配置坐标按完整 16:9 显示器标定，映射也用 DisplayRect；缩放统一走 CaptureGeometry。
+        CaptureGeometry geometry = _screen.Geometry(window);
+        _screen.EnsureSixteenByNine(window);
+
+        // 整幅客户区只截一次，再裁各 ROI，避免重复截图且不受本工具遮挡。
+        BitmapSource fullClient = _screen.CaptureClient(window);
+        fullClient.Freeze();
+
+        var jobs = new (string Key, TemplateMatcher Matcher, BitmapSource Image, ScreenRect Rect, int Lw, int Lh, double Threshold)[probeList.Count];
+        for (int i = 0; i < probeList.Count; i++)
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            NamedProbe probe = probeList[i];
+            ConfigPoint topLeft = probe.TopLeft;
+            ConfigSize size = ScreenAutomation.EnsureFitsTemplate(probe.Size, probe.Matcher);
+            if (size.Width != probe.Size.Width || size.Height != probe.Size.Height)
+                _log($"探测 {probe.Key}：搜索区 {probe.Size.Width}×{probe.Size.Height} 小于模板逻辑 " +
+                     $"{probe.Matcher.LogicalWidth}×{probe.Matcher.LogicalHeight}，已放大至 {size.Width}×{size.Height}。");
+            ScreenRect rect = geometry.RegionFromTopLeftToScreen(topLeft, size);
 
-            TemplateProbeResult battleSkipProbe = await ProbeTemplateAsync(
-                window, _battleSkipMatcher, _config.BattleSkipTopLeft,
-                _config.BattleSkipPadding, cancellationToken);
-            if (battleSkipProbe.IsMatch)
-                return;
-
-            TemplateProbeResult eventChoiceProbe = await ProbeTemplateAsync(
-                window, _eventChoiceMatcher, _config.EventChoiceTopLeft,
-                _config.EventChoicePadding, cancellationToken);
-            if (eventChoiceProbe.IsMatch)
-                return;
-
-            TemplateProbeResult partnerProbe = await ProbeTemplateAsync(
-                window, _partnerSelectionMatcher, _config.PartnerSelectionTopLeft,
-                _config.PartnerSelectionPadding, cancellationToken);
-            if (partnerProbe.IsMatch)
-                return;
-
-            if (await _settlementShop.IsSettlementVisibleAsync(window, cancellationToken))
-                return;
-
-            TemplateProbeResult treasureProbe = await ProbeTemplateAsync(
-                window, _treasureStateMatcher, _config.TreasureStateTopLeft,
-                _config.TreasureStatePadding, cancellationToken);
-            if (!treasureProbe.IsMatch)
-                return;
-
-            TemplateProbeResult routeProbe = await ProbeTemplateAsync(
-                window, _routeSelectionMatcher, _config.RouteSelectionTopLeft,
-                _config.RouteSelectionPadding, cancellationToken);
-            if (routeProbe.IsMatch)
-                return;
-
-            TemplateProbeResult nextProbe = await ProbeTemplateAsync(
-                window, _fifthMatcher, _config.FifthSearchTopLeft,
-                _config.FifthSearchPadding, cancellationToken);
-            if (nextProbe.IsMatch)
-                return;
-
-            await Task.Delay(_config.DetectionPollIntervalMs, cancellationToken);
-        }
-    }
-
-    private async Task WaitRouteDismissedAsync(
-        GameWindow window, CancellationToken cancellationToken)
-    {
-        const int dismissTimeoutMs = 2000;
-        var timer = Stopwatch.StartNew();
-        while (timer.ElapsedMilliseconds < dismissTimeoutMs)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            TemplateProbeResult battleSkipProbe = await ProbeTemplateAsync(
-                window, _battleSkipMatcher, _config.BattleSkipTopLeft,
-                _config.BattleSkipPadding, cancellationToken);
-            if (battleSkipProbe.IsMatch)
-                return;
-
-            TemplateProbeResult eventChoiceProbe = await ProbeTemplateAsync(
-                window, _eventChoiceMatcher, _config.EventChoiceTopLeft,
-                _config.EventChoicePadding, cancellationToken);
-            if (eventChoiceProbe.IsMatch)
-                return;
-
-            TemplateProbeResult partnerProbe = await ProbeTemplateAsync(
-                window, _partnerSelectionMatcher, _config.PartnerSelectionTopLeft,
-                _config.PartnerSelectionPadding, cancellationToken);
-            if (partnerProbe.IsMatch)
-                return;
-
-            if (await _settlementShop.IsSettlementVisibleAsync(window, cancellationToken))
-                return;
-
-            TemplateProbeResult treasureProbe = await ProbeTemplateAsync(
-                window, _treasureStateMatcher, _config.TreasureStateTopLeft,
-                _config.TreasureStatePadding, cancellationToken);
-            if (treasureProbe.IsMatch)
-                return;
-
-            TemplateProbeResult routeProbe = await ProbeTemplateAsync(
-                window, _routeSelectionMatcher, _config.RouteSelectionTopLeft,
-                _config.RouteSelectionPadding, cancellationToken);
-            if (!routeProbe.IsMatch)
-                return;
-
-            TemplateProbeResult nextProbe = await ProbeTemplateAsync(
-                window, _fifthMatcher, _config.FifthSearchTopLeft,
-                _config.FifthSearchPadding, cancellationToken);
-            if (nextProbe.IsMatch)
-                return;
-
-            await Task.Delay(_config.DetectionPollIntervalMs, cancellationToken);
-        }
-    }
-
-    private async Task WaitNextDismissedAsync(
-        GameWindow window, CancellationToken cancellationToken)
-    {
-        var timer = Stopwatch.StartNew();
-        while (timer.ElapsedMilliseconds < _config.DetectionTimeoutMs)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            TemplateProbeResult battleSkipProbe = await ProbeTemplateAsync(
-                window, _battleSkipMatcher, _config.BattleSkipTopLeft,
-                _config.BattleSkipPadding, cancellationToken);
-            if (battleSkipProbe.IsMatch)
-                return;
-
-            TemplateProbeResult eventChoiceProbe = await ProbeTemplateAsync(
-                window, _eventChoiceMatcher, _config.EventChoiceTopLeft,
-                _config.EventChoicePadding, cancellationToken);
-            if (eventChoiceProbe.IsMatch)
-                return;
-
-            if (await _settlementShop.IsSettlementVisibleAsync(window, cancellationToken))
-                return;
-
-            TemplateProbeResult partnerProbe = await ProbeTemplateAsync(
-                window, _partnerSelectionMatcher, _config.PartnerSelectionTopLeft,
-                _config.PartnerSelectionPadding, cancellationToken);
-            if (partnerProbe.IsMatch)
-                return;
-
-            TemplateProbeResult treasureProbe = await ProbeTemplateAsync(
-                window, _treasureStateMatcher, _config.TreasureStateTopLeft,
-                _config.TreasureStatePadding, cancellationToken);
-            if (treasureProbe.IsMatch)
-                return;
-
-            TemplateProbeResult routeProbe = await ProbeTemplateAsync(
-                window, _routeSelectionMatcher, _config.RouteSelectionTopLeft,
-                _config.RouteSelectionPadding, cancellationToken);
-            if (routeProbe.IsMatch)
-                return;
-
-            TemplateProbeResult nextProbe = await ProbeTemplateAsync(
-                window, _fifthMatcher, _config.FifthSearchTopLeft,
-                _config.FifthSearchPadding, cancellationToken);
-            if (!nextProbe.IsMatch)
-                return;
-
-            await Task.Delay(_config.DetectionPollIntervalMs, cancellationToken);
-        }
-    }
-
-    private async Task WaitBattleSkipDismissedAsync(
-        GameWindow window, CancellationToken cancellationToken)
-    {
-        var timer = Stopwatch.StartNew();
-        while (timer.ElapsedMilliseconds < _config.DetectionTimeoutMs)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            TemplateProbeResult battleSkipProbe = await ProbeTemplateAsync(
-                window, _battleSkipMatcher, _config.BattleSkipTopLeft,
-                _config.BattleSkipPadding, cancellationToken);
-            if (!battleSkipProbe.IsMatch)
-                return;
-
-            await _mouse.ClickAsync(window.Handle, battleSkipProbe.Center, cancellationToken);
-            await Task.Delay(_config.DetectionPollIntervalMs, cancellationToken);
-        }
-    }
-
-    private async Task WaitPartnerOrShopDismissedAsync(
-        GameWindow window, CancellationToken cancellationToken)
-    {
-        // 离开后界面常短暂残留；勿空等 DetectionTimeoutMs（默认 10s）。
-        // 超时后由迷宫循环再次识别并点击，以处理连续出现的第二个离开界面。
-        const int dismissTimeoutMs = 1500;
-        var timer = Stopwatch.StartNew();
-        bool reclicked = false;
-        while (timer.ElapsedMilliseconds < dismissTimeoutMs)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            TemplateProbeResult partnerProbe = await ProbeTemplateAsync(
-                window, _partnerSelectionMatcher, _config.PartnerSelectionTopLeft,
-                _config.PartnerSelectionPadding, cancellationToken);
-            if (!partnerProbe.IsMatch)
-                return;
-
-            TemplateProbeResult battleSkipProbe = await ProbeTemplateAsync(
-                window, _battleSkipMatcher, _config.BattleSkipTopLeft,
-                _config.BattleSkipPadding, cancellationToken);
-            if (battleSkipProbe.IsMatch)
-                return;
-
-            TemplateProbeResult eventChoiceProbe = await ProbeTemplateAsync(
-                window, _eventChoiceMatcher, _config.EventChoiceTopLeft,
-                _config.EventChoicePadding, cancellationToken);
-            if (eventChoiceProbe.IsMatch)
-                return;
-
-            if (await _settlementShop.IsSettlementVisibleAsync(window, cancellationToken))
-                return;
-
-            TemplateProbeResult treasureProbe = await ProbeTemplateAsync(
-                window, _treasureStateMatcher, _config.TreasureStateTopLeft,
-                _config.TreasureStatePadding, cancellationToken);
-            if (treasureProbe.IsMatch)
-                return;
-
-            TemplateProbeResult routeProbe = await ProbeTemplateAsync(
-                window, _routeSelectionMatcher, _config.RouteSelectionTopLeft,
-                _config.RouteSelectionPadding, cancellationToken);
-            if (routeProbe.IsMatch)
-                return;
-
-            TemplateProbeResult nextProbe = await ProbeTemplateAsync(
-                window, _fifthMatcher, _config.FifthSearchTopLeft,
-                _config.FifthSearchPadding, cancellationToken);
-            if (nextProbe.IsMatch)
-                return;
-
-            if (!reclicked && timer.ElapsedMilliseconds >= 400)
+            if (!ScreenAutomation.FitsInClient(rect, window.ClientRect))
             {
-                _log("立ち去る仍在，补点一次。");
-                await _mouse.ClickAsync(window.Handle, partnerProbe.Center, cancellationToken);
-                reclicked = true;
+                _log($"探测 {probe.Key}：1080p({topLeft.X},{topLeft.Y}) {size.Width}×{size.Height} ×({geometry.ScaleX:F3},{geometry.ScaleY:F3}) → " +
+                     $"screen({rect.Left},{rect.Top}) {rect.Width}×{rect.Height} 超出客户区 " +
+                     $"{window.ClientRect.Width}×{window.ClientRect.Height}，跳过。");
+                jobs[i] = (probe.Key, probe.Matcher, null!, rect, 1, 1, probe.Threshold);
+                continue;
             }
 
-            await Task.Delay(_config.DetectionPollIntervalMs, cancellationToken);
+            RegionCapture region = _screen.CropRegion(window, fullClient, topLeft, size);
+            BitmapSource image = region.Image;
+            image.Freeze();
+
+            if (_config.SaveDiagnostics &&
+                probe.Key is "first" or "second" or "third" or "fourth")
+            {
+                string diagName = $"probe-{probe.Key}";
+                BitmapSource diag = image;
+                string key = probe.Key;
+                _ = Task.Run(() =>
+                {
+                    try { SaveDiagnostic(diag, diagName, $"探测-{key}"); }
+                    catch { /* 诊断失败不影响主流程 */ }
+                });
+            }
+
+            jobs[i] = (probe.Key, probe.Matcher, image, region.ScreenRect, region.LogicalWidth, region.LogicalHeight, probe.Threshold);
         }
 
-        _log("立ち去る等待超时，返回循环以便处理后续同类界面。");
+        Dictionary<string, TemplateProbeResult> dict = await Task.Run(() =>
+        {
+            var results = new TemplateProbeResult[jobs.Length];
+            Parallel.For(0, jobs.Length, i =>
+            {
+                var job = jobs[i];
+                if (job.Image is null)
+                {
+                    results[i] = new TemplateProbeResult(false, 0, new Point());
+                    return;
+                }
+                TemplateMatchResult match = _screen.Match(job.Matcher, job.Image, job.Lw, job.Lh);
+                Point center = _screen.MatchCenterToScreen(geometry, job.Rect, match, job.Lw, job.Lh);
+                results[i] = new TemplateProbeResult(match.Score >= job.Threshold, match.Score, center);
+            });
+
+            var map = new Dictionary<string, TemplateProbeResult>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < jobs.Length; i++)
+                map[jobs[i].Key] = results[i];
+            return map;
+        }, cancellationToken);
+
+        // 每轮都打出各探测置信度，便于对照阈值。
+        var scoreParts = new List<string>(probeList.Count);
+        for (int i = 0; i < probeList.Count; i++)
+        {
+            NamedProbe probe = probeList[i];
+            if (!dict.TryGetValue(probe.Key, out TemplateProbeResult? result))
+                continue;
+            string hit = result.IsMatch ? "命中" : "未命中";
+            scoreParts.Add($"{probe.Key}={result.Score:F4}/{probe.Threshold:F2}({hit})");
+            if (_config.SaveDiagnostics &&
+                probe.Key is "first" or "second" or "third" or "fourth")
+            {
+                ConfigPoint topLeft = probe.TopLeft;
+                ConfigSize size = ScreenAutomation.EnsureFitsTemplate(probe.Size, probe.Matcher);
+                ScreenRect rect = geometry.RegionFromTopLeftToScreen(topLeft, size);
+                _log($"探测 {probe.Key}：1080p({topLeft.X},{topLeft.Y}) {size.Width}×{size.Height} ×({geometry.ScaleX:F3},{geometry.ScaleY:F3}) → " +
+                     $"screen({rect.Left},{rect.Top}) {rect.Width}×{rect.Height}，置信度 {result.Score:F4}（阈值 {probe.Threshold:F2}，{hit}）");
+            }
+        }
+        if (scoreParts.Count > 0)
+            _log("本轮置信度：" + string.Join(" | ", scoreParts));
+
+        return dict;
+    }
+
+    /// <summary>迷宫未命中时保存各探索 ROI 诊断图，便于核对截图位置。</summary>
+    private async Task SaveMazeMissDiagnosticsAsync(
+        GameWindow window,
+        IReadOnlyDictionary<string, TemplateProbeResult> probes,
+        CancellationToken cancellationToken)
+    {
+        window = _screen.Refresh(window);
+        CaptureGeometry geometry = _screen.Geometry(window);
+        BitmapSource fullClient = _screen.CaptureClient(window);
+        fullClient.Freeze();
+        _ = Task.Run(() =>
+        {
+            try { SaveDiagnostic(fullClient, "maze-miss-full", "迷宫未命中整图"); }
+            catch { }
+        });
+
+        foreach (NamedProbe probe in BuildMazeExplorationProbes())
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            ConfigPoint topLeft = probe.TopLeft;
+            ConfigSize size = probe.Size;
+            ScreenRect rect = geometry.RegionFromTopLeftToScreen(topLeft, size);
+            if (!ScreenAutomation.FitsInClient(rect, window.ClientRect))
+            {
+                _log($"迷宫未命中诊断 {probe.Key}：ROI 超出客户区 screen({rect.Left},{rect.Top}) {rect.Width}×{rect.Height}");
+                continue;
+            }
+
+            RegionCapture region = _screen.CropRegion(window, fullClient, topLeft, size);
+            BitmapSource image = region.Image;
+            image.Freeze();
+            double score = probes.TryGetValue(probe.Key, out TemplateProbeResult? p) ? p.Score : 0;
+            string diagName = $"maze-miss-{probe.Key}";
+            BitmapSource diag = image;
+            string key = probe.Key;
+            _ = Task.Run(() =>
+            {
+                try { SaveDiagnostic(diag, diagName, $"迷宫未命中-{key}"); }
+                catch { }
+            });
+            _log($"迷宫未命中诊断 {probe.Key}：1080p({topLeft.X},{topLeft.Y}) {size.Width}×{size.Height} → " +
+                 $"screen({rect.Left},{rect.Top}) {rect.Width}×{rect.Height}，分数 {score:F2}");
+        }
+
+        await Task.CompletedTask;
     }
 
     private async Task SelectTreasureAsync(GameWindow window, CancellationToken cancellationToken)
     {
-        // 状态条先亮起时选项图标可能仍在过渡；尽量短等。
-        await Task.Delay(150, cancellationToken);
         for (int attempt = 1; attempt <= _config.TreasureMatchRetryCount; attempt++)
         {
             string? selected = await SelectPriorityTreasureAsync(
@@ -823,10 +799,7 @@ public sealed class MazeAutomation
             }
 
             if (attempt < _config.TreasureMatchRetryCount)
-            {
-                _log($"宝物未匹配（{attempt}/{_config.TreasureMatchRetryCount}），稍后重试。");
-                await Task.Delay(_config.TreasureMatchRetryDelayMs, cancellationToken);
-            }
+                _log($"宝物未匹配（{attempt}/{_config.TreasureMatchRetryCount}），立即重试。");
         }
 
         _log("当前已提供的普通宝物模板均未匹配，默认点击第一项。");
@@ -834,9 +807,7 @@ public sealed class MazeAutomation
         _log("选择宝物：first（默认）");
     }
 
-    /// <summary>
-    /// 三选一区域左侧第一张卡中心（4K），再叠加 TreasureClickOffset。
-    /// </summary>
+    /// <summary>三选一区域左侧第一张卡中心（1080p），再叠加 TreasureClickOffset。</summary>
     private async Task ClickFirstTreasureOptionAsync(GameWindow window, CancellationToken cancellationToken)
     {
         int cardCenterX = _config.TreasureOptionsTopLeft.X + _config.TreasureOptionsSize.Width / 6;
@@ -844,7 +815,7 @@ public sealed class MazeAutomation
         var target = new ConfigPoint(
             cardCenterX + _config.TreasureClickOffset.X,
             cardCenterY + _config.TreasureClickOffset.Y);
-        await ClickReferenceAsync(window, target, "宝物默认第一项", cancellationToken);
+        await _screen.ClickAsync(window, target, "宝物默认第一项", cancellationToken);
     }
 
     /// <summary>
@@ -853,7 +824,7 @@ public sealed class MazeAutomation
     private async Task<string?> SelectRouteTreasureAsync(GameWindow window, CancellationToken cancellationToken)
     {
         double threshold = _config.TreasureMatchThreshold;
-        const int overlap4K = 40;
+        const int overlap = 20; // 1080p
         ConfigPoint fullTopLeft = _config.RouteTreasureOptionsTopLeft;
         ConfigSize fullSize = _config.RouteTreasureOptionsSize;
         int bandHeight = Math.Max(1, fullSize.Height / 3);
@@ -861,8 +832,8 @@ public sealed class MazeAutomation
         var bands = new (string Name, ConfigPoint TopLeft, ConfigSize Size)[3];
         for (int i = 0; i < 3; i++)
         {
-            int y = fullTopLeft.Y + i * bandHeight - (i == 0 ? 0 : overlap4K);
-            int height = bandHeight + (i == 0 || i == 2 ? overlap4K : overlap4K * 2);
+            int y = fullTopLeft.Y + i * bandHeight - (i == 0 ? 0 : overlap);
+            int height = bandHeight + (i == 0 || i == 2 ? overlap : overlap * 2);
             if (i == 2)
                 height = fullTopLeft.Y + fullSize.Height - y;
             height = Math.Max(1, height);
@@ -870,26 +841,21 @@ public sealed class MazeAutomation
             bands[i] = (name, new ConfigPoint(fullTopLeft.X, y), new ConfigSize(fullSize.Width, height));
         }
 
-        _log($"{RouteSelectionTaskName}分带搜索：4K {fullSize.Width}×{fullSize.Height} → 上中下三块，阈值 {threshold:F2}");
+        _log($"{RouteSelectionTaskName}分带搜索：1080p {fullSize.Width}×{fullSize.Height} → 上中下三块，阈值 {threshold:F2}");
 
-        window = _capture.Refresh(window);
-        var geometry = new CaptureGeometry(window.DisplayRect);
+        window = _screen.Refresh(window);
+        CaptureGeometry geometry = _screen.Geometry(window);
         var bandRects = new ScreenRect[3];
         var logicalWidths = new int[3];
         var logicalHeights = new int[3];
         var bandGrays = new byte[3][];
         for (int i = 0; i < 3; i++)
         {
-            bandRects[i] = geometry.ReferenceRegionFromTopLeftToScreen(
-                bands[i].TopLeft, bands[i].Size,
-                _config.ReferenceWidth, _config.ReferenceHeight);
-            logicalWidths[i] = Math.Max(1,
-                (int)Math.Round(bands[i].Size.Width *
-                                CaptureGeometry.LogicalWidth / (double)_config.ReferenceWidth));
-            logicalHeights[i] = Math.Max(1,
-                (int)Math.Round(bands[i].Size.Height *
-                                CaptureGeometry.LogicalHeight / (double)_config.ReferenceHeight));
-            BitmapSource bandImage = _capture.Capture(window, bandRects[i]);
+            RegionCapture band = _screen.CaptureRegion(window, bands[i].TopLeft, bands[i].Size);
+            bandRects[i] = band.ScreenRect;
+            logicalWidths[i] = band.LogicalWidth;
+            logicalHeights[i] = band.LogicalHeight;
+            BitmapSource bandImage = band.Image;
             if (_config.SaveDiagnostics)
             {
                 bandImage.Freeze();
@@ -934,8 +900,8 @@ public sealed class MazeAutomation
                 Parallel.For(0, jobs.Count, i =>
                 {
                     (int band, TemplateMatcher matcher) = jobs[i];
-                    TemplateMatchResult match = matcher.MatchPrepared(
-                        bandGrays[band], logicalWidths[band], logicalHeights[band]);
+                    TemplateMatchResult match = _screen.MatchPrepared(
+                        matcher, bandGrays[band], logicalWidths[band], logicalHeights[band]);
                     local[i] = (band, match, matcher);
                 });
                 return local;
@@ -955,14 +921,11 @@ public sealed class MazeAutomation
             int winBand = best.Value.BandIndex;
             TemplateMatchResult winMatch = best.Value.Match;
             ScreenRect rect = bandRects[winBand];
-            double centerX = rect.Left +
-                (winMatch.X + winMatch.Width / 2.0) * rect.Width / logicalWidths[winBand];
-            double centerY = rect.Top +
-                (winMatch.Y + winMatch.Height / 2.0) * rect.Height / logicalHeights[winBand];
-            var clickPoint = new Point(centerX, centerY);
+            Point clickPoint = _screen.MatchCenterToScreen(
+                geometry, rect, winMatch, logicalWidths[winBand], logicalHeights[winBand]);
             _log($"优先路线宝物 {key} 匹配成功（{bands[winBand].Name}，{winMatch.Score:F4} ≥ {threshold:F2}），" +
                  $"点击 screen({clickPoint.X:F0},{clickPoint.Y:F0})");
-            await _mouse.ClickAsync(window.Handle, clickPoint, cancellationToken);
+            await _screen.ClickScreenAsync(window, clickPoint, cancellationToken);
             return key;
         }
 
@@ -975,27 +938,22 @@ public sealed class MazeAutomation
         ConfigSize optionsSize,
         IReadOnlyDictionary<string, IReadOnlyList<TemplateMatcher>> matchers,
         CancellationToken cancellationToken,
-        ConfigPoint? clickOffset4K = null,
+        ConfigPoint? clickOffset = null,
         string? diagnosticName = null,
         string? taskName = null,
         double? matchThreshold = null)
     {
         double threshold = matchThreshold ?? _config.MatchThreshold;
-        window = _capture.Refresh(window);
-        var geometry = new CaptureGeometry(window.DisplayRect);
-        ScreenRect rect = geometry.ReferenceRegionFromTopLeftToScreen(
-            optionsTopLeft, optionsSize,
-            _config.ReferenceWidth, _config.ReferenceHeight);
-        BitmapSource image = _capture.Capture(window, rect);
-        _log($"{taskName ?? "宝物匹配"}搜索区域：4K {optionsSize.Width}×{optionsSize.Height}，" +
+        window = _screen.Refresh(window);
+        RegionCapture region = _screen.CaptureRegion(window, optionsTopLeft, optionsSize);
+        CaptureGeometry geometry = region.Geometry;
+        ScreenRect rect = region.ScreenRect;
+        BitmapSource image = region.Image;
+        _log($"{taskName ?? "宝物匹配"}搜索区域：1080p {optionsSize.Width}×{optionsSize.Height} ×({geometry.ScaleX:F3},{geometry.ScaleY:F3}) → " +
              $"screen({rect.Left},{rect.Top}) {rect.Width}×{rect.Height}，阈值 {threshold:F2}");
 
-        int logicalWidth = Math.Max(1,
-            (int)Math.Round(optionsSize.Width *
-                            CaptureGeometry.LogicalWidth / (double)_config.ReferenceWidth));
-        int logicalHeight = Math.Max(1,
-            (int)Math.Round(optionsSize.Height *
-                            CaptureGeometry.LogicalHeight / (double)_config.ReferenceHeight));
+        int logicalWidth = region.LogicalWidth;
+        int logicalHeight = region.LogicalHeight;
 
         // 诊断图异步落盘，不阻塞匹配/点击。
         if (_config.SaveDiagnostics && !string.IsNullOrWhiteSpace(diagnosticName))
@@ -1032,7 +990,7 @@ public sealed class MazeAutomation
             Parallel.For(0, matchJobs.Count, i =>
             {
                 (string key, TemplateMatcher matcher) = matchJobs[i];
-                TemplateMatchResult match = matcher.MatchPrepared(sourceGray, logicalWidth, logicalHeight);
+                TemplateMatchResult match = _screen.MatchPrepared(matcher, sourceGray, logicalWidth, logicalHeight);
                 local[i] = (key, match, matcher.ReferenceWidth, matcher.ReferenceHeight);
             });
             return local;
@@ -1055,18 +1013,16 @@ public sealed class MazeAutomation
             return null;
 
         TemplateMatchResult bestMatch = winner.Match;
-        double centerX = rect.Left + (bestMatch.X + bestMatch.Width / 2.0) * rect.Width / logicalWidth;
-        double centerY = rect.Top + (bestMatch.Y + bestMatch.Height / 2.0) * rect.Height / logicalHeight;
-        if (clickOffset4K is { } offset)
+        Point clickPoint = _screen.MatchCenterToScreen(region, bestMatch);
+        if (clickOffset is { } offset)
         {
-            centerX += offset.X * geometry.ClientRect.Width / (double)_config.ReferenceWidth;
-            centerY += offset.Y * geometry.ClientRect.Height / (double)_config.ReferenceHeight;
+            Point delta = geometry.ScaleDelta(offset);
+            clickPoint = new Point(clickPoint.X + delta.X, clickPoint.Y + delta.Y);
         }
 
-        var clickPoint = new Point(centerX, centerY);
         _log($"优先宝物 {winner.Key} 匹配成功（{bestMatch.Score:F4} ≥ {threshold:F2}），点击 screen({clickPoint.X:F0},{clickPoint.Y:F0})" +
-             (clickOffset4K is null ? "" : $"（相对图标中心偏移 4K {clickOffset4K.X},{clickOffset4K.Y}）"));
-        await _mouse.ClickAsync(window.Handle, clickPoint, cancellationToken);
+             (clickOffset is null ? "" : $"（相对图标中心偏移 1080p {clickOffset.X},{clickOffset.Y}）"));
+        await _screen.ClickScreenAsync(window, clickPoint, cancellationToken);
         return winner.Key;
     }
 
@@ -1114,61 +1070,12 @@ public sealed class MazeAutomation
 
     public sealed record TreasureCandidate(string Key, TemplateMatchResult Match);
 
-    private Task<TemplateProbeResult> ProbeTemplateAsync(
-        GameWindow window,
-        TemplateMatcher matcher,
-        ConfigPoint expectedTopLeft,
-        int padding,
-        CancellationToken cancellationToken) =>
-        ProbeTemplateAsync(window, matcher, expectedTopLeft, padding, cancellationToken, null);
-
-    private async Task<TemplateProbeResult> ProbeTemplateAsync(
-        GameWindow window,
-        TemplateMatcher matcher,
-        ConfigPoint expectedTopLeft,
-        int padding,
-        CancellationToken cancellationToken,
-        double? matchThreshold)
-    {
-        double threshold = matchThreshold ?? _config.MatchThreshold;
-        window = _capture.Refresh(window);
-        var geometry = new CaptureGeometry(window.DisplayRect);
-        var topLeft = new ConfigPoint(expectedTopLeft.X - padding, expectedTopLeft.Y - padding);
-        var size = new ConfigSize(
-            matcher.ReferenceWidth + padding * 2,
-            matcher.ReferenceHeight + padding * 2);
-        ScreenRect rect = geometry.ReferenceRegionFromTopLeftToScreen(
-            topLeft, size, _config.ReferenceWidth, _config.ReferenceHeight);
-        BitmapSource image = _capture.Capture(window, rect);
-        int logicalWidth = Math.Max(1,
-            (int)Math.Round(size.Width * CaptureGeometry.LogicalWidth / (double)_config.ReferenceWidth));
-        int logicalHeight = Math.Max(1,
-            (int)Math.Round(size.Height * CaptureGeometry.LogicalHeight / (double)_config.ReferenceHeight));
-        TemplateMatchResult match = await Task.Run(
-            () => matcher.Match(image, logicalWidth, logicalHeight), cancellationToken);
-        var center = new Point(
-            rect.Left + (match.X + match.Width / 2.0) * rect.Width / logicalWidth,
-            rect.Top + (match.Y + match.Height / 2.0) * rect.Height / logicalHeight);
-        return new TemplateProbeResult(match.Score >= threshold, match.Score, center);
-    }
-
-    private async Task<GameWindow> ClickReferenceAsync(
-        GameWindow window, ConfigPoint referencePoint, string reason, CancellationToken cancellationToken)
-    {
-        window = _capture.Refresh(window);
-        var geometry = new CaptureGeometry(window.DisplayRect);
-        EnsureDisplayAspectRatio(geometry);
-        var point = geometry.ReferenceToScreen(referencePoint, _config.ReferenceWidth, _config.ReferenceHeight);
-        _log($"{reason}：reference({referencePoint.X},{referencePoint.Y}) → screen({point.X:F0},{point.Y:F0})");
-        await _mouse.ClickAsync(window.Handle, point, cancellationToken);
-        return window;
-    }
-
     private async Task<bool> MatchAndClickTemplateAsync(
         GameWindow window,
         TemplateMatcher matcher,
-        ConfigPoint expectedTopLeft,
-        int padding,
+        ConfigPoint topLeft,
+        ConfigSize size,
+        ConfigPoint clickPoint,
         string stepName,
         string diagnosticName,
         CancellationToken cancellationToken,
@@ -1176,66 +1083,23 @@ public sealed class MazeAutomation
         bool quietFailure = false,
         bool saveDiagnostics = true)
     {
-        window = _capture.Refresh(window);
-        var geometry = new CaptureGeometry(window.DisplayRect);
-        EnsureDisplayAspectRatio(geometry);
-        var captureTopLeft = new ConfigPoint(
-            expectedTopLeft.X - padding,
-            expectedTopLeft.Y - padding);
-        var size = new ConfigSize(
-            matcher.ReferenceWidth + padding * 2,
-            matcher.ReferenceHeight + padding * 2);
-        ScreenRect rect = geometry.ReferenceRegionFromTopLeftToScreen(
-            captureTopLeft, size, _config.ReferenceWidth, _config.ReferenceHeight);
-
-        int logicalSearchWidth = Math.Max(1,
-            (int)Math.Round(size.Width * CaptureGeometry.LogicalWidth / (double)_config.ReferenceWidth));
-        int logicalSearchHeight = Math.Max(1,
-            (int)Math.Round(size.Height * CaptureGeometry.LogicalHeight / (double)_config.ReferenceHeight));
-        BitmapSource image = null!;
-        TemplateMatchResult match = null!;
-        int attempts = 0;
-        var timer = Stopwatch.StartNew();
-        int effectiveTimeoutMs = timeoutMs ?? _config.DetectionTimeoutMs;
-        while (true)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            image = _capture.Capture(window, rect);
-            attempts++;
-            match = await Task.Run(
-                () => matcher.Match(image, logicalSearchWidth, logicalSearchHeight),
-                cancellationToken);
-            if (match.Score >= _config.MatchThreshold ||
-                timer.ElapsedMilliseconds >= effectiveTimeoutMs)
-                break;
-            await Task.Delay(_config.DetectionPollIntervalMs, cancellationToken);
-        }
+        (bool matched, TemplateMatchResult match, BitmapSource image) = await _screen.MatchRegionAsync(
+            window, matcher, topLeft, size, cancellationToken, timeoutMs);
 
         if (_config.SaveDiagnostics && saveDiagnostics)
             SaveDiagnostic(image, diagnosticName, stepName);
-        if (match.Score >= _config.MatchThreshold || !quietFailure)
-            _log($"{stepName}检测 {attempts} 次，模板分数：{match.Score:F4}，" +
-                 $"偏移：({match.X - padding / 2},{match.Y - padding / 2})");
-        if (match.Score < _config.MatchThreshold)
+        if (matched || !quietFailure)
+            _log($"{stepName}检测，模板分数：{match.Score:F4}，偏移：({match.X},{match.Y})");
+        if (!matched)
         {
             if (!quietFailure)
                 _log($"{stepName}未达到阈值 {_config.MatchThreshold:F2}，跳过点击。");
             return false;
         }
 
-        var center = new Point(
-            rect.Left + (match.X + match.Width / 2.0) * rect.Width / logicalSearchWidth,
-            rect.Top + (match.Y + match.Height / 2.0) * rect.Height / logicalSearchHeight);
-        _log($"{stepName}识别成功，点击模板中心 screen({center.X:F0},{center.Y:F0})");
-        await _mouse.ClickAsync(window.Handle, center, cancellationToken);
+        _log($"{stepName}识别成功，点击写死点。");
+        await _screen.ClickAsync(window, clickPoint, stepName, cancellationToken);
         return true;
-    }
-
-    private static void EnsureDisplayAspectRatio(CaptureGeometry geometry)
-    {
-        if (!geometry.IsSixteenByNine)
-            throw new InvalidOperationException(
-                $"游戏所在显示器必须为 16:9，当前为 {geometry.ClientRect.Width}×{geometry.ClientRect.Height}。");
     }
 
     private void SaveDiagnostic(BitmapSource image, string name, string taskName)

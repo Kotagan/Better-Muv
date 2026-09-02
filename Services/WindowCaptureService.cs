@@ -53,60 +53,42 @@ public sealed class WindowCaptureService
         };
     }
 
-    public BitmapSource Capture(ScreenRect screenRect) =>
-        CaptureFromDesktop(screenRect);
-
     /// <summary>
-    /// 从游戏窗口客户区截图（不受本工具窗口遮挡影响）。
+    /// 桌面 BitBlt 截取游戏客户区整幅（屏幕坐标）。需本工具已最小化、游戏在前台。
     /// </summary>
-    public BitmapSource Capture(GameWindow window, ScreenRect screenRect)
+    public BitmapSource CaptureClient(GameWindow window) =>
+        CaptureFromDesktop(window.ClientRect);
+
+    /// <summary>从客户区整图裁出屏幕 ROI。</summary>
+    public BitmapSource CropFromClient(GameWindow window, BitmapSource fullClient, ScreenRect screenRect)
     {
         int x = screenRect.Left - window.ClientRect.Left;
         int y = screenRect.Top - window.ClientRect.Top;
         int width = screenRect.Width;
         int height = screenRect.Height;
         if (x < 0 || y < 0 ||
-            x + width > window.ClientRect.Width ||
-            y + height > window.ClientRect.Height)
+            x + width > fullClient.PixelWidth ||
+            y + height > fullClient.PixelHeight)
         {
-            // 越界时回退桌面截图，兼容客户区小于整屏的情况。
-            return CaptureFromDesktop(screenRect);
+            throw new InvalidOperationException(
+                $"截图 ROI 超出已截客户区：客户区图 {fullClient.PixelWidth}×{fullClient.PixelHeight}，" +
+                $"相对坐标 ({x},{y}) {width}×{height}。");
         }
 
-        nint sourceDc = GetDC(window.Handle);
-        if (sourceDc == 0)
-            return CaptureFromDesktop(screenRect);
-
-        nint memoryDc = 0;
-        nint bitmap = 0;
-        nint oldObject = 0;
-        try
-        {
-            memoryDc = CreateCompatibleDC(sourceDc);
-            bitmap = CreateCompatibleBitmap(sourceDc, width, height);
-            if (memoryDc == 0 || bitmap == 0)
-                return CaptureFromDesktop(screenRect);
-
-            oldObject = SelectObject(memoryDc, bitmap);
-            if (!BitBlt(memoryDc, 0, 0, width, height, sourceDc, x, y, SourceCopy))
-                return CaptureFromDesktop(screenRect);
-
-            BitmapSource source = Imaging.CreateBitmapSourceFromHBitmap(
-                bitmap, 0, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
-            source.Freeze();
-            return source;
-        }
-        finally
-        {
-            if (oldObject != 0) SelectObject(memoryDc, oldObject);
-            if (bitmap != 0) DeleteObject(bitmap);
-            if (memoryDc != 0) DeleteDC(memoryDc);
-            ReleaseDC(window.Handle, sourceDc);
-        }
+        var cropped = new CroppedBitmap(fullClient, new Int32Rect(x, y, width, height));
+        cropped.Freeze();
+        return cropped;
     }
+
+    /// <summary>按屏幕绝对坐标桌面截图（本工具须已不挡游戏）。</summary>
+    public BitmapSource Capture(GameWindow window, ScreenRect screenRect) =>
+        CaptureFromDesktop(screenRect);
 
     private static BitmapSource CaptureFromDesktop(ScreenRect screenRect)
     {
+        if (screenRect.Width <= 0 || screenRect.Height <= 0)
+            throw new ArgumentOutOfRangeException(nameof(screenRect), "截图区域无效。");
+
         nint sourceDc = GetDC(0);
         if (sourceDc == 0)
             throw new InvalidOperationException("无法获取桌面 DC。");
@@ -124,7 +106,7 @@ public sealed class WindowCaptureService
             oldObject = SelectObject(memoryDc, bitmap);
             if (!BitBlt(memoryDc, 0, 0, screenRect.Width, screenRect.Height,
                     sourceDc, screenRect.Left, screenRect.Top, SourceCopy))
-                throw new InvalidOperationException("BitBlt 截图失败。");
+                throw new InvalidOperationException("桌面 BitBlt 截图失败。");
 
             BitmapSource source = Imaging.CreateBitmapSourceFromHBitmap(
                 bitmap, 0, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());

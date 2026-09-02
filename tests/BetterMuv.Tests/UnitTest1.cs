@@ -1,4 +1,5 @@
-﻿using BetterMuv.Core;
+﻿using System.Windows;
+using BetterMuv.Core;
 using BetterMuv.Services;
 
 namespace BetterMuv.Tests;
@@ -6,20 +7,34 @@ namespace BetterMuv.Tests;
 public class CaptureGeometryTests
 {
     [Fact]
-    public void ReferenceCoordinatesMapToExpected1080Points()
+    public void ScaleCoefficientsComeFromDisplayOverReference()
     {
-        var geometry = new CaptureGeometry(new ScreenRect(0, 0, 1920, 1080));
+        var geometry = new CaptureGeometry(new ScreenRect(0, 0, 3840, 2160), 1920, 1080);
+        Assert.Equal(2.0, geometry.ScaleX);
+        Assert.Equal(2.0, geometry.ScaleY);
+    }
 
-        var first = geometry.ReferenceToScreen(new ConfigPoint(2296, 1930), 3840, 2160);
-        var second = geometry.ReferenceToScreen(new ConfigPoint(3312, 694), 3840, 2160);
-        var third = geometry.ReferenceToScreen(new ConfigPoint(3344, 1692), 3840, 2160);
+    [Fact]
+    public void ToScreenAppliesGlobalScale()
+    {
+        var geometry = new CaptureGeometry(new ScreenRect(0, 0, 3840, 2160), 1920, 1080);
 
-        Assert.Equal(1148, first.X);
-        Assert.Equal(965, first.Y);
-        Assert.Equal(1656, second.X);
-        Assert.Equal(347, second.Y);
-        Assert.Equal(1672, third.X);
-        Assert.Equal(846, third.Y);
+        var first = geometry.ToScreen(new ConfigPoint(1143, 961));
+        var fourth = geometry.ToScreen(new ConfigPoint(1693, 942));
+
+        Assert.Equal(2286, first.X);
+        Assert.Equal(1922, first.Y);
+        Assert.Equal(3386, fourth.X);
+        Assert.Equal(1884, fourth.Y);
+    }
+
+    [Fact]
+    public void ScaleDeltaUsesSameCoefficients()
+    {
+        var geometry = new CaptureGeometry(new ScreenRect(10, 20, 3840, 2160), 1920, 1080);
+        Point delta = geometry.ScaleDelta(new ConfigPoint(-40, 55));
+        Assert.Equal(-80, delta.X);
+        Assert.Equal(110, delta.Y);
     }
 
     [Theory]
@@ -32,38 +47,54 @@ public class CaptureGeometryTests
     }
 
     [Fact]
-    public void SearchRegionMapsFrom4kTo1080()
+    public void RegionFromCenterUsesGlobalScale()
     {
-        var geometry = new CaptureGeometry(new ScreenRect(100, 50, 1920, 1080));
+        var geometry = new CaptureGeometry(new ScreenRect(100, 50, 1920, 1080), 1920, 1080);
 
-        ScreenRect result = geometry.ReferenceRegionToScreen(
-            new ConfigPoint(2296, 1930), new ConfigSize(500, 300), 3840, 2160);
+        ScreenRect result = geometry.RegionFromCenterToScreen(
+            new ConfigPoint(1148, 965), new ConfigSize(250, 150));
 
         Assert.Equal(new ScreenRect(1123, 940, 250, 150), result);
     }
 
     [Fact]
-    public void TopLeftSearchRegionMapsFrom4kTo1080()
+    public void RegionFromTopLeftUsesGlobalScale()
     {
-        var geometry = new CaptureGeometry(new ScreenRect(100, 50, 1920, 1080));
+        var geometry = new CaptureGeometry(new ScreenRect(100, 50, 1920, 1080), 1920, 1080);
 
-        ScreenRect result = geometry.ReferenceRegionFromTopLeftToScreen(
-            new ConfigPoint(2240, 1844), new ConfigSize(226, 136), 3840, 2160);
+        ScreenRect result = geometry.RegionFromTopLeftToScreen(
+            new ConfigPoint(1120, 922), new ConfigSize(113, 68));
 
         Assert.Equal(new ScreenRect(1220, 972, 113, 68), result);
+    }
+
+    [Fact]
+    public void MatchCenterToScreenMapsInsideScaledRoi()
+    {
+        var geometry = new CaptureGeometry(new ScreenRect(0, 0, 3840, 2160), 1920, 1080);
+        var search = new ScreenRect(100, 200, 400, 200);
+        var match = new TemplateMatchResult(0.9, 10, 20, 40, 30);
+
+        Point center = geometry.MatchCenterToScreen(search, match, logicalWidth: 200, logicalHeight: 100);
+
+        Assert.Equal(100 + (10 + 20) * 400 / 200.0, center.X);
+        Assert.Equal(200 + (20 + 15) * 200 / 100.0, center.Y);
     }
 }
 
 public class AutomationConfigTests
 {
     [Fact]
-    public void RouteSelectionDefaultsUseRequested4kRegionsAndPriority()
+    public void RouteSelectionDefaultsUse1080pRegionsAndPriority()
     {
         var config = new AutomationConfig();
 
-        Assert.Equal(new ConfigPoint(3190, 1848), config.RouteSelectionTopLeft);
-        Assert.Equal(new ConfigPoint(1322, 486), config.RouteTreasureOptionsTopLeft);
-        Assert.Equal(new ConfigSize(418, 1108), config.RouteTreasureOptionsSize);
+        Assert.Equal(1920, config.ReferenceWidth);
+        Assert.Equal(1080, config.ReferenceHeight);
+        Assert.Equal(new ConfigPoint(1595, 924), config.RouteSelectionTopLeft);
+        Assert.Equal(new ConfigSize(181, 37), config.RouteSelectionSize);
+        Assert.Equal(new ConfigPoint(661, 243), config.RouteTreasureOptionsTopLeft);
+        Assert.Equal(new ConfigSize(209, 554), config.RouteTreasureOptionsSize);
         Assert.Equal(
             ["diamond", "shield", "sword", "heart", "skull", "sparkle"],
             config.TreasurePriority);
@@ -75,9 +106,12 @@ public class AutomationConfigTests
     {
         var config = new AutomationConfig();
 
-        Assert.Equal(new ConfigPoint(3284, 1866), config.SettlementTopLeft);
-        Assert.Equal(new ConfigPoint(3220, 400), config.SettlementMultiplierToggle);
-        Assert.Equal(new ConfigPoint(3370, 386), config.SettlementMultiplierTopLeft);
+        Assert.Equal(new ConfigPoint(1642, 933), config.SettlementTopLeft);
+        Assert.Equal(new ConfigPoint(1626, 917), config.SettlementSearchTopLeft);
+        Assert.Equal(new ConfigSize(97, 62), config.SettlementSearchSize);
+        Assert.Equal(new ConfigPoint(1610, 200), config.SettlementMultiplierToggle);
+        Assert.Equal(new ConfigPoint(1673, 181), config.SettlementMultiplierTopLeft);
+        Assert.Equal(new ConfigSize(81, 49), config.SettlementMultiplierSize);
         Assert.Equal(6, config.SettlementBuyButtons.Count);
         Assert.Equal(4, config.SettlementSubcategoryTabs.Count);
         Assert.False(config.SettlementPurchases.HasAnyPurchase());
@@ -87,7 +121,6 @@ public class AutomationConfigTests
     [Fact]
     public void PickPriorityTreasureRejectsWeakFalsePositiveDiamond()
     {
-        // 复现 01:14:00：说明区弱钻石 0.56 与图标条强剑/盾重叠位置。
         var scored = new List<MazeAutomation.TreasureCandidate>
         {
             new("diamond", new TemplateMatchResult(0.5645, 11, 285, 60, 60)),
@@ -98,7 +131,6 @@ public class AutomationConfigTests
         };
         string[] priority = ["diamond", "sparkle", "shield", "sword", "heart"];
 
-        // 旧阈值 0.55 会误选钻石；新逻辑提高阈值后应选剑。
         MazeAutomation.TreasureCandidate? winner =
             MazeAutomation.PickPriorityTreasure(scored, priority, threshold: 0.62);
 
@@ -128,9 +160,9 @@ public class AutomationConfigTests
     public void TreasureOptionDefaultsUseTightIconStrip()
     {
         var config = new AutomationConfig();
-        Assert.Equal(new ConfigSize(2162, 180), config.TreasureOptionsSize);
+        Assert.Equal(new ConfigSize(1081, 90), config.TreasureOptionsSize);
         Assert.Equal(0.58, config.TreasureMatchThreshold);
-        Assert.Equal(new ConfigPoint(-80, 110), config.TreasureClickOffset);
+        Assert.Equal(new ConfigPoint(-40, 55), config.TreasureClickOffset);
     }
 
     [Fact]
@@ -195,12 +227,12 @@ public class AutomationConfigTests
     }
 
     [Fact]
-    public void RouteTreasureRegionMapsFromRequested4kRectangle()
+    public void RouteTreasureRegionMapsFrom1080pRectangle()
     {
-        var geometry = new CaptureGeometry(new ScreenRect(0, 0, 1920, 1080));
+        var geometry = new CaptureGeometry(new ScreenRect(0, 0, 1920, 1080), 1920, 1080);
 
-        ScreenRect result = geometry.ReferenceRegionFromTopLeftToScreen(
-            new ConfigPoint(1322, 486), new ConfigSize(418, 1108), 3840, 2160);
+        ScreenRect result = geometry.RegionFromTopLeftToScreen(
+            new ConfigPoint(661, 243), new ConfigSize(209, 554));
 
         Assert.Equal(new ScreenRect(661, 243, 209, 554), result);
     }
@@ -218,20 +250,20 @@ public class TemplateMatcherTests
         byte[] source = new byte[sourceWidth * sourceHeight];
         byte[] template = new byte[templateWidth * templateHeight];
         for (int y = 0; y < templateHeight; y++)
-        for (int x = 0; x < templateWidth; x++)
-            template[y * templateWidth + x] = (byte)(20 + x * 17 + y * 23);
+        {
+            for (int x = 0; x < templateWidth; x++)
+            {
+                byte value = (byte)(40 + x + y);
+                template[y * templateWidth + x] = value;
+                source[(y + 4) * sourceWidth + (x + 7)] = value;
+            }
+        }
 
-        const int expectedX = 11;
-        const int expectedY = 7;
-        for (int y = 0; y < templateHeight; y++)
-        for (int x = 0; x < templateWidth; x++)
-            source[(expectedY + y) * sourceWidth + expectedX + x] = template[y * templateWidth + x];
-
-        TemplateMatchResult result = TemplateMatcher.MatchGray(
+        TemplateMatchResult match = TemplateMatcher.MatchGray(
             source, sourceWidth, sourceHeight, template, templateWidth, templateHeight);
 
-        Assert.Equal(expectedX, result.X);
-        Assert.Equal(expectedY, result.Y);
-        Assert.True(result.Score > 0.999);
+        Assert.True(match.Score > 0.99);
+        Assert.Equal(7, match.X);
+        Assert.Equal(4, match.Y);
     }
 }

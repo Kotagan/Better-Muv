@@ -1,4 +1,5 @@
 using System.Windows;
+using BetterMuv.Services;
 
 namespace BetterMuv.Core;
 
@@ -8,82 +9,100 @@ public readonly record struct ScreenRect(int Left, int Top, int Width, int Heigh
     public int Bottom => Top + Height;
 }
 
+/// <summary>
+/// 配置坐标（Reference，默认 1080p）↔ 屏幕坐标的唯一缩放入口。
+/// 系数：ScaleX = Display.Width / ReferenceWidth，ScaleY = Display.Height / ReferenceHeight。
+/// </summary>
 public sealed class CaptureGeometry
 {
     public const int LogicalWidth = 1920;
     public const int LogicalHeight = 1080;
     private const double AspectTolerance = 0.005;
 
-    public CaptureGeometry(ScreenRect clientRect)
+    public CaptureGeometry(ScreenRect displayRect, int referenceWidth, int referenceHeight)
     {
-        if (clientRect.Width <= 0 || clientRect.Height <= 0)
-            throw new ArgumentOutOfRangeException(nameof(clientRect), "客户区尺寸必须大于零。");
-        ClientRect = clientRect;
+        if (displayRect.Width <= 0 || displayRect.Height <= 0)
+            throw new ArgumentOutOfRangeException(nameof(displayRect), "显示器尺寸必须大于零。");
+        if (referenceWidth <= 0 || referenceHeight <= 0)
+            throw new ArgumentOutOfRangeException(nameof(referenceWidth), "参考分辨率必须大于零。");
+
+        ClientRect = displayRect;
+        ReferenceWidth = referenceWidth;
+        ReferenceHeight = referenceHeight;
+        ScaleX = displayRect.Width / (double)referenceWidth;
+        ScaleY = displayRect.Height / (double)referenceHeight;
     }
 
     public ScreenRect ClientRect { get; }
+    public int ReferenceWidth { get; }
+    public int ReferenceHeight { get; }
+    public double ScaleX { get; }
+    public double ScaleY { get; }
 
     public bool IsSixteenByNine =>
         Math.Abs(ClientRect.Width / (double)ClientRect.Height - 16.0 / 9.0) <= AspectTolerance;
 
-    public Point ReferenceToScreen(ConfigPoint point, int referenceWidth, int referenceHeight)
+    /// <summary>配置点 → 屏幕点：screen = Display原点 + point × (ScaleX, ScaleY)。</summary>
+    public Point ToScreen(ConfigPoint point) => new(
+        ClientRect.Left + point.X * ScaleX,
+        ClientRect.Top + point.Y * ScaleY);
+
+    /// <summary>配置位移 → 屏幕位移（不含原点）。</summary>
+    public Point ScaleDelta(ConfigPoint delta) => new(delta.X * ScaleX, delta.Y * ScaleY);
+
+    /// <summary>配置尺寸 → 屏幕像素尺寸。</summary>
+    public ConfigSize ToScreenSize(ConfigSize size) => new(
+        Math.Max(1, (int)Math.Round(size.Width * ScaleX)),
+        Math.Max(1, (int)Math.Round(size.Height * ScaleY)));
+
+    /// <summary>配置尺寸 → 模板匹配用的逻辑尺寸（通常与 Reference 同为 1080p 时不变）。</summary>
+    public int ToLogical(int referenceLength, bool horizontal) =>
+        Math.Max(1, (int)Math.Round(referenceLength *
+            (horizontal ? LogicalWidth / (double)ReferenceWidth : LogicalHeight / (double)ReferenceHeight)));
+
+    public (int Width, int Height) ToLogicalSize(ConfigSize size) =>
+        (ToLogical(size.Width, horizontal: true), ToLogical(size.Height, horizontal: false));
+
+    /// <summary>以中心点标定的配置矩形 → 屏幕矩形。</summary>
+    public ScreenRect RegionFromCenterToScreen(ConfigPoint center, ConfigSize size)
     {
-        ValidateReference(referenceWidth, referenceHeight);
-        return new Point(
-            ClientRect.Left + point.X * ClientRect.Width / (double)referenceWidth,
-            ClientRect.Top + point.Y * ClientRect.Height / (double)referenceHeight);
+        ConfigSize screenSize = ToScreenSize(size);
+        Point centerOnScreen = ToScreen(center);
+        int left = Math.Clamp(
+            (int)Math.Round(centerOnScreen.X) - screenSize.Width / 2,
+            ClientRect.Left, ClientRect.Right - screenSize.Width);
+        int top = Math.Clamp(
+            (int)Math.Round(centerOnScreen.Y) - screenSize.Height / 2,
+            ClientRect.Top, ClientRect.Bottom - screenSize.Height);
+        return new ScreenRect(left, top, screenSize.Width, screenSize.Height);
     }
 
-    public Point ReferenceToLogical(ConfigPoint point, int referenceWidth, int referenceHeight)
+    /// <summary>以左上角标定的配置矩形 → 屏幕矩形（截图 ROI）。</summary>
+    public ScreenRect RegionFromTopLeftToScreen(ConfigPoint topLeft, ConfigSize size)
     {
-        ValidateReference(referenceWidth, referenceHeight);
-        return new Point(
-            point.X * LogicalWidth / (double)referenceWidth,
-            point.Y * LogicalHeight / (double)referenceHeight);
+        ConfigSize screenSize = ToScreenSize(size);
+        int left = ClientRect.Left + (int)Math.Round(topLeft.X * ScaleX);
+        int top = ClientRect.Top + (int)Math.Round(topLeft.Y * ScaleY);
+        left = Math.Clamp(left, ClientRect.Left, ClientRect.Right - screenSize.Width);
+        top = Math.Clamp(top, ClientRect.Top, ClientRect.Bottom - screenSize.Height);
+        return new ScreenRect(left, top, screenSize.Width, screenSize.Height);
     }
 
-    public ScreenRect ReferenceRegionToScreen(
-        ConfigPoint center,
-        ConfigSize size,
-        int referenceWidth,
-        int referenceHeight)
+    /// <summary>
+    /// 逻辑空间匹配结果中心 → 屏幕点。
+    /// 搜索 ROI 已由 <see cref="RegionFromTopLeftToScreen"/> 乘过缩放系数，此处按 ROI 内比例换算。
+    /// </summary>
+    public Point MatchCenterToScreen(
+        ScreenRect searchRect, TemplateMatchResult match, int logicalWidth, int logicalHeight)
     {
-        ValidateReference(referenceWidth, referenceHeight);
-        int width = Math.Max(1, (int)Math.Round(size.Width * ClientRect.Width / (double)referenceWidth));
-        int height = Math.Max(1, (int)Math.Round(size.Height * ClientRect.Height / (double)referenceHeight));
-        Point centerOnScreen = ReferenceToScreen(center, referenceWidth, referenceHeight);
-        int left = Math.Clamp((int)Math.Round(centerOnScreen.X) - width / 2, ClientRect.Left, ClientRect.Right - width);
-        int top = Math.Clamp((int)Math.Round(centerOnScreen.Y) - height / 2, ClientRect.Top, ClientRect.Bottom - height);
-        return new ScreenRect(left, top, width, height);
-    }
-
-    public ScreenRect ReferenceRegionFromTopLeftToScreen(
-        ConfigPoint topLeft,
-        ConfigSize size,
-        int referenceWidth,
-        int referenceHeight)
-    {
-        ValidateReference(referenceWidth, referenceHeight);
-        int left = ClientRect.Left +
-            (int)Math.Round(topLeft.X * ClientRect.Width / (double)referenceWidth);
-        int top = ClientRect.Top +
-            (int)Math.Round(topLeft.Y * ClientRect.Height / (double)referenceHeight);
-        int width = Math.Max(1,
-            (int)Math.Round(size.Width * ClientRect.Width / (double)referenceWidth));
-        int height = Math.Max(1,
-            (int)Math.Round(size.Height * ClientRect.Height / (double)referenceHeight));
-        left = Math.Clamp(left, ClientRect.Left, ClientRect.Right - width);
-        top = Math.Clamp(top, ClientRect.Top, ClientRect.Bottom - height);
-        return new ScreenRect(left, top, width, height);
+        double centerX = searchRect.Left +
+            (match.X + match.Width / 2.0) * searchRect.Width / Math.Max(1, logicalWidth);
+        double centerY = searchRect.Top +
+            (match.Y + match.Height / 2.0) * searchRect.Height / Math.Max(1, logicalHeight);
+        return new Point(centerX, centerY);
     }
 
     public static bool CheckSixteenByNine(int width, int height) =>
         width > 0 && height > 0 &&
         Math.Abs(width / (double)height - 16.0 / 9.0) <= AspectTolerance;
-
-    private static void ValidateReference(int width, int height)
-    {
-        if (width <= 0 || height <= 0)
-            throw new ArgumentOutOfRangeException(nameof(width), "参考分辨率必须大于零。");
-    }
 }
