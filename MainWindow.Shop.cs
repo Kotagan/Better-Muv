@@ -30,14 +30,17 @@ public partial class MainWindow
         ShopNavButton.Background = new SolidColorBrush(Color.FromRgb(48, 57, 70));
         PriorityNavButton.Background = Brushes.Transparent;
         HotkeyNavButton.Background = Brushes.Transparent;
+        SettingsNavButton.Background = Brushes.Transparent;
     }
 
-    private void SetNavVisibility(bool home = false, bool shop = false, bool priority = false, bool hotkey = false)
+    private void SetNavVisibility(
+        bool home = false, bool shop = false, bool priority = false, bool hotkey = false, bool settings = false)
     {
         HomePanel.Visibility = home ? Visibility.Visible : Visibility.Collapsed;
         ShopPanel.Visibility = shop ? Visibility.Visible : Visibility.Collapsed;
         PriorityPanel.Visibility = priority ? Visibility.Visible : Visibility.Collapsed;
         HotkeyPanel.Visibility = hotkey ? Visibility.Visible : Visibility.Collapsed;
+        SettingsPanel.Visibility = settings ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void BuildShopCategoryButtons()

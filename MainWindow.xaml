@@ -10,6 +10,41 @@
         SourceInitialized="Window_SourceInitialized"
         Closing="Window_Closing">
     <Window.Resources>
+        <!-- 全局隐藏滚动条（仍可用滚轮滚动） -->
+        <Style TargetType="ScrollBar">
+            <Setter Property="Visibility" Value="Collapsed" />
+            <Setter Property="Width" Value="0" />
+            <Setter Property="Height" Value="0" />
+        </Style>
+        <Style TargetType="ScrollViewer">
+            <Setter Property="VerticalScrollBarVisibility" Value="Hidden" />
+            <Setter Property="HorizontalScrollBarVisibility" Value="Disabled" />
+        </Style>
+        <Style x:Key="ToggleSwitch" TargetType="CheckBox">
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="CheckBox">
+                        <Grid Width="48" Height="28">
+                            <Border x:Name="Track" CornerRadius="14" Background="#3A4552" />
+                            <Border x:Name="Thumb" Width="22" Height="22" CornerRadius="11"
+                                    Background="#F5F7FA" HorizontalAlignment="Left" Margin="3,0,0,0"
+                                    VerticalAlignment="Center" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Track" Property="Background" Value="#2196E8" />
+                                <Setter TargetName="Thumb" Property="HorizontalAlignment" Value="Right" />
+                                <Setter TargetName="Thumb" Property="Margin" Value="0,0,3,0" />
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Track" Property="Opacity" Value="0.9" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
         <Style x:Key="NavButton" TargetType="Button">
             <Setter Property="Foreground" Value="#D7DCE3" />
             <Setter Property="Background" Value="Transparent" />
@@ -119,12 +154,12 @@
                             <Button x:Name="HotkeyNavButton" Style="{StaticResource NavButton}"
                                     Content="⚡   快捷键" Click="ShowHotkeyButton_Click" />
                         </StackPanel>
-                        <Button Grid.Row="2" Style="{StaticResource NavButton}" Margin="8,0,8,14"
-                                Content="⚙   设置" />
+                        <Button Grid.Row="2" x:Name="SettingsNavButton" Style="{StaticResource NavButton}"
+                                Margin="8,0,8,14" Content="⚙   设置" Click="ShowSettingsButton_Click" />
                     </Grid>
                 </Border>
 
-                <ScrollViewer x:Name="HomePanel" Grid.Column="1" VerticalScrollBarVisibility="Auto">
+                <ScrollViewer x:Name="HomePanel" Grid.Column="1">
                     <StackPanel Margin="42,26,42,30">
                         <Border Height="178" CornerRadius="10">
                             <Border.Background>
@@ -204,12 +239,12 @@
                                 <TextBlock Margin="20,15" Text="运行日志" FontSize="15" />
                                 <TextBox x:Name="LogBox" Grid.Row="1" Margin="1"
                                          IsReadOnly="True" AcceptsReturn="True"
-                                         VerticalScrollBarVisibility="Auto"
-                                         HorizontalScrollBarVisibility="Auto"
+                                         VerticalScrollBarVisibility="Hidden"
+                                         HorizontalScrollBarVisibility="Disabled"
                                          Background="#171C23" Foreground="#C9D1DA"
                                          BorderThickness="0" Padding="14"
                                          FontFamily="Consolas" FontSize="12"
-                                         TextWrapping="NoWrap" />
+                                         TextWrapping="Wrap" />
                             </Grid>
                         </Border>
                     </StackPanel>
@@ -262,13 +297,12 @@
                     </StackPanel>
                 </Grid>
 
-                <ScrollViewer x:Name="PriorityPanel" Grid.Column="1"
-                              VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
+                <ScrollViewer x:Name="PriorityPanel" Grid.Column="1" Visibility="Collapsed">
                     <StackPanel Margin="42,32,42,30">
                         <TextBlock Text="宝物优先级" FontSize="28" FontWeight="SemiBold" />
                         <TextBlock Margin="0,7,0,22"
                                    Text="列表越靠上优先级越高；调整后自动写入配置，缺少模板的宝物会自动跳过。"
-                                   Foreground="#9EA7B3" />
+                                   Foreground="#9EA7B3" TextWrapping="Wrap" />
                         <Border Style="{StaticResource Card}">
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -278,7 +312,9 @@
                                 <ListBox x:Name="TreasurePriorityList" MinHeight="300"
                                          Background="#171C23" Foreground="#F5F7FA"
                                          BorderBrush="#3A4552" BorderThickness="1"
-                                         FontSize="16" Padding="6">
+                                         FontSize="16" Padding="6"
+                                         ScrollViewer.VerticalScrollBarVisibility="Hidden"
+                                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                                     <ListBox.ItemContainerStyle>
                                         <Style TargetType="ListBoxItem">
                                             <Setter Property="Padding" Value="14,12" />
@@ -298,8 +334,7 @@
                     </StackPanel>
                 </ScrollViewer>
 
-                <ScrollViewer x:Name="HotkeyPanel" Grid.Column="1"
-                              VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
+                <ScrollViewer x:Name="HotkeyPanel" Grid.Column="1" Visibility="Collapsed">
                     <StackPanel Margin="42,32,42,30">
                         <TextBlock Text="快捷键设置" FontSize="28" FontWeight="SemiBold" Margin="0,0,0,22" />
                         <Border Style="{StaticResource Card}" Padding="18">
@@ -365,6 +400,31 @@
                                         </Button>
                                     </Grid>
                                 </Border>
+                            </Grid>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <ScrollViewer x:Name="SettingsPanel" Grid.Column="1" Visibility="Collapsed">
+                    <StackPanel Margin="42,32,42,30">
+                        <TextBlock Text="设置" FontSize="28" FontWeight="SemiBold" Margin="0,0,0,22" />
+                        <Border Style="{StaticResource Card}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Text="诊断模式" FontSize="16" />
+                                    <TextBlock Margin="0,6,0,0"
+                                               Text="开启后保存识别截图到 diagnostics 目录，便于核对 ROI；平时建议关闭。"
+                                               Foreground="#9EA7B3" FontSize="13" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <CheckBox x:Name="DiagnosticModeCheckBox" Grid.Column="1"
+                                          Style="{StaticResource ToggleSwitch}"
+                                          VerticalAlignment="Center"
+                                          Checked="DiagnosticModeCheckBox_Changed"
+                                          Unchecked="DiagnosticModeCheckBox_Changed" />
                             </Grid>
                         </Border>
                     </StackPanel>

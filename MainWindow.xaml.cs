@@ -35,6 +35,7 @@ public partial class MainWindow : Window
         LoadHotkeySetting();
         InitializeShopPanel();
         LoadMazeRunLimit();
+        LoadDiagnosticModeSetting();
         AppendLog("配置文件：" + _configPath);
         AppendLog("日志文件：" + _logFilePath);
         AppendLog("等待开始。");
@@ -55,6 +56,9 @@ public partial class MainWindow : Window
 
         try
         {
+            WindowState = WindowState.Minimized;
+            await Task.Delay(300);
+
             AutomationConfig config = ConfigStore.Load();
             var automation = new MazeAutomation(config, AppendLog);
             await automation.RunOnceAsync(_cancellation.Token);
@@ -69,6 +73,8 @@ public partial class MainWindow : Window
         }
         finally
         {
+            if (WindowState == WindowState.Minimized)
+                WindowState = WindowState.Normal;
             _cancellation.Dispose();
             _cancellation = null;
             StartButton.IsEnabled = true;
@@ -89,6 +95,7 @@ public partial class MainWindow : Window
         ShopNavButton.Background = Brushes.Transparent;
         PriorityNavButton.Background = Brushes.Transparent;
         HotkeyNavButton.Background = Brushes.Transparent;
+        SettingsNavButton.Background = Brushes.Transparent;
     }
 
     private void ShowPriorityButton_Click(object sender, RoutedEventArgs e)
@@ -98,6 +105,7 @@ public partial class MainWindow : Window
         ShopNavButton.Background = Brushes.Transparent;
         PriorityNavButton.Background = new SolidColorBrush(Color.FromRgb(48, 57, 70));
         HotkeyNavButton.Background = Brushes.Transparent;
+        SettingsNavButton.Background = Brushes.Transparent;
     }
 
     private void ShowHotkeyButton_Click(object sender, RoutedEventArgs e)
@@ -107,6 +115,41 @@ public partial class MainWindow : Window
         ShopNavButton.Background = Brushes.Transparent;
         PriorityNavButton.Background = Brushes.Transparent;
         HotkeyNavButton.Background = new SolidColorBrush(Color.FromRgb(48, 57, 70));
+        SettingsNavButton.Background = Brushes.Transparent;
+    }
+
+    private void ShowSettingsButton_Click(object sender, RoutedEventArgs e)
+    {
+        LoadDiagnosticModeSetting();
+        SetNavVisibility(settings: true);
+        HomeNavButton.Background = Brushes.Transparent;
+        ShopNavButton.Background = Brushes.Transparent;
+        PriorityNavButton.Background = Brushes.Transparent;
+        HotkeyNavButton.Background = Brushes.Transparent;
+        SettingsNavButton.Background = new SolidColorBrush(Color.FromRgb(48, 57, 70));
+    }
+
+    private void LoadDiagnosticModeSetting()
+    {
+        AutomationConfig config = ConfigStore.Load();
+        DiagnosticModeCheckBox.Checked -= DiagnosticModeCheckBox_Changed;
+        DiagnosticModeCheckBox.Unchecked -= DiagnosticModeCheckBox_Changed;
+        DiagnosticModeCheckBox.IsChecked = config.SaveDiagnostics;
+        DiagnosticModeCheckBox.Checked += DiagnosticModeCheckBox_Changed;
+        DiagnosticModeCheckBox.Unchecked += DiagnosticModeCheckBox_Changed;
+    }
+
+    private void DiagnosticModeCheckBox_Changed(object sender, RoutedEventArgs e)
+    {
+        AutomationConfig config = ConfigStore.Load();
+        bool enabled = DiagnosticModeCheckBox.IsChecked == true;
+        if (config.SaveDiagnostics == enabled)
+            return;
+        config.SaveDiagnostics = enabled;
+        ConfigStore.Save(config);
+        AppendLog(enabled
+            ? "已开启诊断模式：下次启动起将保存识别截图（无需重启程序）。"
+            : "已关闭诊断模式：下次启动起不再保存识别截图（无需重启程序）。");
     }
 
     private void MovePriorityUp_Click(object sender, RoutedEventArgs e) =>
