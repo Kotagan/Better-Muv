@@ -1,0 +1,40 @@
+## Build
+bin/
+obj/
+[Bb]uild/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+artifacts/
+
+## Publish / packaging
+publish/
+*.publish.xml
+*.nupkg
+
+## Diagnostics & local captures
+diagnostics/
+diagnostics-analysis/
+**/diagnostics/
+
+## IDE / OS
+.vs/
+*.user
+*.suo
+*.useros
+*.sln.docstates
+.idea/
+*.DotSettings.user
+Thumbs.db
+Desktop.ini
+
+## Test outputs
+tests/**/bin/
+tests/**/obj/
+TestResults/
+
+## Local / secrets
+*.local.json
+.env
+.env.*
