@@ -95,6 +95,8 @@ public sealed class AutomationConfig
     /// <summary>迷宫轮次上限；0 表示无限。</summary>
     public int MazeRunLimit { get; set; }
     public string ToggleHotkey { get; set; } = "F10";
+    /// <summary>是否已确认过首次运行提示弹窗。</summary>
+    public bool FirstRunNoticeAccepted { get; set; }
 
     public static AutomationConfig Load(string path)
     {

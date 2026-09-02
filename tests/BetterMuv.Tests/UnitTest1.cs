@@ -106,7 +106,7 @@ public class AutomationConfigTests
     {
         var config = new AutomationConfig();
 
-        Assert.Equal(new ConfigPoint(1642, 933), config.SettlementTopLeft);
+        Assert.Equal(new ConfigPoint(1674, 948), config.SettlementTopLeft);
         Assert.Equal(new ConfigPoint(1626, 917), config.SettlementSearchTopLeft);
         Assert.Equal(new ConfigSize(97, 62), config.SettlementSearchSize);
         Assert.Equal(new ConfigPoint(1610, 200), config.SettlementMultiplierToggle);
@@ -205,6 +205,25 @@ public class AutomationConfigTests
 
             AutomationConfig loaded = AutomationConfig.Load(path);
             Assert.Equal("F9", loaded.ToggleHotkey);
+        }
+        finally
+        {
+            if (File.Exists(path))
+                File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void FirstRunNoticeAcceptedRoundTripsThroughJson()
+    {
+        string path = Path.Combine(Path.GetTempPath(), $"better-muv-firstrun-{Guid.NewGuid():N}.json");
+        try
+        {
+            var config = new AutomationConfig { FirstRunNoticeAccepted = true };
+            config.Save(path);
+
+            AutomationConfig loaded = AutomationConfig.Load(path);
+            Assert.True(loaded.FirstRunNoticeAccepted);
         }
         finally
         {

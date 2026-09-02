@@ -102,5 +102,6 @@
   "detectionPollIntervalMs": 250,
   "detectionTimeoutMs": 10000,
   "mazeRunLimit": 0,
-  "toggleHotkey": "F10"
+  "toggleHotkey": "F10",
+  "firstRunNoticeAccepted": false
 }

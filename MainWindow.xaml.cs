@@ -41,6 +41,27 @@ public partial class MainWindow : Window
         AppendLog("等待开始。");
     }
 
+    private void Window_ContentRendered(object? sender, EventArgs e)
+    {
+        ContentRendered -= Window_ContentRendered;
+        ShowFirstRunNoticeIfNeeded();
+    }
+
+    private void ShowFirstRunNoticeIfNeeded()
+    {
+        AutomationConfig config = ConfigStore.Load();
+        if (config.FirstRunNoticeAccepted)
+            return;
+
+        var notice = new FirstRunNoticeWindow { Owner = this };
+        bool? accepted = notice.ShowDialog();
+        if (accepted == true)
+        {
+            config.FirstRunNoticeAccepted = true;
+            ConfigStore.Save(config);
+        }
+    }
+
     private async void StartButton_Click(object sender, RoutedEventArgs e)
     {
         if (_cancellation is not null)
