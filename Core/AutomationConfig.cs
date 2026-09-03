@@ -119,6 +119,36 @@ public sealed class AutomationConfig
     public int DetectionTimeoutMs { get; set; } = 10000;
     /// <summary>迷宫轮次上限；0 表示无限。</summary>
     public int MazeRunLimit { get; set; }
+    /// <summary>自动主线循环次数（至少 1）。</summary>
+    public int MainQuestRunLimit { get; set; } = 10;
+    public bool MainQuestTaskEnabled { get; set; } = true;
+    public bool HardMainQuestTaskEnabled { get; set; }
+    /// <summary>一条龙任务顺序，项为 maze / mainQuest / hardMainQuest。</summary>
+    public List<string> PipelineTaskOrder { get; set; } = ["maze", "mainQuest", "hardMainQuest"];
+    // 主线 ROI（1080p）；模板匹配后点中心。
+    public ConfigPoint MainQuestHomeTopLeft { get; set; } = new(1000, 880);
+    public ConfigSize MainQuestHomeSize { get; set; } = new(340, 160);
+    public ConfigPoint MainQuestBannerTopLeft { get; set; } = new(1050, 380);
+    public ConfigSize MainQuestBannerSize { get; set; } = new(520, 240);
+    public ConfigPoint MainQuestStartTopLeft { get; set; } = new(1400, 880);
+    public ConfigSize MainQuestStartSize { get; set; } = new(480, 160);
+    public ConfigPoint MainQuestSortieTopLeft { get; set; } = new(1400, 860);
+    public ConfigSize MainQuestSortieSize { get; set; } = new(480, 180);
+    public ConfigPoint MainQuestSkipTopLeft { get; set; } = new(1600, 10);
+    public ConfigSize MainQuestSkipSize { get; set; } = new(300, 120);
+    public ConfigPoint MainQuestNextTopLeft { get; set; } = new(1500, 880);
+    public ConfigSize MainQuestNextSize { get; set; } = new(360, 180);
+    public ConfigPoint MainQuestRematchTopLeft { get; set; } = new(1480, 900);
+    public ConfigSize MainQuestRematchSize { get; set; } = new(360, 120);
+    public ConfigPoint MainQuestToHomeTopLeft { get; set; } = new(40, 900);
+    public ConfigSize MainQuestToHomeSize { get; set; } = new(400, 120);
+    public ConfigPoint HardQuestDifficultyTopLeft { get; set; } = new(900, 20);
+    public ConfigSize HardQuestDifficultySize { get; set; } = new(900, 220);
+    public ConfigPoint HardQuestBattleTopLeft { get; set; } = new(20, 40);
+    public ConfigSize HardQuestBattleSize { get; set; } = new(1100, 480);
+    /// <summary>左上角主界面房子按钮搜索区（1080p）。</summary>
+    public ConfigPoint HudHomeTopLeft { get; set; } = new(0, 0);
+    public ConfigSize HudHomeSize { get; set; } = new(220, 160);
     public string ToggleHotkey { get; set; } = "F10";
     /// <summary>全局暂停/继续快捷键。</summary>
     public string PauseHotkey { get; set; } = "F10";
@@ -176,7 +206,10 @@ public sealed class AutomationConfig
             PartnerSelectionSize, BattleSkipSize, EventChoiceSize, SettlementSearchSize,
             SettlementMultiplierSize, SettlementBuyButtonSearchSize, SettlementConfirmSize,
             TreasureStateSize, TreasureOptionsSize, RouteSelectionSize, RouteTreasureOptionsSize,
-            DifficultyDigitSize, DifficultyListSize
+            DifficultyDigitSize, DifficultyListSize,
+            MainQuestHomeSize, MainQuestBannerSize, MainQuestStartSize, MainQuestSortieSize,
+            MainQuestSkipSize, MainQuestNextSize, MainQuestRematchSize, MainQuestToHomeSize,
+            HardQuestDifficultySize, HardQuestBattleSize, HudHomeSize
         ];
         if (requiredSizes.Any(s => s.Width <= 0 || s.Height <= 0))
             throw new InvalidDataException("所有搜索区域尺寸必须大于零。");
@@ -187,6 +220,9 @@ public sealed class AutomationConfig
         TreasurePriority = NormalizeTreasurePriority(TreasurePriority);
         if (DoubleClickIntervalMs < 0 || DetectionPollIntervalMs <= 0 || DetectionTimeoutMs <= 0)
             throw new InvalidDataException("点击间隔不能为负，检测间隔和超时必须大于零。");
+        if (MainQuestRunLimit < 1)
+            throw new InvalidDataException("mainQuestRunLimit 必须大于等于 1。");
+        PipelineTaskOrder = NormalizePipelineTaskOrder(PipelineTaskOrder).ToList();
         if (MazeRunLimit < 0)
             throw new InvalidDataException("mazeRunLimit 不能为负数（0 表示无限）。");
         MazeDifficultyMode = MazeDifficultyRunner.NormalizeMode(MazeDifficultyMode);
@@ -202,6 +238,30 @@ public sealed class AutomationConfig
         if (GameLaunchTimeoutSeconds is < 5 or > 600)
             throw new InvalidDataException("gameLaunchTimeoutSeconds 必须在 5–600 秒。");
         NormalizeSettlementPurchases();
+    }
+
+    public static IReadOnlyList<string> NormalizePipelineTaskOrder(IEnumerable<string>? order)
+    {
+        string[] known = ["maze", "mainQuest", "hardMainQuest"];
+        var result = new List<string>();
+        if (order is not null)
+        {
+            foreach (string raw in order)
+            {
+                string id = raw.Trim();
+                if (known.Contains(id, StringComparer.OrdinalIgnoreCase) &&
+                    !result.Contains(id, StringComparer.OrdinalIgnoreCase))
+                    result.Add(known.First(item => item.Equals(id, StringComparison.OrdinalIgnoreCase)));
+            }
+        }
+
+        foreach (string id in known)
+        {
+            if (!result.Contains(id, StringComparer.OrdinalIgnoreCase))
+                result.Add(id);
+        }
+
+        return result;
     }
 
     public static bool IsSupportedFunctionKey(string? key) =>

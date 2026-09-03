@@ -93,6 +93,8 @@ public class AutomationConfigTests
         Assert.Equal("F10", config.PauseHotkey);
         Assert.Equal("F11", config.StopHotkey);
         Assert.Equal(90, config.GameLaunchTimeoutSeconds);
+        Assert.Equal(["maze", "mainQuest", "hardMainQuest"], AutomationConfig.NormalizePipelineTaskOrder(null));
+        Assert.Equal(["mainQuest", "maze", "hardMainQuest"], AutomationConfig.NormalizePipelineTaskOrder(["mainQuest", "maze", "unknown"]));
     }
 
     [Fact]

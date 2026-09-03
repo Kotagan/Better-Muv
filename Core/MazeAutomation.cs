@@ -108,6 +108,8 @@ public sealed class MazeAutomation
         _screen.EnsureSixteenByNine(window);
         _log($"客户区：{window.ClientRect.Width}×{window.ClientRect.Height}");
         _log($"基准显示器：{window.DisplayRect.Width}×{window.DisplayRect.Height}，16:9 校验通过");
+        await new HudHomeReturn(_config, _screen, _log).TryAsync(window, cancellationToken);
+        window = _screen.Refresh(window);
 
         int completedRuns = 0;
         string limitText = _config.MazeRunLimit == 0 ? "无限" : _config.MazeRunLimit.ToString();

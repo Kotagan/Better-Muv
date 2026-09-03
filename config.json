@@ -116,6 +116,8 @@
   "detectionPollIntervalMs": 250,
   "detectionTimeoutMs": 10000,
   "mazeRunLimit": 0,
+  "mainQuestRunLimit": 10,
+  "mainQuestTaskEnabled": true,
   "toggleHotkey": "F10",
   "pauseHotkey": "F10",
   "stopHotkey": "F11",
