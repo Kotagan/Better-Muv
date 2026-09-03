@@ -1,163 +1,80 @@
 using System.Runtime.InteropServices;
 using System.Windows;
-using System.Windows.Input;
 using System.Windows.Interop;
+using System.Windows.Input;
 using BetterMuv.Core;
 
 namespace BetterMuv;
 
 public partial class MainWindow
 {
-    private bool _capturingHotkey;
-    private string _currentHotkey = "F10";
-
-    private void LoadHotkeySetting()
-    {
-        AutomationConfig config = ConfigStore.Load();
-        _currentHotkey = config.ToggleHotkey;
-        HotkeyCaptureButton.Content = config.ToggleHotkey;
-    }
+    private const int PauseHotkeyId = 0x4D55;
+    private const int StopHotkeyId = 0x4D56;
+    private const int WmHotkey = 0x0312;
+    private HwndSource? _windowSource;
 
     private void Window_SourceInitialized(object? sender, EventArgs e)
     {
         _windowSource = HwndSource.FromHwnd(new WindowInteropHelper(this).Handle);
         _windowSource.AddHook(HandleWindowMessage);
-        string hotkey = ConfigStore.Load().ToggleHotkey;
-        if (TryRegisterConfiguredHotkey(hotkey, out string? error))
-            AppendLog($"已注册全局快捷键：{hotkey}");
-        else
-            AppendLog("全局快捷键注册失败：" + error);
+        RegisterConfiguredHotkeys();
     }
 
-    private void HotkeyCaptureButton_Click(object sender, RoutedEventArgs e)
+    private void RegisterConfiguredHotkeys()
     {
-        BeginHotkeyCapture();
-    }
-
-    private void HotkeyCaptureButton_PreviewKeyDown(object sender, KeyEventArgs e)
-    {
-        if (!_capturingHotkey)
-            return;
-
-        e.Handled = true;
-        Key key = e.Key == Key.System ? e.SystemKey : e.Key;
-        if (key is Key.LeftCtrl or Key.RightCtrl or Key.LeftAlt or Key.RightAlt or
-            Key.LeftShift or Key.RightShift or Key.LWin or Key.RWin or Key.None)
-            return;
-
-        string hotkey = key.ToString();
-        if (!IsSupportedHotkey(hotkey))
-        {
-            HotkeyCaptureButton.Content = "请按 F1–F12";
-            return;
-        }
-
-        ApplyHotkeyImmediately(hotkey);
-    }
-
-    private void HotkeyCaptureButton_LostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
-    {
-        if (!_capturingHotkey)
-            return;
-
-        _capturingHotkey = false;
-        HotkeyCaptureButton.Content = _currentHotkey;
-        TryRegisterConfiguredHotkey(_currentHotkey, out _);
-    }
-
-    private void BeginHotkeyCapture()
-    {
-        _capturingHotkey = true;
-        HotkeyCaptureButton.Content = "请按下快捷键…";
         nint handle = new WindowInteropHelper(this).Handle;
-        if (handle != 0)
-            UnregisterHotKey(handle, HotkeyId);
-        HotkeyCaptureButton.Focus();
-    }
-
-    private void ApplyHotkeyImmediately(string hotkey)
-    {
-        _capturingHotkey = false;
-        string previous = _currentHotkey;
+        if (handle == 0) return;
+        UnregisterHotKey(handle, PauseHotkeyId);
+        UnregisterHotKey(handle, StopHotkeyId);
         AutomationConfig config = ConfigStore.Load();
-        config.ToggleHotkey = hotkey;
-        ConfigStore.Save(config);
-
-        if (!TryRegisterConfiguredHotkey(hotkey, out string? error))
-        {
-            config.ToggleHotkey = previous;
-            ConfigStore.Save(config);
-            _currentHotkey = previous;
-            HotkeyCaptureButton.Content = previous;
-            TryRegisterConfiguredHotkey(previous, out _);
-            AppendLog($"快捷键 {hotkey} 注册失败，已回退到 {previous}：{error}");
-            MessageBox.Show(
-                $"无法注册全局快捷键 {hotkey}，可能已被其他程序占用。\n已回退到 {previous}。",
-                "快捷键",
-                MessageBoxButton.OK,
-                MessageBoxImage.Warning);
-            return;
-        }
-
-        _currentHotkey = hotkey;
-        HotkeyCaptureButton.Content = hotkey;
-        AppendLog($"全局快捷键已设置为：{hotkey}");
+        bool pause = RegisterHotKey(handle, PauseHotkeyId, 0, (uint)KeyInterop.VirtualKeyFromKey(Enum.Parse<Key>(config.PauseHotkey)));
+        int pauseError = pause ? 0 : Marshal.GetLastWin32Error();
+        bool stop = RegisterHotKey(handle, StopHotkeyId, 0, (uint)KeyInterop.VirtualKeyFromKey(Enum.Parse<Key>(config.StopHotkey)));
+        int stopError = stop ? 0 : Marshal.GetLastWin32Error();
+        AppendLog(pause && stop
+            ? $"已注册热键：{config.PauseHotkey} 暂停/继续，{config.StopHotkey} 停止。"
+            : BuildHotkeyRegistrationFailure(config, pause, pauseError, stop, stopError));
     }
 
-    private static bool IsSupportedHotkey(string hotkey) =>
-        hotkey is "F1" or "F2" or "F3" or "F4" or "F5" or "F6" or "F7" or
-                  "F8" or "F9" or "F10" or "F11" or "F12";
-
-    private bool TryRegisterConfiguredHotkey(string hotkey, out string? error)
+    private static string BuildHotkeyRegistrationFailure(AutomationConfig config, bool pause, int pauseError, bool stop, int stopError)
     {
-        error = null;
-        nint handle = new WindowInteropHelper(this).Handle;
-        if (handle == 0)
-        {
-            error = "窗口句柄尚未就绪。";
-            return false;
-        }
-
-        UnregisterHotKey(handle, HotkeyId);
-        Key key = Enum.Parse<Key>(hotkey);
-        uint virtualKey = (uint)KeyInterop.VirtualKeyFromKey(key);
-        if (RegisterHotKey(handle, HotkeyId, 0, virtualKey))
-            return true;
-
-        int code = Marshal.GetLastWin32Error();
-        error = $"Win32 错误码 {code}";
-        return false;
+        var failures = new List<string>();
+        if (!pause) failures.Add($"{config.PauseHotkey}（错误 {pauseError}）");
+        if (!stop) failures.Add($"{config.StopHotkey}（错误 {stopError}）");
+        return $"全局热键注册失败：{string.Join("、", failures)}。错误 1409 通常表示该按键已被其他程序占用；Windows 不提供占用进程名称。";
     }
 
-    private nint HandleWindowMessage(
-        nint hwnd, int message, nint wParam, nint lParam, ref bool handled)
+    private nint HandleWindowMessage(nint hwnd, int message, nint wParam, nint lParam, ref bool handled)
     {
-        if (message != WmHotkey || wParam != HotkeyId)
-            return 0;
-
+        if (message != WmHotkey) return 0;
         handled = true;
         Dispatcher.BeginInvoke(() =>
         {
-            if (_cancellation is null)
-                StartButton_Click(this, new RoutedEventArgs());
-            else
+            if (wParam == PauseHotkeyId)
+            {
+                if (_runCancellation is not null || _isPaused)
+                    PauseResumeButton_Click(this, new RoutedEventArgs());
+            }
+            else if (wParam == StopHotkeyId)
+            {
                 StopButton_Click(this, new RoutedEventArgs());
+            }
         });
         return 0;
     }
 
-    private void ReleaseHotkey()
+    private void ReleaseHotkeys()
     {
         nint handle = new WindowInteropHelper(this).Handle;
         if (handle != 0)
-            UnregisterHotKey(handle, HotkeyId);
+        {
+            UnregisterHotKey(handle, PauseHotkeyId);
+            UnregisterHotKey(handle, StopHotkeyId);
+        }
         _windowSource?.RemoveHook(HandleWindowMessage);
         _windowSource = null;
     }
 
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool RegisterHotKey(nint hwnd, int id, uint modifiers, uint virtualKey);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool UnregisterHotKey(nint hwnd, int id);
+    [DllImport("user32.dll", SetLastError = true)] private static extern bool RegisterHotKey(nint hwnd, int id, uint modifiers, uint virtualKey);
+    [DllImport("user32.dll", SetLastError = true)] private static extern bool UnregisterHotKey(nint hwnd, int id);
 }

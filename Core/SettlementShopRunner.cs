@@ -57,7 +57,20 @@ public sealed class SettlementShopRunner
         SettlementPurchases purchases = _config.SettlementPurchases;
 
         if (purchases.Daily.HasAny())
-            await RunDailyAsync(window, purchases.Daily, cancellationToken);
+        {
+            DateTime now = DateTime.Now;
+            if (DailyShopSchedule.QuotaFilledThisShopDay(_config.LastDailyShopDay, now))
+            {
+                _log($"日常已买够配置数量，等到 {DailyShopSchedule.NextReset(now):MM-dd HH:mm}（每天 {DailyShopSchedule.ResetHour} 点）刷新后再买。");
+            }
+            else
+            {
+                await RunDailyAsync(window, purchases.Daily, cancellationToken);
+                _config.LastDailyShopDay = DailyShopSchedule.CurrentShopDayKey(now);
+                ConfigStore.Save(_config);
+                _log($"日常已按配置买够，等到 {DailyShopSchedule.NextReset(now):MM-dd HH:mm} 刷新后再买。");
+            }
+        }
         if (purchases.Equipment.HasAny())
             await RunEquipmentAsync(window, purchases.Equipment, cancellationToken);
         if (purchases.Excavation.HasAny())

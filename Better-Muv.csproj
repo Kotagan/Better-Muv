@@ -2,16 +2,25 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
     <RootNamespace>BetterMuv</RootNamespace>
     <AssemblyName>Better-Muv</AssemblyName>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Version>1.0.0</Version>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+    <Product>Better-Muv</Product>
+    <Company>Kotagan</Company>
+    <Authors>Kotagan</Authors>
+    <Description>MuvLuvGirlsGarden maze automation</Description>
   </PropertyGroup>
 
   <ItemGroup>
+    <Content Include="Assets\Branding\home-banner.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Branding\app-icon.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\quest.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\maze-search.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\exploration-ready.png" CopyToOutputDirectory="PreserveNewest" />

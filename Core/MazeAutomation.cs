@@ -38,6 +38,7 @@ public sealed class MazeAutomation
     private readonly TemplateMatcher _battleSkipMatcher;
     private readonly TemplateMatcher _eventChoiceMatcher;
     private readonly SettlementShopRunner _settlementShop;
+    private readonly MazeDifficultyRunner _difficulty;
     private readonly TemplateMatcher _treasureStateMatcher;
     private readonly TemplateMatcher _routeSelectionMatcher;
     private readonly IReadOnlyDictionary<string, IReadOnlyList<TemplateMatcher>> _treasureMatchers;
@@ -59,6 +60,7 @@ public sealed class MazeAutomation
         _battleSkipMatcher = new TemplateMatcher(Path.Combine(templateDirectory, "battle-skip.png"));
         _eventChoiceMatcher = new TemplateMatcher(Path.Combine(templateDirectory, "event-choice.png"));
         _settlementShop = new SettlementShopRunner(config, _screen, templateDirectory, log);
+        _difficulty = new MazeDifficultyRunner(config, _screen, log);
         _treasureStateMatcher = new TemplateMatcher(Path.Combine(templateDirectory, "treasure-state.png"));
         _routeSelectionMatcher = new TemplateMatcher(Path.Combine(templateDirectory, "route-selection.png"));
         // 宝物选择用大图标；路线预览图标更小，用 route-* / treasure-sword（小剑）。
@@ -202,6 +204,7 @@ public sealed class MazeAutomation
                     return await RunMazeLoopAsync(window, 0, cancellationToken);
                 case "third":
                     _log($"{ThirdTaskName}识别成功（{matched.Score:F4}）。");
+                    await _difficulty.ApplyAsync(window, cancellationToken);
                     await _screen.ClickAsync(window, _config.ThirdClick, ThirdTaskName, cancellationToken);
                     return await RunFromFourthTaskAsync(window, cancellationToken);
                 case "second":
@@ -262,11 +265,19 @@ public sealed class MazeAutomation
     private async Task<bool> RunFromThirdTaskAsync(GameWindow window, CancellationToken cancellationToken)
     {
         _log($"开始任务：{ThirdTaskName}。");
-        bool thirdMatched = await MatchAndClickTemplateAsync(
+        // 先确认在迷宫准备界面，再调难度，最后点探索準備。
+        TemplateProbeResult probe = await _screen.ProbeAsync(
             window, _thirdMatcher, _config.ThirdSearchTopLeft, _config.ThirdSearchSize,
-            _config.ThirdClick, ThirdTaskName, "exploration-ready", cancellationToken);
-        if (!thirdMatched)
+            cancellationToken, _config.MatchThreshold);
+        if (!probe.IsMatch)
+        {
             _log($"{ThirdTaskName}识别失败，等待后继续后续任务。");
+            return await RunFromFourthTaskAsync(window, cancellationToken);
+        }
+
+        _log($"{ThirdTaskName}识别成功（{probe.Score:F4}）。");
+        await _difficulty.ApplyAsync(window, cancellationToken);
+        await _screen.ClickAsync(window, _config.ThirdClick, ThirdTaskName, cancellationToken);
         return await RunFromFourthTaskAsync(window, cancellationToken);
     }
 

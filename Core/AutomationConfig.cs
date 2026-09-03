@@ -5,6 +5,14 @@ namespace BetterMuv.Core;
 public sealed class AutomationConfig
 {
     public string WindowTitleKeyword { get; set; } = "マブラヴ";
+    /// <summary>截图器启动时是否一并启动游戏。</summary>
+    public bool LaunchGameWithCapture { get; set; }
+    public bool CaptureTaskEnabled { get; set; } = true;
+    public bool DesktopCloneTaskEnabled { get; set; }
+    public bool MazeTaskEnabled { get; set; } = true;
+    public string GameExecutablePath { get; set; } = "";
+    public string GameLaunchArguments { get; set; } = "";
+    public int GameLaunchTimeoutSeconds { get; set; } = 90;
     public double MatchThreshold { get; set; } = 0.78;
     public bool SaveDiagnostics { get; set; } = false;
     public string DiagnosticDirectory { get; set; } = "diagnostics";
@@ -89,14 +97,37 @@ public sealed class AutomationConfig
     public ConfigPoint PartnerClick { get; set; } = new(1724, 956);
     public ConfigPoint BattleSkipClick { get; set; } = new(1816, 65);
     public ConfigPoint RouteClick { get; set; } = new(1680, 940);
+    /// <summary>迷宫难度：keep=保持不变，custom=自选数字。</summary>
+    public string MazeDifficultyMode { get; set; } = "keep";
+    /// <summary>自选难度目标（仅 custom 生效）。</summary>
+    public int MazeDifficultyTarget { get; set; } = 1;
+    // 4K (2658,652)→(3406,902) → 1080p
+    public ConfigPoint DifficultyDigitTopLeft { get; set; } = new(1329, 326);
+    public ConfigSize DifficultyDigitSize { get; set; } = new(374, 125);
+    // 4K (1792,754) / (3652,754)
+    public ConfigPoint DifficultyDecreaseClick { get; set; } = new(896, 377);
+    public ConfigPoint DifficultyIncreaseClick { get; set; } = new(1826, 377);
+    // 4K (3266,522)
+    public ConfigPoint DifficultyOpenSliderClick { get; set; } = new(1633, 261);
+    // 4K (1158,584)→(1522,1706)
+    public ConfigPoint DifficultyListTopLeft { get; set; } = new(579, 292);
+    public ConfigSize DifficultyListSize { get; set; } = new(182, 561);
+    // 4K (2250,1860)
+    public ConfigPoint DifficultyConfirmClick { get; set; } = new(1125, 930);
     public int DoubleClickIntervalMs { get; set; } = 100;
     public int DetectionPollIntervalMs { get; set; } = 250;
     public int DetectionTimeoutMs { get; set; } = 10000;
     /// <summary>迷宫轮次上限；0 表示无限。</summary>
     public int MazeRunLimit { get; set; }
     public string ToggleHotkey { get; set; } = "F10";
+    /// <summary>全局暂停/继续快捷键。</summary>
+    public string PauseHotkey { get; set; } = "F10";
+    /// <summary>全局停止快捷键。</summary>
+    public string StopHotkey { get; set; } = "F11";
     /// <summary>是否已确认过首次运行提示弹窗。</summary>
     public bool FirstRunNoticeAccepted { get; set; }
+    /// <summary>上次日常已买够配置数量的游戏日（yyyy-MM-dd，每天 4:00 起算新一日）。</summary>
+    public string? LastDailyShopDay { get; set; }
 
     public static AutomationConfig Load(string path)
     {
@@ -144,7 +175,8 @@ public sealed class AutomationConfig
             FirstSearchSize, SecondSearchSize, ThirdSearchSize, FourthSearchSize, FifthSearchSize,
             PartnerSelectionSize, BattleSkipSize, EventChoiceSize, SettlementSearchSize,
             SettlementMultiplierSize, SettlementBuyButtonSearchSize, SettlementConfirmSize,
-            TreasureStateSize, TreasureOptionsSize, RouteSelectionSize, RouteTreasureOptionsSize
+            TreasureStateSize, TreasureOptionsSize, RouteSelectionSize, RouteTreasureOptionsSize,
+            DifficultyDigitSize, DifficultyListSize
         ];
         if (requiredSizes.Any(s => s.Width <= 0 || s.Height <= 0))
             throw new InvalidDataException("所有搜索区域尺寸必须大于零。");
@@ -157,11 +189,24 @@ public sealed class AutomationConfig
             throw new InvalidDataException("点击间隔不能为负，检测间隔和超时必须大于零。");
         if (MazeRunLimit < 0)
             throw new InvalidDataException("mazeRunLimit 不能为负数（0 表示无限）。");
+        MazeDifficultyMode = MazeDifficultyRunner.NormalizeMode(MazeDifficultyMode);
+        if (MazeDifficultyTarget < 1 || MazeDifficultyTarget > 999)
+            throw new InvalidDataException("mazeDifficultyTarget 必须在 1–999。");
         if (ToggleHotkey is not ("F1" or "F2" or "F3" or "F4" or "F5" or "F6" or "F7" or
                                  "F8" or "F9" or "F10" or "F11" or "F12"))
             throw new InvalidDataException("toggleHotkey 仅支持 F1 至 F12。");
+        if (!IsSupportedFunctionKey(PauseHotkey) || !IsSupportedFunctionKey(StopHotkey))
+            throw new InvalidDataException("暂停和停止快捷键仅支持 F1 至 F12。");
+        if (PauseHotkey.Equals(StopHotkey, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("暂停和停止快捷键不能相同。");
+        if (GameLaunchTimeoutSeconds is < 5 or > 600)
+            throw new InvalidDataException("gameLaunchTimeoutSeconds 必须在 5–600 秒。");
         NormalizeSettlementPurchases();
     }
+
+    public static bool IsSupportedFunctionKey(string? key) =>
+        key is "F1" or "F2" or "F3" or "F4" or "F5" or "F6" or "F7" or
+               "F8" or "F9" or "F10" or "F11" or "F12";
 
     private static List<string> NormalizeTreasurePriority(IEnumerable<string> priority)
     {

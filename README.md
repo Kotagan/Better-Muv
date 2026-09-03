@@ -19,6 +19,10 @@ English | **中文** | 繁體中文 | 日本語
 - 可设置肉鸽宝物优先度选取
 
 - **事件选择**：默认选择第二选项
+- **模板定位工具**：导入从游戏画面裁出的图片，在整屏中定位并生成 1080p 基准的搜索 ROI
+- **首页截图器**：先校验游戏窗口与 16:9 显示器，再开放迷宫探索执行页
+- **游戏启动**：可在截图器启动时按配置的 exe 路径与参数启动游戏
+- **执行控制**：F10 暂停/继续，F11 停止（可在设置中改为其他 F1–F12）
 
 ### Todolist
 
@@ -67,10 +71,20 @@ English | **中文** | 繁體中文 | 日本語
 
 ### 快速开始
 
-1. 启动游戏并进入可操作界面（主页、探索準備、路线、结算等均可）
-2. 打开 Better-Muv，在「启动」页设置迷宫次数（`0` = 无限）
-3. （可选）在「商店购买」「宝物优先级」「热键 / 诊断」中按需配置
-4. 点击 **▶ 启动**，或按全局热键（默认 F10）；程序会聚焦游戏窗口并开始识别
+1. （可选）在「设置」页配置游戏 exe 与启动参数，并开启「同时启动游戏」
+2. 在首页启动「Better-Muv 截图器」；它会确认游戏窗口和 16:9 显示器
+3. 进入「执行」页，点击 **▶ 执行迷宫探索**
+4. 运行中可按 F10 暂停/继续，按 F11 停止
+
+### 生成新模板的搜索范围
+
+在「设置」页的「模板定位工具」中选择一张从**当前游戏画面**裁出的图像，保持游戏显示需要识别的界面，再点击「定位并生成 ROI」。工具会输出：
+
+- 模板在 1080p 基准下的左上角与尺寸
+- 带 12px 边距的推荐 `TopLeft` 与 `Size`，可直接用于 `AutomationConfig` / `config.json`
+- 匹配分数（分数低时建议换一张包含更多文字或图标细节的模板）
+
+模板最好来自同一显示器、同一游戏分辨率的截图；不要使用纯色或过于小的图片。
 
 配置与日志默认路径：
 
@@ -121,11 +135,19 @@ dotnet run --project Better-Muv.csproj
 dotnet test tests\BetterMuv.Tests\BetterMuv.Tests.csproj -c Release
 ```
 
-发布示例（自包含单文件）：
+发布示例（自包含）：
 
 ```powershell
-dotnet publish Better-Muv.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o publish\win-x64
+dotnet publish Better-Muv.csproj -c Release -r win-x64 --self-contained true -o publish\win-x64
 ```
+
+打包可安装程序（需先安装 [Inno Setup 6](https://jrsoftware.org/isinfo.php)；写入「程序和功能」卸载项与 HKLM 产品注册表）：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\pack-installer.ps1 -Version 1.0.0
+```
+
+生成物：`dist\Better-Muv-Setup-1.0.0.exe`。
 
 ---
 

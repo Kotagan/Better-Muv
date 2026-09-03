@@ -39,9 +39,32 @@ public static class ConfigStore
     public static AutomationConfig Load()
     {
         AutomationConfig config = AutomationConfig.Load(EnsureUserConfigPath());
-        if (MigrateTreasureRecognitionDefaults(config))
+        if (MigrateTreasureRecognitionDefaults(config) || MigrateExecutionDefaults(config))
             Save(config);
         return config;
+    }
+
+    private static bool MigrateExecutionDefaults(AutomationConfig config)
+    {
+        bool changed = false;
+        if (!AutomationConfig.IsSupportedFunctionKey(config.PauseHotkey))
+        {
+            config.PauseHotkey = AutomationConfig.IsSupportedFunctionKey(config.ToggleHotkey)
+                ? config.ToggleHotkey : "F10";
+            changed = true;
+        }
+        if (!AutomationConfig.IsSupportedFunctionKey(config.StopHotkey) ||
+            config.StopHotkey.Equals(config.PauseHotkey, StringComparison.OrdinalIgnoreCase))
+        {
+            config.StopHotkey = config.PauseHotkey == "F11" ? "F10" : "F11";
+            changed = true;
+        }
+        if (config.GameLaunchTimeoutSeconds is < 5 or > 600)
+        {
+            config.GameLaunchTimeoutSeconds = 90;
+            changed = true;
+        }
+        return changed;
     }
 
     public static void Save(AutomationConfig config) =>
@@ -200,5 +223,13 @@ public static class ConfigStore
         config.PartnerClick = defaults.PartnerClick;
         config.BattleSkipClick = defaults.BattleSkipClick;
         config.RouteClick = defaults.RouteClick;
+        config.DifficultyDigitTopLeft = defaults.DifficultyDigitTopLeft;
+        config.DifficultyDigitSize = defaults.DifficultyDigitSize;
+        config.DifficultyDecreaseClick = defaults.DifficultyDecreaseClick;
+        config.DifficultyIncreaseClick = defaults.DifficultyIncreaseClick;
+        config.DifficultyOpenSliderClick = defaults.DifficultyOpenSliderClick;
+        config.DifficultyListTopLeft = defaults.DifficultyListTopLeft;
+        config.DifficultyListSize = defaults.DifficultyListSize;
+        config.DifficultyConfirmClick = defaults.DifficultyConfirmClick;
     }
 }

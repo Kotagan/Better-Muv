@@ -10,6 +10,7 @@ artifacts/
 
 ## Publish / packaging
 publish/
+dist/
 *.publish.xml
 *.nupkg
 

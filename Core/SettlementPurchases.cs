@@ -17,6 +17,18 @@ public sealed class SettlementPurchases
         Excavation.Reset();
         Artifactor.Reset();
     }
+
+    public void ResetCategory(string category)
+    {
+        switch (category)
+        {
+            case "daily": Daily.Reset(); break;
+            case "equipment": Equipment.Reset(); break;
+            case "excavation": Excavation.Reset(); break;
+            case "artifactor": Artifactor.Reset(); break;
+            default: throw new ArgumentOutOfRangeException(nameof(category), category, null);
+        }
+    }
 }
 
 public sealed class DailySettlementPurchases

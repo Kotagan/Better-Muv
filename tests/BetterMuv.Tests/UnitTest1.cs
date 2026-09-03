@@ -85,6 +85,17 @@ public class CaptureGeometryTests
 public class AutomationConfigTests
 {
     [Fact]
+    public void ExecutionDefaultsUseSeparatePauseAndStopHotkeys()
+    {
+        var config = new AutomationConfig();
+
+        Assert.False(config.LaunchGameWithCapture);
+        Assert.Equal("F10", config.PauseHotkey);
+        Assert.Equal("F11", config.StopHotkey);
+        Assert.Equal(90, config.GameLaunchTimeoutSeconds);
+    }
+
+    [Fact]
     public void RouteSelectionDefaultsUse1080pRegionsAndPriority()
     {
         var config = new AutomationConfig();
@@ -99,6 +110,16 @@ public class AutomationConfigTests
             ["diamond", "shield", "sword", "heart", "skull", "sparkle"],
             config.TreasurePriority);
         Assert.Equal("F10", config.ToggleHotkey);
+        Assert.Equal("keep", config.MazeDifficultyMode);
+        Assert.Equal(1, config.MazeDifficultyTarget);
+        Assert.Equal(new ConfigPoint(1329, 326), config.DifficultyDigitTopLeft);
+        Assert.Equal(new ConfigSize(374, 125), config.DifficultyDigitSize);
+        Assert.Equal(new ConfigPoint(896, 377), config.DifficultyDecreaseClick);
+        Assert.Equal(new ConfigPoint(1826, 377), config.DifficultyIncreaseClick);
+        Assert.Equal(new ConfigPoint(1633, 261), config.DifficultyOpenSliderClick);
+        Assert.Equal(new ConfigPoint(579, 292), config.DifficultyListTopLeft);
+        Assert.Equal(new ConfigSize(182, 561), config.DifficultyListSize);
+        Assert.Equal(new ConfigPoint(1125, 930), config.DifficultyConfirmClick);
     }
 
     [Fact]
@@ -192,6 +213,18 @@ public class AutomationConfigTests
             if (File.Exists(path))
                 File.Delete(path);
         }
+    }
+
+    [Fact]
+    public void DailyShopDayStartsAtFourAm()
+    {
+        Assert.Equal(new DateOnly(2026, 9, 3), DailyShopSchedule.CurrentShopDay(new DateTime(2026, 9, 3, 4, 0, 0)));
+        Assert.Equal(new DateOnly(2026, 9, 2), DailyShopSchedule.CurrentShopDay(new DateTime(2026, 9, 3, 3, 59, 0)));
+        Assert.Equal("2026-09-03", DailyShopSchedule.CurrentShopDayKey(new DateTime(2026, 9, 3, 12, 0, 0)));
+        Assert.True(DailyShopSchedule.QuotaFilledThisShopDay("2026-09-03", new DateTime(2026, 9, 3, 23, 0, 0)));
+        Assert.False(DailyShopSchedule.QuotaFilledThisShopDay("2026-09-03", new DateTime(2026, 9, 4, 4, 0, 0)));
+        Assert.Equal(new DateTime(2026, 9, 4, 4, 0, 0), DailyShopSchedule.NextReset(new DateTime(2026, 9, 3, 12, 0, 0)));
+        Assert.Equal(new DateTime(2026, 9, 3, 4, 0, 0), DailyShopSchedule.NextReset(new DateTime(2026, 9, 3, 3, 0, 0)));
     }
 
     [Fact]
