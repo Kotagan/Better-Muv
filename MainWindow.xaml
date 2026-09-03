@@ -7,10 +7,10 @@
         <Style x:Key="Card" TargetType="Border"><Setter Property="Background" Value="#2A303A"/><Setter Property="BorderBrush" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/><Setter Property="CornerRadius" Value="12"/><Setter Property="Padding" Value="18,16"/><Setter Property="Margin" Value="0,10,0,0"/></Style>
         <Style TargetType="Button"><Setter Property="Foreground" Value="#F4F6F8"/><Setter Property="Background" Value="Transparent"/><Setter Property="BorderBrush" Value="Transparent"/><Setter Property="BorderThickness" Value="1"/><Setter Property="Padding" Value="12,8"/><Setter Property="Cursor" Value="Hand"/><Setter Property="FocusVisualStyle" Value="{x:Null}"/><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button"><Border x:Name="Surface" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="10" SnapsToDevicePixels="True"><ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}" RecognizesAccessKey="True"/></Border><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Surface" Property="Background" Value="#35404E"/><Setter TargetName="Surface" Property="BorderBrush" Value="#4B596C"/></Trigger><Trigger Property="IsPressed" Value="True"><Setter TargetName="Surface" Property="Background" Value="#2C3541"/></Trigger><Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.42"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style>
         <Style x:Key="NavButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}"><Setter Property="Foreground" Value="#F1F3F5"/><Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/><Setter Property="Padding" Value="10,9"/><Setter Property="Margin" Value="6,2"/><Setter Property="FontSize" Value="13"/><Setter Property="HorizontalContentAlignment" Value="Left"/></Style>
-        <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}"><Setter Property="Foreground" Value="#F7F8FA"/><Setter Property="Background" Value="#3B424E"/><Setter Property="BorderBrush" Value="#48515F"/><Setter Property="Padding" Value="12,5"/><Setter Property="FontSize" Value="13"/><Setter Property="Height" Value="30"/><Setter Property="VerticalAlignment" Value="Center"/></Style>
+        <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}"><Setter Property="Foreground" Value="#F7F8FA"/><Setter Property="Background" Value="#3B424E"/><Setter Property="BorderBrush" Value="#48515F"/><Setter Property="Padding" Value="12,6"/><Setter Property="FontSize" Value="13"/><Setter Property="MinHeight" Value="30"/><Setter Property="VerticalAlignment" Value="Center"/></Style>
         <Style x:Key="ToggleSwitch" TargetType="CheckBox"><Setter Property="Cursor" Value="Hand"/><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="CheckBox"><Grid Width="52" Height="29"><Border x:Name="Track" Background="#434C59" BorderBrush="#53606F" BorderThickness="1" CornerRadius="15"/><Ellipse x:Name="Thumb" Width="21" Height="21" Fill="#F6F7F9" HorizontalAlignment="Left" Margin="4,0,0,0"/></Grid><ControlTemplate.Triggers><Trigger Property="IsChecked" Value="True"><Setter TargetName="Track" Property="Background" Value="#3EA6F1"/><Setter TargetName="Track" Property="BorderBrush" Value="#55B3F6"/><Setter TargetName="Thumb" Property="HorizontalAlignment" Value="Right"/><Setter TargetName="Thumb" Property="Margin" Value="0,0,4,0"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style>
         <Style x:Key="MazeSettingsNavButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}"><Setter Property="HorizontalContentAlignment" Value="Center"/><Setter Property="Padding" Value="14,7"/><Setter Property="Margin" Value="0,0,8,0"/><Setter Property="FontSize" Value="13"/><Setter Property="MinWidth" Value="0"/></Style>
-        <Style x:Key="PriorityList" TargetType="ListBox"><Setter Property="Background" Value="#1B212A"/><Setter Property="BorderBrush" Value="#46505E"/><Setter Property="BorderThickness" Value="1"/><Setter Property="Padding" Value="6"/><Setter Property="ItemContainerStyle"><Setter.Value><Style TargetType="ListBoxItem"><Setter Property="Foreground" Value="#F2F5F8"/><Setter Property="Padding" Value="12,9"/><Setter Property="Margin" Value="0,2"/><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem"><Border x:Name="ItemSurface" Background="Transparent" CornerRadius="6"><ContentPresenter/></Border><ControlTemplate.Triggers><Trigger Property="IsSelected" Value="True"><Setter TargetName="ItemSurface" Property="Background" Value="#3B4657"/><Setter Property="FontWeight" Value="SemiBold"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style></Setter.Value></Setter></Style>
+        <Style x:Key="PriorityList" TargetType="ListBox"><Setter Property="Background" Value="#1B212A"/><Setter Property="BorderBrush" Value="#46505E"/><Setter Property="BorderThickness" Value="1"/><Setter Property="Padding" Value="6"/><Setter Property="FontSize" Value="16"/><Setter Property="ItemContainerStyle"><Setter.Value><Style TargetType="ListBoxItem"><Setter Property="Foreground" Value="#F2F5F8"/><Setter Property="FontSize" Value="16"/><Setter Property="Padding" Value="14,12"/><Setter Property="Margin" Value="0,3"/><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem"><Border x:Name="ItemSurface" Background="Transparent" CornerRadius="6"><ContentPresenter/></Border><ControlTemplate.Triggers><Trigger Property="IsSelected" Value="True"><Setter TargetName="ItemSurface" Property="Background" Value="#3B4657"/><Setter Property="FontWeight" Value="SemiBold"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style></Setter.Value></Setter></Style>
         <Style TargetType="TextBox"><Setter Property="Background" Value="#1B212A"/><Setter Property="Foreground" Value="#F5F7FA"/><Setter Property="BorderBrush" Value="#3C4655"/><Setter Property="BorderThickness" Value="1"/><Setter Property="Padding" Value="8,4"/><Setter Property="MinHeight" Value="28"/><Setter Property="FontSize" Value="13"/><Setter Property="VerticalContentAlignment" Value="Center"/><Setter Property="VerticalAlignment" Value="Center"/><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="TextBox"><Border x:Name="Field" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="7" Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True"><ScrollViewer x:Name="PART_ContentHost" Focusable="False" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden"/></Border><ControlTemplate.Triggers><Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Field" Property="BorderBrush" Value="#5B6A80"/></Trigger><Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.45"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style>
         <Style TargetType="CheckBox"><Setter Property="Foreground" Value="#EAF0F7"/><Setter Property="Cursor" Value="Hand"/><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="CheckBox"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="24"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><Border x:Name="Box" Width="20" Height="20" Background="#1B212A" BorderBrush="#4A5667" BorderThickness="1" CornerRadius="5" VerticalAlignment="Center"/><TextBlock x:Name="Mark" Text="✓" Foreground="White" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed"/><ContentPresenter Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center"/></Grid><ControlTemplate.Triggers><Trigger Property="IsChecked" Value="True"><Setter TargetName="Box" Property="Background" Value="#3EA6F1"/><Setter TargetName="Box" Property="BorderBrush" Value="#3EA6F1"/><Setter TargetName="Mark" Property="Visibility" Value="Visible"/></Trigger><Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.45"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style>
         <Style TargetType="RadioButton"><Setter Property="Foreground" Value="#EEF2F6"/><Setter Property="Cursor" Value="Hand"/><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="RadioButton"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="26"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><Border x:Name="Ring" Width="20" Height="20" Background="#1B212A" BorderBrush="#667487" BorderThickness="2" CornerRadius="10" VerticalAlignment="Center"/><Ellipse x:Name="Dot" Width="10" Height="10" Fill="#3EA6F1" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed"/><ContentPresenter Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center"/></Grid><ControlTemplate.Triggers><Trigger Property="IsChecked" Value="True"><Setter TargetName="Ring" Property="BorderBrush" Value="#3EA6F1"/><Setter TargetName="Dot" Property="Visibility" Value="Visible"/><Setter Property="FontWeight" Value="SemiBold"/></Trigger><Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.45"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style>
@@ -18,17 +18,116 @@
     <Border Margin="8" Background="Transparent">
         <Border.Effect><DropShadowEffect Color="#000000" Opacity="0.32" BlurRadius="18" ShadowDepth="4"/></Border.Effect>
         <Border x:Name="WindowFrame" Background="#202630" BorderBrush="#3B4553" BorderThickness="1" CornerRadius="14" SizeChanged="WindowFrame_SizeChanged">
-        <Grid><Grid.RowDefinitions><RowDefinition Height="62"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-        <Grid Background="#182029" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="48"/><ColumnDefinition Width="48"/></Grid.ColumnDefinitions><StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="20,0"><Border Width="26" Height="26" CornerRadius="13" ClipToBounds="True"><Image Source="Assets/Branding/app-icon.png" Stretch="UniformToFill"/></Border><TextBlock Margin="10,0,0,0" FontSize="16" VerticalAlignment="Center" Text="Better-Muv · 更好的 MuvLuv Girls Garden"/></StackPanel><Button Grid.Column="1" Content="—" Background="Transparent" Foreground="White" BorderThickness="0" FontSize="16" Click="MinimizeButton_Click"/><Button Grid.Column="2" Content="×" Background="Transparent" Foreground="White" BorderThickness="0" FontSize="22" Click="CloseButton_Click"/></Grid>
-        <Grid Grid.Row="1"><Grid.ColumnDefinitions><ColumnDefinition Width="120"/><ColumnDefinition Width="*"/><ColumnDefinition x:Name="LogDrawerColumn" Width="0"/></Grid.ColumnDefinitions>
-            <Border Background="#182029"><Grid><Grid.RowDefinitions><RowDefinition Height="10"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions><StackPanel Grid.Row="1"><Button x:Name="HomeNavButton" Style="{StaticResource NavButton}" Content="⌂  首页" Click="ShowHomeButton_Click"/><Button x:Name="ExecuteNavButton" Style="{StaticResource NavButton}" Content="▷  任务" Click="ShowExecuteButton_Click"/></StackPanel><Button Grid.Row="2" x:Name="SettingsNavButton" Style="{StaticResource NavButton}" Margin="4,0,4,12" Click="ShowSettingsButton_Click"><Grid Height="20"><Grid.ColumnDefinitions><ColumnDefinition Width="18"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock FontFamily="Segoe Fluent Icons" FontSize="16" Text="&#xE713;" VerticalAlignment="Center" LineHeight="20" LineStackingStrategy="BlockLineHeight"/><TextBlock Grid.Column="1" Margin="8,0,0,0" Text="设置" VerticalAlignment="Center" LineHeight="20" LineStackingStrategy="BlockLineHeight"/></Grid></Button></Grid></Border>
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="62"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition x:Name="LogDrawerColumn" Width="0"/>
+                <ColumnDefinition Width="48"/>
+                <ColumnDefinition Width="48"/>
+            </Grid.ColumnDefinitions>
+            <Border Grid.ColumnSpan="4" Background="#182029"/>
+            <Grid MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="20,0">
+                    <Border Width="26" Height="26" CornerRadius="13" ClipToBounds="True">
+                        <Image Source="Assets/Branding/app-icon.png" Stretch="UniformToFill"/>
+                    </Border>
+                    <TextBlock Margin="10,0,0,0" FontSize="16" VerticalAlignment="Center" Text="Better-Muv · 更好的 MuvLuv Girls Garden"/>
+                </StackPanel>
+            </Grid>
+            <Grid x:Name="LogTitleBar" Grid.Column="1" Visibility="Collapsed">
+                <TextBlock Text="运行日志" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" Margin="16,0,0,0"/>
+                <Button HorizontalAlignment="Right" Width="48" Content="×" Background="Transparent" Foreground="White" BorderThickness="0" FontSize="22" Click="CloseLogDrawerButton_Click"/>
+            </Grid>
+            <Button Grid.Column="2" Content="—" Background="Transparent" Foreground="White" BorderThickness="0" FontSize="16" Click="MinimizeButton_Click"/>
+            <Button Grid.Column="3" Content="×" Background="Transparent" Foreground="White" BorderThickness="0" FontSize="22" Click="CloseButton_Click"/>
+        <Grid Grid.Row="1"><Grid.ColumnDefinitions><ColumnDefinition Width="120"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+            <Border Background="#182029"><Grid><Grid.RowDefinitions><RowDefinition Height="10"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions><StackPanel Grid.Row="1"><Button x:Name="HomeNavButton" Style="{StaticResource NavButton}" Content="⌂  首页" Click="ShowHomeButton_Click"/><Button x:Name="ExecuteNavButton" Style="{StaticResource NavButton}" Content="▷  任务" Click="ShowExecuteButton_Click"/></StackPanel><Button Grid.Row="2" x:Name="SettingsNavButton" Style="{StaticResource NavButton}" Margin="4,0,4,12" Click="ShowSettingsButton_Click"><StackPanel Orientation="Horizontal" VerticalAlignment="Center"><TextBlock FontFamily="Segoe Fluent Icons" FontSize="15" Text="&#xE713;" VerticalAlignment="Center"/><TextBlock Margin="8,0,0,0" Text="设置" VerticalAlignment="Center"/></StackPanel></Button></Grid></Border>
             <ScrollViewer x:Name="HomePanel" Grid.Column="1" VerticalScrollBarVisibility="Auto"><StackPanel Margin="28,22,28,24">
                 <Border Height="210" CornerRadius="12" ClipToBounds="True"><Border.Background><ImageBrush ImageSource="Assets/Branding/home-banner.png" Stretch="UniformToFill" AlignmentX="Center" AlignmentY="Center" RelativeTransform="1.15,0,0,1.15,0,0"/></Border.Background><Border CornerRadius="12"><Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint="1,0"><GradientStop Color="#D9141B24"/><GradientStop Color="#90141B24" Offset=".45"/><GradientStop Color="#20141B24" Offset="1"/></LinearGradientBrush></Border.Background><StackPanel Margin="32,0" VerticalAlignment="Center"><TextBlock Text="Better-Muv" FontSize="30" FontWeight="SemiBold"/><TextBlock Text="更好的 MuvLuv Girls Garden" FontSize="17" FontWeight="SemiBold" Margin="0,4,0,0"/></StackPanel></Border></Border>
                 <Border Style="{StaticResource Card}"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="40"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="▷" FontSize="22" VerticalAlignment="Center"/><StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="Better-Muv 截图器" FontSize="17"/><TextBlock x:Name="CaptureStatusText" Visibility="Collapsed"/></StackPanel><Button x:Name="CaptureStartButton" Grid.Column="2" Style="{StaticResource PrimaryButton}" Content="▷  启动" Click="CaptureStartButton_Click"/></Grid></Border>
-                <Border Style="{StaticResource Card}"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="40"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="◉" FontSize="21" VerticalAlignment="Center"/><TextBlock Grid.Column="1" Text="同时启动 MuvLuv Girls Garden" FontSize="17" VerticalAlignment="Center"/><Button Grid.Column="2" Style="{StaticResource PrimaryButton}" Click="GameSettingsButton_Click"><Grid Height="20"><Grid.ColumnDefinitions><ColumnDefinition Width="18"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock FontFamily="Segoe Fluent Icons" FontSize="16" Text="&#xE713;" VerticalAlignment="Center" LineHeight="20" LineStackingStrategy="BlockLineHeight"/><TextBlock Grid.Column="1" Margin="8,0,0,0" Text="设置" VerticalAlignment="Center" LineHeight="20" LineStackingStrategy="BlockLineHeight"/></Grid></Button><CheckBox x:Name="LaunchGameCheckBox" Grid.Column="3" Style="{StaticResource ToggleSwitch}" Margin="14,0,0,0" Checked="LaunchGameCheckBox_Changed" Unchecked="LaunchGameCheckBox_Changed"/></Grid></Border>
+                <Border Style="{StaticResource Card}"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="40"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="◉" FontSize="21" VerticalAlignment="Center"/><TextBlock Grid.Column="1" Text="同时启动 MuvLuv Girls Garden" FontSize="17" VerticalAlignment="Center"/><Button Grid.Column="2" Style="{StaticResource PrimaryButton}" Click="GameSettingsButton_Click"><StackPanel Orientation="Horizontal" VerticalAlignment="Center"><TextBlock FontFamily="Segoe Fluent Icons" FontSize="14" Text="&#xE713;" VerticalAlignment="Center"/><TextBlock Margin="6,0,0,0" Text="设置" VerticalAlignment="Center"/></StackPanel></Button><CheckBox x:Name="LaunchGameCheckBox" Grid.Column="3" Style="{StaticResource ToggleSwitch}" Margin="14,0,0,0" Checked="LaunchGameCheckBox_Changed" Unchecked="LaunchGameCheckBox_Changed"/></Grid></Border>
                 <Border Style="{StaticResource Card}"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="40"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="▣" FontSize="21" VerticalAlignment="Center"/><TextBlock Grid.Column="1" Text="Better-Muv 桌面分身" FontSize="17" VerticalAlignment="Center"/><Button Grid.Column="2" Style="{StaticResource PrimaryButton}" Content="打开" Click="OpenCloneButton_Click"/></Grid></Border>
             </StackPanel></ScrollViewer>
-            <ScrollViewer x:Name="ExecutionPanel" Grid.Column="1" Visibility="Collapsed" VerticalScrollBarVisibility="Auto"><StackPanel Margin="28,22,28,24"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="任务列表" FontSize="22" FontWeight="SemiBold"/><Button Grid.Column="1" Style="{StaticResource PrimaryButton}" Content="运行日志" Click="ShowLogDrawerButton_Click"/></Grid><Border Style="{StaticResource Card}"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="36"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="◇" FontSize="20" VerticalAlignment="Center"/><StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="迷宫探索" FontSize="16"/><TextBlock x:Name="MazeStatusText" Visibility="Collapsed"/></StackPanel><Button x:Name="RunMazeButton" Grid.Column="2" Content="▶" Background="Transparent" Foreground="White" BorderThickness="0" FontSize="16" Padding="8,6" Click="RunMazeButton_Click"/><Button x:Name="PauseResumeButton" Grid.Column="3" Content="Ⅱ" Background="Transparent" Foreground="White" BorderThickness="0" FontSize="15" Padding="8,6" Visibility="Collapsed" Click="PauseResumeButton_Click"/><Button x:Name="StopButton" Grid.Column="4" Content="■" Background="Transparent" Foreground="White" BorderThickness="0" FontSize="14" Padding="8,6" Visibility="Collapsed" Click="StopButton_Click"/><Button Grid.Column="5" Style="{StaticResource PrimaryButton}" Padding="9" ToolTip="迷宫探索设置" Click="MazeSettingsButton_Click"><TextBlock FontFamily="Segoe Fluent Icons" FontSize="15" Text="&#xE713;" VerticalAlignment="Center" LineHeight="18" LineStackingStrategy="BlockLineHeight"/></Button></Grid></Border></StackPanel></ScrollViewer>
+            <ScrollViewer x:Name="ExecutionPanel" Grid.Column="1" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
+                <StackPanel Margin="28,22,28,24">
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <TextBlock Text="任务列表" FontSize="22" FontWeight="SemiBold"/>
+                        <Button Grid.Column="1" Style="{StaticResource PrimaryButton}" Content="运行日志" Click="ShowLogDrawerButton_Click"/>
+                    </Grid>
+                    <Grid Margin="0,12,0,4">
+                        <Button x:Name="RunPipelineButton" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Stretch" MinHeight="40" FontSize="15" Content="运行" Click="RunPipelineButton_Click"/>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                            <Button x:Name="PausePipelineButton" Content="Ⅱ" Background="Transparent" Foreground="White" BorderThickness="0" FontSize="15" Padding="8,6" Visibility="Collapsed" Click="PauseResumeButton_Click"/>
+                            <Button x:Name="StopPipelineButton" Content="■" Background="Transparent" Foreground="White" BorderThickness="0" FontSize="14" Padding="8,6" Visibility="Collapsed" Click="StopButton_Click"/>
+                        </StackPanel>
+                    </Grid>
+                    <StackPanel x:Name="TaskListPanel" AllowDrop="True"
+                                PreviewDragOver="TaskList_DragOver" PreviewDrop="TaskList_Drop" PreviewDragLeave="TaskList_DragLeave">
+                        <Border x:Name="MazeTaskCard" Style="{StaticResource Card}" Tag="maze" Cursor="SizeAll" ToolTip="拖动调整顺序"
+                                PreviewMouseLeftButtonDown="TaskCard_PreviewMouseLeftButtonDown" MouseMove="TaskCard_MouseMove" PreviewMouseLeftButtonUp="TaskCard_PreviewMouseLeftButtonUp">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Text="迷宫探索" FontSize="16"/>
+                                    <TextBlock x:Name="MazeStatusText" Visibility="Collapsed"/>
+                                </StackPanel>
+                                <Button x:Name="RunMazeButton" Grid.Column="1" Content="▶" Background="Transparent" Foreground="White" BorderThickness="0" FontSize="16" Padding="8,6" Click="RunMazeButton_Click"/>
+                                <Button x:Name="PauseResumeButton" Grid.Column="2" Content="Ⅱ" Background="Transparent" Foreground="White" BorderThickness="0" FontSize="15" Padding="8,6" Visibility="Collapsed" Click="PauseResumeButton_Click"/>
+                                <Button x:Name="StopButton" Grid.Column="3" Content="■" Background="Transparent" Foreground="White" BorderThickness="0" FontSize="14" Padding="8,6" Visibility="Collapsed" Click="StopButton_Click"/>
+                                <Button Grid.Column="4" Style="{StaticResource PrimaryButton}" Padding="8,6" MinWidth="34" ToolTip="迷宫探索设置" Click="MazeSettingsButton_Click">
+                                    <TextBlock FontFamily="Segoe Fluent Icons" FontSize="14" Text="&#xE713;" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Button>
+                                <CheckBox x:Name="MazePipelineToggle" Grid.Column="5" Style="{StaticResource ToggleSwitch}" Margin="10,0,0,0" ToolTip="纳入一条龙" Checked="PipelineTaskToggle_Changed" Unchecked="PipelineTaskToggle_Changed"/>
+                            </Grid>
+                        </Border>
+                        <Border x:Name="MainQuestTaskCard" Style="{StaticResource Card}" Tag="mainQuest" Cursor="SizeAll" ToolTip="拖动调整顺序"
+                                PreviewMouseLeftButtonDown="TaskCard_PreviewMouseLeftButtonDown" MouseMove="TaskCard_MouseMove" PreviewMouseLeftButtonUp="TaskCard_PreviewMouseLeftButtonUp">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Text="自动主线任务" FontSize="16"/>
+                                    <TextBlock x:Name="MainQuestStatusText" Visibility="Collapsed"/>
+                                </StackPanel>
+                                <Button x:Name="RunMainQuestButton" Grid.Column="1" Content="▶" Background="Transparent" Foreground="White" BorderThickness="0" FontSize="16" Padding="8,6" Click="RunMainQuestButton_Click"/>
+                                <Button x:Name="PauseMainQuestButton" Grid.Column="2" Content="Ⅱ" Background="Transparent" Foreground="White" BorderThickness="0" FontSize="15" Padding="8,6" Visibility="Collapsed" Click="PauseResumeButton_Click"/>
+                                <Button x:Name="StopMainQuestButton" Grid.Column="3" Content="■" Background="Transparent" Foreground="White" BorderThickness="0" FontSize="14" Padding="8,6" Visibility="Collapsed" Click="StopButton_Click"/>
+                                <CheckBox x:Name="MainQuestPipelineToggle" Grid.Column="4" Style="{StaticResource ToggleSwitch}" Margin="10,0,0,0" ToolTip="纳入一条龙" Checked="PipelineTaskToggle_Changed" Unchecked="PipelineTaskToggle_Changed"/>
+                            </Grid>
+                        </Border>
+                        <Border x:Name="HardMainQuestTaskCard" Style="{StaticResource Card}" Tag="hardMainQuest" Cursor="SizeAll" ToolTip="拖动调整顺序"
+                                PreviewMouseLeftButtonDown="TaskCard_PreviewMouseLeftButtonDown" MouseMove="TaskCard_MouseMove" PreviewMouseLeftButtonUp="TaskCard_PreviewMouseLeftButtonUp">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Text="自动困难主线" FontSize="16"/>
+                                    <TextBlock x:Name="HardMainQuestStatusText" Visibility="Collapsed"/>
+                                </StackPanel>
+                                <Button x:Name="RunHardMainQuestButton" Grid.Column="1" Content="▶" Background="Transparent" Foreground="White" BorderThickness="0" FontSize="16" Padding="8,6" Click="RunHardMainQuestButton_Click"/>
+                                <Button x:Name="PauseHardMainQuestButton" Grid.Column="2" Content="Ⅱ" Background="Transparent" Foreground="White" BorderThickness="0" FontSize="15" Padding="8,6" Visibility="Collapsed" Click="PauseResumeButton_Click"/>
+                                <Button x:Name="StopHardMainQuestButton" Grid.Column="3" Content="■" Background="Transparent" Foreground="White" BorderThickness="0" FontSize="14" Padding="8,6" Visibility="Collapsed" Click="StopButton_Click"/>
+                                <CheckBox x:Name="HardMainQuestPipelineToggle" Grid.Column="4" Style="{StaticResource ToggleSwitch}" Margin="10,0,0,0" ToolTip="纳入一条龙" Checked="PipelineTaskToggle_Changed" Unchecked="PipelineTaskToggle_Changed"/>
+                            </Grid>
+                        </Border>
+                    </StackPanel>
+                </StackPanel>
+            </ScrollViewer>
             <Grid x:Name="SettingsPanel" Grid.Column="1" Visibility="Collapsed" Margin="20,14,20,16">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
@@ -141,11 +240,12 @@
                             </Grid.RowDefinitions>
                             <TextBlock Text="宝物优先级" FontSize="16" FontWeight="SemiBold"/>
                             <Grid Grid.Row="1" Margin="0,10,0,0">
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="40"/></Grid.ColumnDefinitions>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                                 <ListBox x:Name="TreasurePriorityList" Style="{StaticResource PriorityList}" VerticalAlignment="Stretch"/>
-                                <StackPanel Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Top">
-                                    <Button Style="{StaticResource PrimaryButton}" Content="↑" Padding="0" Height="34" Click="MovePriorityUp_Click"/>
-                                    <Button Style="{StaticResource PrimaryButton}" Content="↓" Padding="0" Height="34" Margin="0,8,0,0" Click="MovePriorityDown_Click"/>
+                                <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Top">
+                                    <Button Style="{StaticResource PrimaryButton}" Content="置顶" MinWidth="64" Click="MovePriorityTop_Click"/>
+                                    <Button Style="{StaticResource PrimaryButton}" Content="上移" MinWidth="64" Margin="0,8,0,0" Click="MovePriorityUp_Click"/>
+                                    <Button Style="{StaticResource PrimaryButton}" Content="下移" MinWidth="64" Margin="0,8,0,0" Click="MovePriorityDown_Click"/>
                                 </StackPanel>
                             </Grid>
                         </Grid>
@@ -179,7 +279,9 @@
                     </Border>
                 </Grid>
             </Grid>
-            <Border x:Name="LogDrawer" Grid.Column="2" Background="#202630" BorderBrush="#3B4655" BorderThickness="1,0,0,0" Visibility="Collapsed" Panel.ZIndex="10"><Grid><Grid.RowDefinitions><RowDefinition Height="48"/><RowDefinition Height="*"/></Grid.RowDefinitions><Grid Margin="14,0"><TextBlock Text="运行日志" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center"/><Button HorizontalAlignment="Right" VerticalAlignment="Center" Content="×" FontSize="18" Padding="8,4" Click="CloseLogDrawerButton_Click"/></Grid><TextBox x:Name="LogBox" Grid.Row="1" Margin="12,0,12,12" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" Background="#171C23" BorderThickness="0" Padding="10" FontFamily="Consolas" FontSize="12" VerticalAlignment="Stretch" VerticalScrollBarVisibility="Auto"/></Grid></Border>
-        </Grid>
-    </Grid></Border></Border>
+            </Grid>
+            <Border x:Name="LogDrawer" Grid.Row="1" Grid.Column="1" Background="#202630" BorderBrush="#3B4655" BorderThickness="1,0,0,0" Visibility="Collapsed">
+                <TextBox x:Name="LogBox" Margin="12,8,12,12" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" Background="#171C23" BorderThickness="0" Padding="10" FontFamily="Consolas" FontSize="12" VerticalAlignment="Stretch" VerticalScrollBarVisibility="Auto"/>
+            </Border>
+        </Grid></Border></Border>
 </Window>

@@ -26,8 +26,15 @@ public partial class MainWindow : Window
     private bool _pauseRequested;
     private bool _isPaused;
     private bool _isLogDrawerOpen;
-    private double? _widthBeforeLogDrawer;
     private const double LogDrawerWidth = 360;
+    private enum ActiveTask { None, Maze, MainQuest, HardMainQuest, Pipeline }
+    private ActiveTask _activeTask = ActiveTask.None;
+    private readonly List<string> _pipelineQueue = [];
+    private int _pipelineIndex;
+    private bool _suppressPipelineToggle;
+    private Point _taskDragStart;
+    private Border? _taskDragSource;
+    private bool _taskDragPending;
 
     public MainWindow()
     {
@@ -38,6 +45,27 @@ public partial class MainWindow : Window
         SetPage(Page.Home);
         AppendLog("配置文件：" + _configPath);
         AppendLog("等待启动截图器。");
+        ContentRendered += MainWindow_ContentRendered;
+    }
+
+    private async void MainWindow_ContentRendered(object? sender, EventArgs e)
+    {
+        ContentRendered -= MainWindow_ContentRendered;
+        if (!string.Equals(Environment.GetEnvironmentVariable("BETTER_MUV_AUTO_MAIN_QUEST"), "1", StringComparison.Ordinal))
+            return;
+        AppendLog("调试模式：自动启动主线任务。");
+        SetPage(Page.Execute);
+        try
+        {
+            if (!_captureSession.IsRunning)
+                await _captureSession.StartAsync(ConfigStore.Load(), CancellationToken.None);
+            UpdateCaptureUi();
+            await StartMainQuestAsync();
+        }
+        catch (Exception ex)
+        {
+            AppendLog("调试自动启动失败：" + ex.Message);
+        }
     }
 
     private enum Page { Home, Execute, Settings, MazeSettings }
@@ -55,6 +83,7 @@ public partial class MainWindow : Window
             CollapseLogDrawer();
         else
             LogDrawer.Visibility = page == Page.Execute && _isLogDrawerOpen ? Visibility.Visible : Visibility.Collapsed;
+        LogTitleBar.Visibility = LogDrawer.Visibility;
         HomeNavButton.Background = page == Page.Home ? new SolidColorBrush(Color.FromRgb(43, 50, 61)) : Brushes.Transparent;
         ExecuteNavButton.Background = page is Page.Execute or Page.MazeSettings ? new SolidColorBrush(Color.FromRgb(43, 50, 61)) : Brushes.Transparent;
         SettingsNavButton.Background = page == Page.Settings ? new SolidColorBrush(Color.FromRgb(43, 50, 61)) : Brushes.Transparent;
@@ -155,7 +184,13 @@ public partial class MainWindow : Window
 
     private void ReturnToExecutionButton_Click(object sender, RoutedEventArgs e) => SetPage(Page.Execute);
 
-    private void ShowLogDrawerButton_Click(object sender, RoutedEventArgs e) => OpenLogDrawer();
+    private void ShowLogDrawerButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_isLogDrawerOpen)
+            CollapseLogDrawer();
+        else
+            OpenLogDrawer();
+    }
 
     private void CloseLogDrawerButton_Click(object sender, RoutedEventArgs e)
     {
@@ -164,26 +199,21 @@ public partial class MainWindow : Window
 
     private void OpenLogDrawer()
     {
-        if (!_isLogDrawerOpen)
-        {
-            _widthBeforeLogDrawer = Width;
-            if (WindowState == WindowState.Normal)
-                Width += LogDrawerWidth;
-        }
         _isLogDrawerOpen = true;
         LogDrawerColumn.Width = new GridLength(LogDrawerWidth);
         if (ExecutionPanel.Visibility == Visibility.Visible)
+        {
             LogDrawer.Visibility = Visibility.Visible;
+            LogTitleBar.Visibility = Visibility.Visible;
+        }
     }
 
     private void CollapseLogDrawer()
     {
         _isLogDrawerOpen = false;
         LogDrawer.Visibility = Visibility.Collapsed;
+        LogTitleBar.Visibility = Visibility.Collapsed;
         LogDrawerColumn.Width = new GridLength(0);
-        if (_widthBeforeLogDrawer is double width && WindowState == WindowState.Normal)
-            Width = Math.Max(MinWidth, width);
-        _widthBeforeLogDrawer = null;
     }
 
     private void BrowseGameButton_Click(object sender, RoutedEventArgs e)
@@ -201,31 +231,76 @@ public partial class MainWindow : Window
         ConfigStore.Save(config);
     }
 
+    private async Task<bool> EnsureCaptureForRunAsync(string statusTarget)
+    {
+        if (_captureSession.IsRunning)
+            return true;
+        if (statusTarget == "maze")
+            MazeStatusText.Text = "正在启动截图器…";
+        else if (statusTarget == "mainQuest")
+            MainQuestStatusText.Text = "正在启动截图器…";
+        else if (statusTarget == "hardMainQuest")
+            HardMainQuestStatusText.Text = "正在启动截图器…";
+        try
+        {
+            await _captureSession.StartAsync(ConfigStore.Load(), CancellationToken.None);
+            UpdateCaptureUi();
+            AppendLog("执行任务前已自动启动截图器。");
+            return true;
+        }
+        catch (Exception exception)
+        {
+            string message = "截图器启动失败：" + exception.Message;
+            if (statusTarget == "maze")
+                MazeStatusText.Text = message;
+            else if (statusTarget == "mainQuest")
+                MainQuestStatusText.Text = message;
+            else if (statusTarget == "hardMainQuest")
+                HardMainQuestStatusText.Text = message;
+            AppendLog("无法执行任务：" + message);
+            UpdateRunUi();
+            return false;
+        }
+    }
+
     private async void RunMazeButton_Click(object sender, RoutedEventArgs e)
     {
         if (_runCancellation is not null || _isPaused)
             return;
-
         OpenLogDrawer();
-
-        if (!_captureSession.IsRunning)
-        {
-            MazeStatusText.Text = "正在启动截图器…";
-            try
-            {
-                await _captureSession.StartAsync(ConfigStore.Load(), CancellationToken.None);
-                UpdateCaptureUi();
-                AppendLog("执行迷宫前已自动启动截图器。");
-            }
-            catch (Exception exception)
-            {
-                MazeStatusText.Text = "截图器启动失败。";
-                AppendLog("无法执行迷宫：截图器启动失败：" + exception.Message);
-                UpdateRunUi();
-                return;
-            }
-        }
+        if (!await EnsureCaptureForRunAsync("maze"))
+            return;
         await StartMazeAsync();
+    }
+
+    private async void RunMainQuestButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_runCancellation is not null || _isPaused)
+            return;
+        OpenLogDrawer();
+        if (!await EnsureCaptureForRunAsync("mainQuest"))
+            return;
+        await StartMainQuestAsync();
+    }
+
+    private async void RunHardMainQuestButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_runCancellation is not null || _isPaused)
+            return;
+        OpenLogDrawer();
+        if (!await EnsureCaptureForRunAsync("hardMainQuest"))
+            return;
+        await StartHardMainQuestAsync();
+    }
+
+    private async void RunPipelineButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_runCancellation is not null || _isPaused)
+            return;
+        OpenLogDrawer();
+        if (!await EnsureCaptureForRunAsync("pipeline"))
+            return;
+        await StartPipelineAsync();
     }
 
     private async Task StartMazeAsync()
@@ -234,14 +309,14 @@ public partial class MainWindow : Window
         PersistMazeSettings(quiet: true);
         _isPaused = false;
         _pauseRequested = false;
+        _activeTask = ActiveTask.Maze;
         _runCancellation = new CancellationTokenSource();
         UpdateRunUi();
         try
         {
             WindowState = WindowState.Minimized;
             await Task.Delay(250, _runCancellation.Token);
-            var automation = new MazeAutomation(ConfigStore.Load(), AppendLog);
-            await automation.RunOnceAsync(_runCancellation.Token);
+            await RunMazeCoreAsync(_runCancellation.Token);
         }
         catch (OperationCanceledException)
         {
@@ -253,27 +328,202 @@ public partial class MainWindow : Window
         }
         finally
         {
-            if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
-            _runCancellation.Dispose();
-            _runCancellation = null;
-            _isPaused = _pauseRequested;
-            _pauseRequested = false;
-            UpdateRunUi();
+            FinishRunSession();
         }
     }
+
+    private async Task StartMainQuestAsync()
+    {
+        if (_runCancellation is not null) return;
+        _isPaused = false;
+        _pauseRequested = false;
+        _activeTask = ActiveTask.MainQuest;
+        _runCancellation = new CancellationTokenSource();
+        UpdateRunUi();
+        try
+        {
+            WindowState = WindowState.Minimized;
+            await Task.Delay(250, _runCancellation.Token);
+            await RunMainQuestCoreAsync(_runCancellation.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            AppendLog(_pauseRequested ? "自动主线已暂停。" : "自动主线已停止。");
+        }
+        catch (Exception exception)
+        {
+            AppendLog("自动主线错误：" + exception.Message);
+        }
+        finally
+        {
+            FinishRunSession();
+        }
+    }
+
+    private async Task StartHardMainQuestAsync()
+    {
+        if (_runCancellation is not null) return;
+        _isPaused = false;
+        _pauseRequested = false;
+        _activeTask = ActiveTask.HardMainQuest;
+        _runCancellation = new CancellationTokenSource();
+        UpdateRunUi();
+        try
+        {
+            WindowState = WindowState.Minimized;
+            await Task.Delay(250, _runCancellation.Token);
+            await RunHardMainQuestCoreAsync(_runCancellation.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            AppendLog(_pauseRequested ? "困难主线已暂停。" : "困难主线已停止。");
+        }
+        catch (Exception exception)
+        {
+            AppendLog("困难主线错误：" + exception.Message);
+        }
+        finally
+        {
+            FinishRunSession();
+        }
+    }
+
+    private async Task StartPipelineAsync()
+    {
+        if (_runCancellation is not null) return;
+        PersistMazeSettings(quiet: true);
+        bool resume = _isPaused && _activeTask == ActiveTask.Pipeline;
+        _isPaused = false;
+        _pauseRequested = false;
+        if (!resume)
+        {
+            AutomationConfig config = ConfigStore.Load();
+            _pipelineQueue.Clear();
+            foreach (string id in AutomationConfig.NormalizePipelineTaskOrder(config.PipelineTaskOrder))
+            {
+                if (id == "maze" && config.MazeTaskEnabled)
+                    _pipelineQueue.Add(id);
+                else if (id == "mainQuest" && config.MainQuestTaskEnabled)
+                    _pipelineQueue.Add(id);
+                else if (id == "hardMainQuest" && config.HardMainQuestTaskEnabled)
+                    _pipelineQueue.Add(id);
+            }
+
+            _pipelineIndex = 0;
+            if (_pipelineQueue.Contains("maze") && config.MazeRunLimit == 0)
+                AppendLog("一条龙包含迷宫且次数为 0（无限），后续任务会等迷宫结束后才会开始。");
+            if (_pipelineQueue.Count == 0)
+            {
+                AppendLog("一条龙未启用任何任务，已取消。");
+                _activeTask = ActiveTask.None;
+                UpdateRunUi();
+                return;
+            }
+        }
+
+        _activeTask = ActiveTask.Pipeline;
+        _runCancellation = new CancellationTokenSource();
+        UpdateRunUi();
+        try
+        {
+            WindowState = WindowState.Minimized;
+            await Task.Delay(250, _runCancellation.Token);
+            while (_pipelineIndex < _pipelineQueue.Count)
+            {
+                string id = _pipelineQueue[_pipelineIndex];
+                AppendLog($"一条龙：开始 {PipelineTaskDisplayName(id)}（{_pipelineIndex + 1}/{_pipelineQueue.Count}）。");
+                if (id == "maze")
+                    await RunMazeCoreAsync(_runCancellation.Token);
+                else if (id == "hardMainQuest")
+                    await RunHardMainQuestCoreAsync(_runCancellation.Token);
+                else
+                    await RunMainQuestCoreAsync(_runCancellation.Token);
+                _pipelineIndex++;
+            }
+
+            AppendLog("一条龙：已按顺序跑完启用的任务。");
+        }
+        catch (OperationCanceledException)
+        {
+            AppendLog(_pauseRequested ? "一条龙已暂停。" : "一条龙已停止。");
+        }
+        catch (Exception exception)
+        {
+            AppendLog("一条龙错误：" + exception.Message);
+        }
+        finally
+        {
+            FinishRunSession();
+        }
+    }
+
+    private Task RunMazeCoreAsync(CancellationToken cancellationToken)
+    {
+        var automation = new MazeAutomation(ConfigStore.Load(), AppendLog);
+        return automation.RunOnceAsync(cancellationToken);
+    }
+
+    private Task RunMainQuestCoreAsync(CancellationToken cancellationToken)
+    {
+        var automation = new MainQuestAutomation(ConfigStore.Load(), AppendLog);
+        return automation.RunOnceAsync(cancellationToken);
+    }
+
+    private Task RunHardMainQuestCoreAsync(CancellationToken cancellationToken)
+    {
+        var automation = new HardMainQuestAutomation(ConfigStore.Load(), AppendLog);
+        return automation.RunOnceAsync(cancellationToken);
+    }
+
+    private void FinishRunSession()
+    {
+        if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+        _runCancellation?.Dispose();
+        _runCancellation = null;
+        _isPaused = _pauseRequested;
+        _pauseRequested = false;
+        if (!_isPaused)
+        {
+            _activeTask = ActiveTask.None;
+            _pipelineQueue.Clear();
+            _pipelineIndex = 0;
+        }
+
+        UpdateRunUi();
+    }
+
+    private static string PipelineTaskDisplayName(string id) => id switch
+    {
+        "maze" => "迷宫探索",
+        "hardMainQuest" => "自动困难主线",
+        _ => "自动主线任务"
+    };
 
     private void PauseResumeButton_Click(object sender, RoutedEventArgs e)
     {
         if (_isPaused)
         {
-            _ = StartMazeAsync();
+            if (_activeTask == ActiveTask.Pipeline)
+                _ = StartPipelineAsync();
+            else if (_activeTask == ActiveTask.MainQuest)
+                _ = StartMainQuestAsync();
+            else if (_activeTask == ActiveTask.HardMainQuest)
+                _ = StartHardMainQuestAsync();
+            else
+                _ = StartMazeAsync();
             return;
         }
         if (_runCancellation is not null)
         {
             _pauseRequested = true;
             PauseResumeButton.IsEnabled = false;
+            PauseMainQuestButton.IsEnabled = false;
+            PauseHardMainQuestButton.IsEnabled = false;
+            PausePipelineButton.IsEnabled = false;
             PauseResumeButton.Content = "正在暂停…";
+            PauseMainQuestButton.Content = "正在暂停…";
+            PauseHardMainQuestButton.Content = "正在暂停…";
+            PausePipelineButton.Content = "正在暂停…";
             _runCancellation.Cancel();
         }
     }
@@ -282,7 +532,13 @@ public partial class MainWindow : Window
     {
         _pauseRequested = false;
         _isPaused = false;
+        _activeTask = ActiveTask.None;
+        _pipelineQueue.Clear();
+        _pipelineIndex = 0;
         StopButton.IsEnabled = false;
+        StopMainQuestButton.IsEnabled = false;
+        StopHardMainQuestButton.IsEnabled = false;
+        StopPipelineButton.IsEnabled = false;
         _runCancellation?.Cancel();
         if (_runCancellation is null) UpdateRunUi();
     }
@@ -290,14 +546,50 @@ public partial class MainWindow : Window
     private void UpdateRunUi()
     {
         bool running = _runCancellation is not null;
-        RunMazeButton.Visibility = Visibility.Visible;
-        RunMazeButton.IsEnabled = true;
-        PauseResumeButton.Visibility = running || _isPaused ? Visibility.Visible : Visibility.Collapsed;
+        bool showControls = running || _isPaused;
+        bool mazeUi = _activeTask == ActiveTask.Maze;
+        bool mainQuestUi = _activeTask == ActiveTask.MainQuest;
+        bool hardMainQuestUi = _activeTask == ActiveTask.HardMainQuest;
+        bool pipelineUi = _activeTask == ActiveTask.Pipeline;
+        bool idle = !running && !_isPaused;
+
+        RunMazeButton.IsEnabled = idle;
+        RunMainQuestButton.IsEnabled = idle;
+        RunHardMainQuestButton.IsEnabled = idle;
+        RunPipelineButton.IsEnabled = idle;
+        MazePipelineToggle.IsEnabled = idle;
+        MainQuestPipelineToggle.IsEnabled = idle;
+        HardMainQuestPipelineToggle.IsEnabled = idle;
+
+        PauseResumeButton.Visibility = showControls && mazeUi ? Visibility.Visible : Visibility.Collapsed;
+        StopButton.Visibility = showControls && mazeUi ? Visibility.Visible : Visibility.Collapsed;
+        PauseMainQuestButton.Visibility = showControls && mainQuestUi ? Visibility.Visible : Visibility.Collapsed;
+        StopMainQuestButton.Visibility = showControls && mainQuestUi ? Visibility.Visible : Visibility.Collapsed;
+        PauseHardMainQuestButton.Visibility = showControls && hardMainQuestUi ? Visibility.Visible : Visibility.Collapsed;
+        StopHardMainQuestButton.Visibility = showControls && hardMainQuestUi ? Visibility.Visible : Visibility.Collapsed;
+        PausePipelineButton.Visibility = showControls && pipelineUi ? Visibility.Visible : Visibility.Collapsed;
+        StopPipelineButton.Visibility = showControls && pipelineUi ? Visibility.Visible : Visibility.Collapsed;
+        RunPipelineButton.Visibility = pipelineUi && showControls ? Visibility.Collapsed : Visibility.Visible;
+
         PauseResumeButton.IsEnabled = true;
-        PauseResumeButton.Content = _isPaused ? "▶  继续" : "Ⅱ  暂停";
-        StopButton.Visibility = running || _isPaused ? Visibility.Visible : Visibility.Collapsed;
-        StopButton.IsEnabled = true;
-        MazeStatusText.Text = running ? "迷宫探索运行中。" : _isPaused ? "迷宫探索已暂停。" : _captureSession.IsRunning ? "截图器已就绪。" : "等待截图器启动。";
+        PauseMainQuestButton.IsEnabled = true;
+        PauseHardMainQuestButton.IsEnabled = true;
+        PausePipelineButton.IsEnabled = true;
+        string pauseLabel = _isPaused ? "▶" : "Ⅱ";
+        PauseResumeButton.Content = pauseLabel;
+        PauseMainQuestButton.Content = pauseLabel;
+        PauseHardMainQuestButton.Content = pauseLabel;
+        PausePipelineButton.Content = pauseLabel;
+
+        MazeStatusText.Text = mazeUi && running ? "迷宫探索运行中。"
+            : mazeUi && _isPaused ? "迷宫探索已暂停。"
+            : _captureSession.IsRunning ? "截图器已就绪。" : "等待截图器启动。";
+        MainQuestStatusText.Text = mainQuestUi && running ? "自动主线运行中。"
+            : mainQuestUi && _isPaused ? "自动主线已暂停。"
+            : "";
+        HardMainQuestStatusText.Text = hardMainQuestUi && running ? "困难主线运行中。"
+            : hardMainQuestUi && _isPaused ? "困难主线已暂停。"
+            : "";
     }
 
     private void LoadSettings()
@@ -317,8 +609,209 @@ public partial class MainWindow : Window
         PauseHotkeyBox.Text = config.PauseHotkey;
         StopHotkeyBox.Text = config.StopHotkey;
         DiagnosticModeCheckBox.IsChecked = config.SaveDiagnostics;
+        _suppressPipelineToggle = true;
+        MazePipelineToggle.IsChecked = config.MazeTaskEnabled;
+        MainQuestPipelineToggle.IsChecked = config.MainQuestTaskEnabled;
+        HardMainQuestPipelineToggle.IsChecked = config.HardMainQuestTaskEnabled;
+        _suppressPipelineToggle = false;
+        ApplyTaskListOrder(config.PipelineTaskOrder);
         UpdateCaptureUi();
         UpdateRunUi();
+    }
+
+    private void PipelineTaskToggle_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!IsLoaded || _suppressPipelineToggle) return;
+        AutomationConfig config = ConfigStore.Load();
+        config.MazeTaskEnabled = MazePipelineToggle.IsChecked == true;
+        config.MainQuestTaskEnabled = MainQuestPipelineToggle.IsChecked == true;
+        config.HardMainQuestTaskEnabled = HardMainQuestPipelineToggle.IsChecked == true;
+        ConfigStore.Save(config);
+    }
+
+    private void TaskCard_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        _taskDragPending = false;
+        _taskDragSource = null;
+        if (_runCancellation is not null || _isPaused)
+            return;
+        if (e.OriginalSource is DependencyObject origin &&
+            (FindAncestor<Button>(origin) is not null || FindAncestor<CheckBox>(origin) is not null))
+            return;
+        if (sender is not Border card)
+            return;
+        _taskDragSource = card;
+        _taskDragStart = e.GetPosition(this);
+        _taskDragPending = true;
+    }
+
+    private void TaskCard_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        _taskDragPending = false;
+        _taskDragSource = null;
+    }
+
+    private void TaskCard_MouseMove(object sender, MouseEventArgs e)
+    {
+        if (!_taskDragPending || _taskDragSource is null || e.LeftButton != MouseButtonState.Pressed)
+            return;
+        if (_runCancellation is not null || _isPaused)
+            return;
+        Point now = e.GetPosition(this);
+        if (Math.Abs(now.X - _taskDragStart.X) < SystemParameters.MinimumHorizontalDragDistance &&
+            Math.Abs(now.Y - _taskDragStart.Y) < SystemParameters.MinimumVerticalDragDistance)
+            return;
+        _taskDragPending = false;
+        string id = _taskDragSource.Tag as string ?? "";
+        Border dragged = _taskDragSource;
+        dragged.Opacity = 0.55;
+        try
+        {
+            DragDrop.DoDragDrop(dragged, id, DragDropEffects.Move);
+        }
+        finally
+        {
+            dragged.Opacity = 1;
+            ClearTaskDropHighlight();
+            _taskDragSource = null;
+        }
+    }
+
+    private void TaskList_DragOver(object sender, DragEventArgs e)
+    {
+        if (!CanReorderTasks(e))
+        {
+            e.Effects = DragDropEffects.None;
+            e.Handled = true;
+            return;
+        }
+        e.Effects = DragDropEffects.Move;
+        e.Handled = true;
+        UpdateTaskDropHighlight(GetTaskDropIndex(e));
+    }
+
+    private void TaskList_DragLeave(object sender, DragEventArgs e)
+    {
+        Point p = e.GetPosition(TaskListPanel);
+        if (p.X < 0 || p.Y < 0 || p.X > TaskListPanel.ActualWidth || p.Y > TaskListPanel.ActualHeight)
+            ClearTaskDropHighlight();
+    }
+
+    private void TaskList_Drop(object sender, DragEventArgs e)
+    {
+        e.Handled = true;
+        ClearTaskDropHighlight();
+        if (!CanReorderTasks(e))
+            return;
+        string id = (e.Data.GetData(typeof(string)) as string) ?? "";
+        UIElement? source = FindTaskCard(id);
+        if (source is null)
+            return;
+        int from = TaskListPanel.Children.IndexOf(source);
+        int to = GetTaskDropIndex(e);
+        if (from < 0)
+            return;
+        if (from < to)
+            to--;
+        if (to == from || to < 0 || to >= TaskListPanel.Children.Count)
+            return;
+        TaskListPanel.Children.Remove(source);
+        TaskListPanel.Children.Insert(to, source);
+        PersistTaskListOrder();
+    }
+
+    private bool CanReorderTasks(DragEventArgs e) =>
+        _runCancellation is null && !_isPaused && e.Data.GetDataPresent(typeof(string));
+
+    private int GetTaskDropIndex(DragEventArgs e)
+    {
+        Point pos = e.GetPosition(TaskListPanel);
+        for (int i = 0; i < TaskListPanel.Children.Count; i++)
+        {
+            if (TaskListPanel.Children[i] is not FrameworkElement child)
+                continue;
+            Point top = child.TranslatePoint(default, TaskListPanel);
+            if (pos.Y < top.Y + child.ActualHeight / 2)
+                return i;
+        }
+        return TaskListPanel.Children.Count;
+    }
+
+    private void UpdateTaskDropHighlight(int insertIndex)
+    {
+        ClearTaskDropHighlight();
+        if (insertIndex < TaskListPanel.Children.Count && TaskListPanel.Children[insertIndex] is Border before)
+        {
+            before.BorderBrush = new SolidColorBrush(Color.FromRgb(0x3E, 0xA6, 0xF1));
+            before.BorderThickness = new Thickness(0, 2, 0, 0);
+            return;
+        }
+        if (TaskListPanel.Children.Count > 0 && TaskListPanel.Children[^1] is Border last)
+        {
+            last.BorderBrush = new SolidColorBrush(Color.FromRgb(0x3E, 0xA6, 0xF1));
+            last.BorderThickness = new Thickness(0, 0, 0, 2);
+        }
+    }
+
+    private void ClearTaskDropHighlight()
+    {
+        foreach (UIElement child in TaskListPanel.Children)
+        {
+            if (child is not Border card)
+                continue;
+            card.BorderBrush = Brushes.Transparent;
+            card.BorderThickness = new Thickness(0);
+        }
+    }
+
+    private UIElement? FindTaskCard(string id)
+    {
+        foreach (UIElement child in TaskListPanel.Children)
+        {
+            if (child is FrameworkElement el &&
+                string.Equals(el.Tag as string, id, StringComparison.OrdinalIgnoreCase))
+                return child;
+        }
+        return null;
+    }
+
+    private static T? FindAncestor<T>(DependencyObject? current) where T : DependencyObject
+    {
+        while (current is not null)
+        {
+            if (current is T match)
+                return match;
+            current = VisualTreeHelper.GetParent(current);
+        }
+        return null;
+    }
+
+    private void PersistTaskListOrder()
+    {
+        AutomationConfig config = ConfigStore.Load();
+        config.PipelineTaskOrder = TaskListPanel.Children
+            .OfType<FrameworkElement>()
+            .Select(card => card.Tag as string)
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Cast<string>()
+            .ToList();
+        ConfigStore.Save(config);
+    }
+
+    private void ApplyTaskListOrder(IEnumerable<string> order)
+    {
+        Dictionary<string, UIElement> cards = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["maze"] = MazeTaskCard,
+            ["mainQuest"] = MainQuestTaskCard,
+            ["hardMainQuest"] = HardMainQuestTaskCard
+        };
+        TaskListPanel.Children.Clear();
+        foreach (string id in AutomationConfig.NormalizePipelineTaskOrder(order))
+        {
+            if (cards.TryGetValue(id, out UIElement? card))
+                TaskListPanel.Children.Add(card);
+        }
     }
 
     private void MazeRunLimitBox_LostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e) => PersistMazeSettings();
@@ -346,6 +839,7 @@ public partial class MainWindow : Window
 
     private void MovePriorityUp_Click(object sender, RoutedEventArgs e) => MovePriority(-1);
     private void MovePriorityDown_Click(object sender, RoutedEventArgs e) => MovePriority(1);
+    private void MovePriorityTop_Click(object sender, RoutedEventArgs e) => MovePriorityToTop();
     private void MovePriority(int offset)
     {
         int from = TreasurePriorityList.SelectedIndex, to = from + offset;
@@ -354,6 +848,17 @@ public partial class MainWindow : Window
         TreasurePriorityList.Items.RemoveAt(from);
         TreasurePriorityList.Items.Insert(to, item);
         TreasurePriorityList.SelectedIndex = to;
+        PersistMazeSettings();
+    }
+
+    private void MovePriorityToTop()
+    {
+        int from = TreasurePriorityList.SelectedIndex;
+        if (from <= 0) return;
+        object item = TreasurePriorityList.Items[from];
+        TreasurePriorityList.Items.RemoveAt(from);
+        TreasurePriorityList.Items.Insert(0, item);
+        TreasurePriorityList.SelectedIndex = 0;
         PersistMazeSettings();
     }
 
