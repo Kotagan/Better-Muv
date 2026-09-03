@@ -44,7 +44,17 @@ public partial class MainWindow
             var name = new TextBlock { FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center };
             var buyAllLabel = new TextBlock { Text = "全买", Foreground = new SolidColorBrush(Color.FromRgb(190, 199, 210)), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 7, 0) };
             var buyAll = new CheckBox { Style = (Style)FindResource("ToggleSwitch"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) };
-            var quantity = new TextBox { Width = 56, Height = 28, Text = "0", VerticalContentAlignment = VerticalAlignment.Center, HorizontalContentAlignment = HorizontalAlignment.Center };
+            var quantity = new TextBox
+            {
+                Width = 72,
+                Height = 32,
+                MinHeight = 32,
+                Padding = new Thickness(4, 2, 4, 2),
+                Text = "0",
+                FontSize = 14,
+                VerticalContentAlignment = VerticalAlignment.Center,
+                HorizontalContentAlignment = HorizontalAlignment.Center
+            };
             quantity.LostKeyboardFocus += (_, _) => PersistShopPurchases(true);
             buyAll.Checked += (_, _) => UpdateBuyAllState(slot);
             buyAll.Unchecked += (_, _) => UpdateBuyAllState(slot);
@@ -94,13 +104,24 @@ public partial class MainWindow
         for (int i = 0; i < 6; i++)
         {
             bool enabled = i < active && !string.IsNullOrWhiteSpace(names[i]);
-            _shopItemNameBlocks[i].Text = enabled ? names[i] : "—";
-            bool buyAll = enabled && quantities[i] == -1;
+            _shopItemCards[i].Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
+            if (!enabled)
+            {
+                _shopItemNameBlocks[i].Text = "";
+                _shopBuyAllSwitches[i].IsChecked = false;
+                _shopBuyAllSwitches[i].IsEnabled = false;
+                _shopQuantityBoxes[i].Text = "0";
+                _shopQuantityBoxes[i].IsEnabled = false;
+                continue;
+            }
+
+            _shopItemNameBlocks[i].Text = names[i];
+            bool buyAll = quantities[i] == -1;
             _shopBuyAllSwitches[i].IsChecked = buyAll;
-            _shopQuantityBoxes[i].Text = enabled && !buyAll ? quantities[i].ToString() : "0";
-            _shopQuantityBoxes[i].IsEnabled = enabled && !buyAll;
-            _shopBuyAllSwitches[i].IsEnabled = enabled;
-            _shopItemCards[i].Opacity = enabled ? 1 : .35;
+            _shopQuantityBoxes[i].Text = buyAll ? "0" : quantities[i].ToString();
+            _shopQuantityBoxes[i].IsEnabled = !buyAll;
+            _shopBuyAllSwitches[i].IsEnabled = true;
+            _shopItemCards[i].Opacity = 1;
         }
         _isLoadingShopValues = false;
     }

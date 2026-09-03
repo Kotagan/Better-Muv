@@ -6,7 +6,7 @@ public static class SettlementShopCatalog
 
     public static string CategoryDisplayName(string key) => key switch
     {
-        "daily" => "日常（买够数量后停止，每天 4 点刷新）",
+        "daily" => "日常",
         "equipment" => "装备",
         "excavation" => "挖掘",
         "artifactor" => "Artifactor",
