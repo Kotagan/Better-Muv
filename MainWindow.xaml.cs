@@ -26,7 +26,10 @@ public partial class MainWindow : Window
     private bool _pauseRequested;
     private bool _isPaused;
     private bool _isLogDrawerOpen;
+    private double? _widthBeforeLogDrawer;
     private const double LogDrawerWidth = 360;
+    private const string FluentPlay = "\uE768";
+    private const string FluentPause = "\uE769";
     private enum ActiveTask { None, Maze, MainQuest, HardMainQuest, Pipeline }
     private ActiveTask _activeTask = ActiveTask.None;
     private readonly List<string> _pipelineQueue = [];
@@ -83,7 +86,6 @@ public partial class MainWindow : Window
             CollapseLogDrawer();
         else
             LogDrawer.Visibility = page == Page.Execute && _isLogDrawerOpen ? Visibility.Visible : Visibility.Collapsed;
-        LogTitleBar.Visibility = LogDrawer.Visibility;
         HomeNavButton.Background = page == Page.Home ? new SolidColorBrush(Color.FromRgb(43, 50, 61)) : Brushes.Transparent;
         ExecuteNavButton.Background = page is Page.Execute or Page.MazeSettings ? new SolidColorBrush(Color.FromRgb(43, 50, 61)) : Brushes.Transparent;
         SettingsNavButton.Background = page == Page.Settings ? new SolidColorBrush(Color.FromRgb(43, 50, 61)) : Brushes.Transparent;
@@ -197,31 +199,101 @@ public partial class MainWindow : Window
         CollapseLogDrawer();
     }
 
+    private void ExportLogButton_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new SaveFileDialog
+        {
+            Title = "导出运行日志",
+            Filter = "文本文件 (*.txt)|*.txt",
+            DefaultExt = ".txt",
+            FileName = $"Better-Muv-log-{DateTime.Now:yyyyMMdd-HHmmss}.txt",
+            AddExtension = true,
+            OverwritePrompt = true
+        };
+        if (dialog.ShowDialog(this) != true)
+            return;
+        try
+        {
+            File.WriteAllText(dialog.FileName, LogBox.Text ?? "");
+            AppendLog("已导出日志：" + dialog.FileName);
+        }
+        catch (Exception exception)
+        {
+            AppendLog("导出日志失败：" + exception.Message);
+        }
+    }
+
     private void OpenLogDrawer()
     {
+        if (!_isLogDrawerOpen)
+        {
+            _widthBeforeLogDrawer = Width;
+            if (WindowState == WindowState.Normal)
+                Width += LogDrawerWidth;
+        }
         _isLogDrawerOpen = true;
         LogDrawerColumn.Width = new GridLength(LogDrawerWidth);
         if (ExecutionPanel.Visibility == Visibility.Visible)
-        {
             LogDrawer.Visibility = Visibility.Visible;
-            LogTitleBar.Visibility = Visibility.Visible;
-        }
     }
 
     private void CollapseLogDrawer()
     {
         _isLogDrawerOpen = false;
         LogDrawer.Visibility = Visibility.Collapsed;
-        LogTitleBar.Visibility = Visibility.Collapsed;
         LogDrawerColumn.Width = new GridLength(0);
+        if (_widthBeforeLogDrawer is double width && WindowState == WindowState.Normal)
+            Width = Math.Max(MinWidth, width);
+        _widthBeforeLogDrawer = null;
     }
 
     private void BrowseGameButton_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new OpenFileDialog { Title = "选择 MuvLuv Girls Garden 程序", Filter = "程序 (*.exe)|*.exe" };
         if (dialog.ShowDialog(this) != true) return;
-        GamePathBox.Text = dialog.FileName;
-        SaveGameLaunchSettings();
+        ApplyGamePath(dialog.FileName, quiet: false);
+    }
+
+    private void FindGameButton_Click(object sender, RoutedEventArgs e)
+    {
+        string? found = GamePathLocator.TryFind(GamePathBox.Text);
+        if (found is null)
+        {
+            AppendLog("未找到游戏：请确认已安装，或手动浏览选择 muv_luv_girlsgardenx_cl.exe。");
+            return;
+        }
+
+        ApplyGamePath(found, quiet: false);
+    }
+
+    private void ApplyGamePath(string path, bool quiet)
+    {
+        GamePathBox.Text = path;
+        AutomationConfig config = ConfigStore.Load();
+        config.GameExecutablePath = path;
+        ConfigStore.Save(config);
+        if (!quiet)
+            AppendLog("已设置游戏路径：" + path);
+    }
+
+    private void EnsureGamePathResolved()
+    {
+        AutomationConfig config = ConfigStore.Load();
+        if (GamePathLocator.IsValid(config.GameExecutablePath))
+        {
+            GamePathBox.Text = config.GameExecutablePath;
+            return;
+        }
+
+        string? found = GamePathLocator.TryFind(config.GameExecutablePath);
+        if (found is null)
+        {
+            GamePathBox.Text = config.GameExecutablePath;
+            return;
+        }
+
+        ApplyGamePath(found, quiet: true);
+        AppendLog("已自动找到游戏：" + found);
     }
 
     private void SaveGameLaunchSettings()
@@ -520,10 +592,6 @@ public partial class MainWindow : Window
             PauseMainQuestButton.IsEnabled = false;
             PauseHardMainQuestButton.IsEnabled = false;
             PausePipelineButton.IsEnabled = false;
-            PauseResumeButton.Content = "正在暂停…";
-            PauseMainQuestButton.Content = "正在暂停…";
-            PauseHardMainQuestButton.Content = "正在暂停…";
-            PausePipelineButton.Content = "正在暂停…";
             _runCancellation.Cancel();
         }
     }
@@ -575,11 +643,16 @@ public partial class MainWindow : Window
         PauseMainQuestButton.IsEnabled = true;
         PauseHardMainQuestButton.IsEnabled = true;
         PausePipelineButton.IsEnabled = true;
-        string pauseLabel = _isPaused ? "▶" : "Ⅱ";
-        PauseResumeButton.Content = pauseLabel;
-        PauseMainQuestButton.Content = pauseLabel;
-        PauseHardMainQuestButton.Content = pauseLabel;
-        PausePipelineButton.Content = pauseLabel;
+        string pauseGlyph = _isPaused ? FluentPlay : FluentPause;
+        string pauseTip = _isPaused ? "继续" : "暂停";
+        PauseResumeButton.Content = pauseGlyph;
+        PauseMainQuestButton.Content = pauseGlyph;
+        PauseHardMainQuestButton.Content = pauseGlyph;
+        PausePipelineButton.Content = pauseGlyph;
+        PauseResumeButton.ToolTip = pauseTip;
+        PauseMainQuestButton.ToolTip = pauseTip;
+        PauseHardMainQuestButton.ToolTip = pauseTip;
+        PausePipelineButton.ToolTip = pauseTip;
 
         MazeStatusText.Text = mazeUi && running ? "迷宫探索运行中。"
             : mazeUi && _isPaused ? "迷宫探索已暂停。"
@@ -596,7 +669,7 @@ public partial class MainWindow : Window
     {
         AutomationConfig config = ConfigStore.Load();
         LaunchGameCheckBox.IsChecked = config.LaunchGameWithCapture;
-        GamePathBox.Text = config.GameExecutablePath;
+        EnsureGamePathResolved();
         MazeRunLimitBox.Text = config.MazeRunLimit.ToString();
         DifficultyKeepRadio.IsChecked = MazeDifficultyRunner.NormalizeMode(config.MazeDifficultyMode) != "custom";
         DifficultyCustomRadio.IsChecked = !DifficultyKeepRadio.IsChecked;
