@@ -51,8 +51,15 @@ public sealed class GameCaptureSession
     private async Task LaunchGameAndWaitAsync(
         AutomationConfig config, ScreenAutomation screen, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(config.GameExecutablePath))
-            throw new InvalidOperationException("已启用“同时启动游戏”，但尚未在设置中选择游戏 exe。 ");
+        if (string.IsNullOrWhiteSpace(config.GameExecutablePath) || !File.Exists(config.GameExecutablePath))
+        {
+            string? found = GamePathLocator.TryFind(config.GameExecutablePath);
+            if (found is null)
+                throw new InvalidOperationException("已启用“同时启动游戏”，但尚未找到游戏 exe。请在设置中自动搜索或手动浏览。");
+            config.GameExecutablePath = found;
+            ConfigStore.Save(config);
+            _log("已自动找到游戏：" + found);
+        }
         if (!File.Exists(config.GameExecutablePath))
             throw new FileNotFoundException("游戏 exe 不存在。", config.GameExecutablePath);
 

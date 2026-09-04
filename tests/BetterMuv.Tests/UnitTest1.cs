@@ -95,6 +95,9 @@ public class AutomationConfigTests
         Assert.Equal(90, config.GameLaunchTimeoutSeconds);
         Assert.Equal(["maze", "mainQuest", "hardMainQuest"], AutomationConfig.NormalizePipelineTaskOrder(null));
         Assert.Equal(["mainQuest", "maze", "hardMainQuest"], AutomationConfig.NormalizePipelineTaskOrder(["mainQuest", "maze", "unknown"]));
+        Assert.Equal("muv_luv_girlsgardenx_cl.exe", GamePathLocator.ExecutableName);
+        Assert.False(GamePathLocator.IsValid(null));
+        Assert.False(GamePathLocator.IsValid(@"C:\missing\muv_luv_girlsgardenx_cl.exe"));
     }
 
     [Fact]
