@@ -12,6 +12,7 @@ namespace BetterMuv;
 
 public partial class MainWindow : Window
 {
+    private bool _loadingRunWindows;
     private static readonly IReadOnlyDictionary<string, string> TreasureNames =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
@@ -45,6 +46,7 @@ public partial class MainWindow : Window
         _captureSession = new GameCaptureSession(AppendLog);
         InitializeShopPanel();
         LoadSettings();
+        LoadRunWindows();
         SetPage(Page.Home);
         AppendLog("配置文件：" + _configPath);
         AppendLog("等待启动截图器。");
@@ -152,6 +154,75 @@ public partial class MainWindow : Window
         if (!IsLoaded) return;
         AutomationConfig config = ConfigStore.Load();
         config.LaunchGameWithCapture = LaunchGameCheckBox.IsChecked == true;
+        ConfigStore.Save(config);
+    }
+
+    private void RunWindowComboBox_DropDownOpened(object sender, EventArgs e) => LoadRunWindows();
+
+    private void LoadRunWindows()
+    {
+        AutomationConfig config = ConfigStore.Load();
+        var capture = new WindowCaptureService();
+        List<WindowCandidate> candidates = capture.EnumerateWindows();
+        _loadingRunWindows = true;
+        try
+        {
+            RunWindowComboBox.Items.Clear();
+            RunWindowComboBox.Items.Add(new ComboBoxItem { Content = "游戏窗口（默认）", Tag = null });
+            foreach (WindowCandidate candidate in candidates)
+                RunWindowComboBox.Items.Add(new ComboBoxItem { Content = candidate.DisplayName, Tag = candidate });
+
+            int selectedIndex = 0;
+            if (config.WindowSelectionMode.Equals("selected", StringComparison.OrdinalIgnoreCase))
+            {
+                for (int i = 1; i < RunWindowComboBox.Items.Count; i++)
+                {
+                    if (RunWindowComboBox.Items[i] is ComboBoxItem { Tag: WindowCandidate candidate } &&
+                        candidate.ProcessName.Equals(config.SelectedWindowProcessName, StringComparison.OrdinalIgnoreCase) &&
+                        candidate.ClassName.Equals(config.SelectedWindowClassName, StringComparison.Ordinal) &&
+                        candidate.Title.Equals(config.SelectedWindowTitle, StringComparison.Ordinal))
+                    {
+                        selectedIndex = i;
+                        break;
+                    }
+                }
+                if (selectedIndex == 0)
+                {
+                    RunWindowComboBox.Items.Add(new ComboBoxItem
+                    {
+                        Content = $"已保存（当前未找到）— {config.SelectedWindowProcessName} — {config.SelectedWindowTitle}",
+                        Tag = "saved"
+                    });
+                    selectedIndex = RunWindowComboBox.Items.Count - 1;
+                }
+            }
+            RunWindowComboBox.SelectedIndex = selectedIndex;
+        }
+        finally { _loadingRunWindows = false; }
+    }
+
+    private void RunWindowComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loadingRunWindows || !IsLoaded || RunWindowComboBox.SelectedItem is not ComboBoxItem item)
+            return;
+        if (item.Tag is string) return;
+        AutomationConfig config = ConfigStore.Load();
+        if (item.Tag is WindowCandidate candidate)
+        {
+            config.WindowSelectionMode = "selected";
+            config.SelectedWindowProcessName = candidate.ProcessName;
+            config.SelectedWindowClassName = candidate.ClassName;
+            config.SelectedWindowTitle = candidate.Title;
+            AppendLog("已保存运行窗口：" + candidate.DisplayName);
+        }
+        else
+        {
+            config.WindowSelectionMode = "game";
+            config.SelectedWindowProcessName = "";
+            config.SelectedWindowClassName = "";
+            config.SelectedWindowTitle = "";
+            AppendLog("运行窗口已恢复为默认游戏窗口。");
+        }
         ConfigStore.Save(config);
     }
 
@@ -977,8 +1048,9 @@ public partial class MainWindow : Window
             AutomationConfig config = ConfigStore.Load();
             var screen = new ScreenAutomation(config, AppendLog);
             GameWindow window = screen.FindWindow(config.WindowTitleKeyword);
-            screen.EnsureSixteenByNine(window);
-            BitmapSource image = screen.Capture.Capture(window, window.DisplayRect);
+            screen.EnsureUsableViewport(window);
+            ScreenRect viewport = screen.Viewport(window);
+            BitmapSource image = screen.Capture.Capture(window, viewport);
             CaptureGeometry geometry = screen.Geometry(window);
             int width = Math.Max(1, (int)Math.Round(template.PixelWidth / geometry.ScaleX));
             int height = Math.Max(1, (int)Math.Round(template.PixelHeight / geometry.ScaleY));

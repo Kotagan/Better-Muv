@@ -23,6 +23,7 @@ public sealed class MainQuestAutomation
     private readonly TemplateMatcher _banner;
     private readonly TemplateMatcher _start;
     private readonly TemplateMatcher _sortie;
+    private readonly TemplateMatcher _scenarioReplay;
     private readonly TemplateMatcher _skip;
     private readonly TemplateMatcher _skipAlt;
     private readonly TemplateMatcher _next;
@@ -34,16 +35,16 @@ public sealed class MainQuestAutomation
         _config = config;
         _log = log;
         _screen = new ScreenAutomation(config, log);
-        string dir = Path.Combine(AppContext.BaseDirectory, "Assets", "Templates");
-        _homeQuest = new TemplateMatcher(Path.Combine(dir, "main-quest-home-quest.png"));
-        _banner = new TemplateMatcher(Path.Combine(dir, "main-quest-banner.png"));
-        _start = new TemplateMatcher(Path.Combine(dir, "main-quest-start.png"));
-        _sortie = new TemplateMatcher(Path.Combine(dir, "main-quest-sortie.png"));
-        _skip = new TemplateMatcher(Path.Combine(dir, "main-quest-skip.png"));
-        _skipAlt = new TemplateMatcher(Path.Combine(dir, "battle-skip.png"));
-        _next = new TemplateMatcher(Path.Combine(dir, "main-quest-next.png"));
-        _rematch = new TemplateMatcher(Path.Combine(dir, "main-quest-rematch.png"));
-        _toHome = new TemplateMatcher(Path.Combine(dir, "main-quest-to-home.png"));
+        _homeQuest = TemplateAssets.Load("main-quest-home-quest.png");
+        _banner = TemplateAssets.Load("main-quest-banner.png");
+        _start = TemplateAssets.Load("main-quest-start.png");
+        _sortie = TemplateAssets.Load("main-quest-sortie.png");
+        _scenarioReplay = TemplateAssets.Load("main-quest-scenario-replay.png");
+        _skip = TemplateAssets.Load("main-quest-skip.png");
+        _skipAlt = TemplateAssets.Load("battle-skip.png");
+        _next = TemplateAssets.Load("main-quest-next.png");
+        _rematch = TemplateAssets.Load("main-quest-rematch.png");
+        _toHome = TemplateAssets.Load("main-quest-to-home.png");
     }
 
     public async Task RunOnceAsync(CancellationToken cancellationToken)
@@ -59,7 +60,7 @@ public sealed class MainQuestAutomation
 
         await Task.Delay(200, cancellationToken);
         window = _screen.Refresh(window);
-        _screen.EnsureSixteenByNine(window);
+        _screen.EnsureUsableViewport(window);
         _log($"自动主线：客户区 {window.ClientRect.Width}×{window.ClientRect.Height}，显示器 {window.DisplayRect.Width}×{window.DisplayRect.Height}");
         await new HudHomeReturn(_config, _screen, _log).TryAsync(window, cancellationToken);
         window = _screen.Refresh(window);
@@ -84,8 +85,8 @@ public sealed class MainQuestAutomation
             {
                 Phase.Home => [("homeQuest", _homeQuest)],
                 Phase.Banner => [("banner", _banner), ("start", _start)],
-                Phase.Start => [("start", _start), ("sortie", _sortie)],
-                Phase.Sortie => [("sortie", _sortie), ("skip", _skip), ("skipAlt", _skipAlt), ("rematch", _rematch), ("toHome", _toHome)],
+                Phase.Start => [("start", _start), ("sortie", _sortie), ("scenarioReplay", _scenarioReplay)],
+                Phase.Sortie => [("sortie", _sortie), ("scenarioReplay", _scenarioReplay), ("skip", _skip), ("skipAlt", _skipAlt), ("rematch", _rematch), ("toHome", _toHome)],
                 Phase.Battle => [("skip", _skip), ("skipAlt", _skipAlt), ("next", _next), ("rematch", _rematch), ("toHome", _toHome)],
                 _ => [("next", _next), ("start", _start), ("rematch", _rematch), ("toHome", _toHome)]
             };
@@ -189,6 +190,16 @@ public sealed class MainQuestAutomation
                 continue;
             }
 
+            if (TryHit(probes, "scenarioReplay", out TemplateProbeResult scenarioReplay) &&
+                ReadyToClick(lastClick, lastClickAt, "scenarioReplay"))
+            {
+                MarkClick(ref lastClick, ref lastClickAt, "scenarioReplay");
+                await ClickMatchAsync(window, scenarioReplay, "情景再现", cancellationToken);
+                phase = Phase.Battle;
+                missTimer.Restart();
+                continue;
+            }
+
             if (TryHit(probes, "start", out TemplateProbeResult start) &&
                 ReadyToClick(lastClick, lastClickAt, "start"))
             {
@@ -231,11 +242,9 @@ public sealed class MainQuestAutomation
         IReadOnlyList<(string Key, TemplateMatcher Matcher)> jobs,
         CancellationToken cancellationToken)
     {
-        window = _screen.Refresh(window);
-        var map = new Dictionary<string, TemplateProbeResult>(StringComparer.OrdinalIgnoreCase);
-        foreach ((string key, TemplateMatcher matcher) in jobs)
+        var probes = jobs.Select(job =>
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            (string key, TemplateMatcher matcher) = job;
             (ConfigPoint topLeft, ConfigSize size) = RoiFor(key);
             double threshold = key switch
             {
@@ -243,11 +252,9 @@ public sealed class MainQuestAutomation
                 "rematch" => 0.72,
                 _ => PresenceThreshold
             };
-            map[key] = await _screen.ProbeAsync(
-                window, matcher, topLeft, size, cancellationToken, threshold);
-        }
-
-        return map;
+            return new TemplateProbe(key, matcher, topLeft, size, threshold);
+        });
+        return await _screen.ProbeManyAsync(window, probes, cancellationToken);
     }
 
     private (ConfigPoint TopLeft, ConfigSize Size) RoiFor(string key) => key switch
@@ -256,6 +263,7 @@ public sealed class MainQuestAutomation
         "banner" => (_config.MainQuestBannerTopLeft, _config.MainQuestBannerSize),
         "start" => (_config.MainQuestStartTopLeft, _config.MainQuestStartSize),
         "sortie" => (_config.MainQuestSortieTopLeft, _config.MainQuestSortieSize),
+        "scenarioReplay" => (_config.MainQuestSortieTopLeft, _config.MainQuestSortieSize),
         "skip" or "skipAlt" => (_config.MainQuestSkipTopLeft, _config.MainQuestSkipSize),
         "next" => (_config.MainQuestNextTopLeft, _config.MainQuestNextSize),
         "rematch" => (_config.MainQuestRematchTopLeft, _config.MainQuestRematchSize),
@@ -288,14 +296,7 @@ public sealed class MainQuestAutomation
     private static bool TryHit(
         IReadOnlyDictionary<string, TemplateProbeResult> probes, string key, out TemplateProbeResult probe)
     {
-        if (probes.TryGetValue(key, out TemplateProbeResult? found) && found.IsMatch)
-        {
-            probe = found;
-            return true;
-        }
-
-        probe = new TemplateProbeResult(false, 0, new Point());
-        return false;
+        return TemplateProbes.TryGetHit(probes, key, out probe);
     }
 
     private static bool ReadyToClick(string? lastClick, Stopwatch lastClickAt, string key) =>
@@ -310,8 +311,6 @@ public sealed class MainQuestAutomation
     private async Task ClickMatchAsync(
         GameWindow window, TemplateProbeResult probe, string reason, CancellationToken cancellationToken)
     {
-        _log($"{reason}命中 {probe.Score:F3}，点击 ({probe.Center.X:F0},{probe.Center.Y:F0})");
-        await _screen.ClickScreenAsync(window, probe.Center, cancellationToken);
-        await Task.Delay(500, cancellationToken);
+        await _screen.ClickProbeAsync(window, probe, reason, cancellationToken);
     }
 }

@@ -29,6 +29,33 @@ public class CaptureGeometryTests
     }
 
     [Fact]
+    public void NonSixteenByNineViewportUsesIndependentAxesAndOrigin()
+    {
+        var geometry = new CaptureGeometry(new ScreenRect(12, 80, 1600, 1000), 1920, 1080);
+
+        Point bottomRight = geometry.ToScreen(new ConfigPoint(1920, 1080));
+
+        Assert.Equal(1612, bottomRight.X);
+        Assert.Equal(1080, bottomRight.Y);
+        Assert.Equal(1600 / 1920.0, geometry.ScaleX);
+        Assert.Equal(1000 / 1080.0, geometry.ScaleY);
+    }
+
+    [Fact]
+    public void NonSixteenByNineRegionStaysInsideViewport()
+    {
+        var geometry = new CaptureGeometry(new ScreenRect(12, 80, 1600, 1000), 1920, 1080);
+
+        ScreenRect region = geometry.RegionFromTopLeftToScreen(
+            new ConfigPoint(1420, 0), new ConfigSize(500, 260));
+
+        Assert.True(region.Left >= geometry.ViewportRect.Left);
+        Assert.True(region.Top >= geometry.ViewportRect.Top);
+        Assert.True(region.Right <= geometry.ViewportRect.Right);
+        Assert.True(region.Bottom <= geometry.ViewportRect.Bottom);
+    }
+
+    [Fact]
     public void ScaleDeltaUsesSameCoefficients()
     {
         var geometry = new CaptureGeometry(new ScreenRect(10, 20, 3840, 2160), 1920, 1080);
@@ -267,6 +294,33 @@ public class AutomationConfigTests
         {
             if (File.Exists(path))
                 File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void SelectedWindowRoundTripsThroughJson()
+    {
+        string path = Path.Combine(Path.GetTempPath(), $"better-muv-window-{Guid.NewGuid():N}.json");
+        try
+        {
+            var config = new AutomationConfig
+            {
+                WindowSelectionMode = "selected",
+                SelectedWindowProcessName = "chrome",
+                SelectedWindowClassName = "Chrome_WidgetWin_1",
+                SelectedWindowTitle = "Muv-Luv - Google Chrome"
+            };
+            config.Save(path);
+
+            AutomationConfig loaded = AutomationConfig.Load(path);
+            Assert.Equal("selected", loaded.WindowSelectionMode);
+            Assert.Equal("chrome", loaded.SelectedWindowProcessName);
+            Assert.Equal("Chrome_WidgetWin_1", loaded.SelectedWindowClassName);
+            Assert.Equal("Muv-Luv - Google Chrome", loaded.SelectedWindowTitle);
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
         }
     }
 

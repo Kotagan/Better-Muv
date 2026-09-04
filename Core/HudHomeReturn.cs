@@ -9,6 +9,9 @@ public sealed class HudHomeReturn
 {
     private const int MaxClicks = 3;
     private const int AfterClickDelayMs = 800;
+    // 浏览器客户区宽高可变；右上角锚点使用较宽的参考区域兜底搜索。
+    private static readonly ConfigPoint TopRightAnchorTopLeft = new(1420, 0);
+    private static readonly ConfigSize TopRightAnchorSize = new(500, 260);
 
     private readonly AutomationConfig _config;
     private readonly ScreenAutomation _screen;
@@ -20,7 +23,7 @@ public sealed class HudHomeReturn
         _config = config;
         _screen = screen;
         _log = log;
-        _matcher = new TemplateMatcher(Path.Combine(AppContext.BaseDirectory, "Assets", "Templates", "hud-home.png"));
+        _matcher = TemplateAssets.Load("hud-home.png");
     }
 
     public async Task TryAsync(GameWindow window, CancellationToken cancellationToken)
@@ -36,6 +39,19 @@ public sealed class HudHomeReturn
                 _config.HudHomeTopLeft,
                 _config.HudHomeSize,
                 cancellationToken);
+            if (!probe.IsMatch &&
+                (_config.HudHomeTopLeft != TopRightAnchorTopLeft ||
+                 _config.HudHomeSize != TopRightAnchorSize))
+            {
+                TemplateProbeResult anchorProbe = await _screen.ProbeAsync(
+                    window,
+                    _matcher,
+                    TopRightAnchorTopLeft,
+                    TopRightAnchorSize,
+                    cancellationToken);
+                if (anchorProbe.Score > probe.Score)
+                    probe = anchorProbe;
+            }
             if (!probe.IsMatch)
             {
                 if (clicked == 0)

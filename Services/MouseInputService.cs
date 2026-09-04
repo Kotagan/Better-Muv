@@ -11,6 +11,7 @@ public sealed class MouseInputService
     private const uint Move = 0x0001;
     private const uint LeftDown = 0x0002;
     private const uint LeftUp = 0x0004;
+    private const uint Wheel = 0x0800;
     private const uint KeyUp = 0x0002;
     private const uint VirtualDesk = 0x4000;
     private const uint Absolute = 0x8000;
@@ -66,6 +67,47 @@ public sealed class MouseInputService
         return GetForegroundWindow() == windowHandle;
     }
 
+    public async Task WheelAsync(
+        nint windowHandle, Point screenPoint, int wheelNotches, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!IsWindow(windowHandle))
+            throw new InvalidOperationException("滚动前发现游戏窗口已经关闭。");
+        EnsureForeground(windowHandle);
+        SendMove((int)Math.Round(screenPoint.X), (int)Math.Round(screenPoint.Y));
+        await Task.Delay(40, cancellationToken);
+        SendMouse(0, 0, Wheel, unchecked((uint)(wheelNotches * 120)));
+    }
+
+    public async Task DragAsync(
+        nint windowHandle, Point from, Point to, CancellationToken cancellationToken, int steps = 12)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!IsWindow(windowHandle))
+            throw new InvalidOperationException("拖动前发现游戏窗口已经关闭。");
+        EnsureForeground(windowHandle);
+        SendMove((int)Math.Round(from.X), (int)Math.Round(from.Y));
+        await Task.Delay(60, cancellationToken);
+        bool isDown = false;
+        try
+        {
+            SendMouse(0, 0, LeftDown);
+            isDown = true;
+            for (int i = 1; i <= Math.Max(2, steps); i++)
+            {
+                double t = i / (double)Math.Max(2, steps);
+                SendMove(
+                    (int)Math.Round(from.X + (to.X - from.X) * t),
+                    (int)Math.Round(from.Y + (to.Y - from.Y) * t));
+                await Task.Delay(18, cancellationToken);
+            }
+        }
+        finally
+        {
+            if (isDown) SendMouse(0, 0, LeftUp);
+        }
+    }
+
     public static bool IsForeground(nint windowHandle) =>
         IsWindow(windowHandle) && GetForegroundWindow() == windowHandle;
 
@@ -111,7 +153,7 @@ public sealed class MouseInputService
         SendMouse(absoluteX, absoluteY, Move | Absolute | VirtualDesk);
     }
 
-    private static void SendMouse(int dx, int dy, uint flags)
+    private static void SendMouse(int dx, int dy, uint flags, uint mouseData = 0)
     {
         Input[] inputs =
         [
@@ -120,7 +162,7 @@ public sealed class MouseInputService
                 Type = InputMouse,
                 Data = new InputUnion
                 {
-                    Mouse = new MouseInput { Dx = dx, Dy = dy, Flags = flags }
+                    Mouse = new MouseInput { Dx = dx, Dy = dy, MouseData = mouseData, Flags = flags }
                 }
             }
         ];

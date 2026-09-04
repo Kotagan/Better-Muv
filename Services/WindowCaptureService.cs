@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows;
@@ -8,6 +9,10 @@ using BetterMuv.Core;
 namespace BetterMuv.Services;
 
 public sealed record GameWindow(nint Handle, string Title, ScreenRect ClientRect, ScreenRect DisplayRect);
+public sealed record WindowCandidate(nint Handle, string Title, string ProcessName, string ClassName)
+{
+    public string DisplayName => $"{ProcessName} — {Title}";
+}
 
 public sealed class WindowCaptureService
 {
@@ -41,6 +46,55 @@ public sealed class WindowCaptureService
 
         return match ?? throw new InvalidOperationException($"找不到标题包含“{titleKeyword}”的可见窗口。");
     }
+
+    public GameWindow FindWindow(AutomationConfig config)
+    {
+        if (!config.WindowSelectionMode.Equals("selected", StringComparison.OrdinalIgnoreCase))
+            return FindWindow(config.WindowTitleKeyword);
+
+        List<WindowCandidate> candidates = EnumerateWindows();
+        List<WindowCandidate> sameKind = candidates.Where(candidate =>
+            candidate.ProcessName.Equals(config.SelectedWindowProcessName, StringComparison.OrdinalIgnoreCase) &&
+            candidate.ClassName.Equals(config.SelectedWindowClassName, StringComparison.Ordinal)).ToList();
+        WindowCandidate? match = sameKind.FirstOrDefault(candidate =>
+            candidate.Title.Equals(config.SelectedWindowTitle, StringComparison.Ordinal));
+        if (match is null && sameKind.Count == 1)
+            match = sameKind[0];
+        if (match is null)
+            throw new InvalidOperationException(sameKind.Count > 1
+                ? "浏览器中存在多个候选窗口且原窗口标题已变化，请在首页重新选择运行窗口。"
+                : "找不到上次选择的浏览器窗口，请在首页重新选择运行窗口。");
+        return CreateGameWindow(match.Handle, match.Title);
+    }
+
+    public List<WindowCandidate> EnumerateWindows()
+    {
+        var windows = new List<WindowCandidate>();
+        int ownProcessId = Environment.ProcessId;
+        EnumWindows((handle, _) =>
+        {
+            if (!IsWindowVisible(handle) || IsIconic(handle)) return true;
+            int length = GetWindowTextLength(handle);
+            if (length == 0) return true;
+            var title = new StringBuilder(length + 1);
+            GetWindowText(handle, title, title.Capacity);
+            GetWindowThreadProcessId(handle, out uint processId);
+            if (processId == ownProcessId) return true;
+            try
+            {
+                string processName = Process.GetProcessById((int)processId).ProcessName;
+                var className = new StringBuilder(256);
+                GetClassName(handle, className, className.Capacity);
+                windows.Add(new WindowCandidate(handle, title.ToString(), processName, className.ToString()));
+            }
+            catch { /* 窗口可能在枚举过程中退出或拒绝访问。 */ }
+            return true;
+        }, 0);
+        return windows.OrderBy(w => w.ProcessName).ThenBy(w => w.Title).ToList();
+    }
+
+    private static GameWindow CreateGameWindow(nint handle, string title) => new(
+        handle, title, GetClientRectOnScreen(handle), GetDisplayRect(handle));
 
     public GameWindow Refresh(GameWindow window)
     {
@@ -167,9 +221,12 @@ public sealed class WindowCaptureService
 
     [DllImport("user32.dll")] private static extern bool EnumWindows(EnumWindowsProc callback, nint parameter);
     [DllImport("user32.dll")] private static extern bool IsWindowVisible(nint handle);
+    [DllImport("user32.dll")] private static extern bool IsIconic(nint handle);
     [DllImport("user32.dll")] private static extern bool IsWindow(nint handle);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowText(nint handle, StringBuilder text, int count);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowTextLength(nint handle);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetClassName(nint handle, StringBuilder className, int maxCount);
+    [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(nint handle, out uint processId);
     [DllImport("user32.dll")] private static extern bool GetClientRect(nint handle, out NativeRect rect);
     [DllImport("user32.dll")] private static extern bool ClientToScreen(nint handle, ref NativePoint point);
     [DllImport("user32.dll")] private static extern nint MonitorFromWindow(nint handle, uint flags);

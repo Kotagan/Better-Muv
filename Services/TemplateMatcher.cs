@@ -44,6 +44,27 @@ public sealed class TemplateMatcher
     public TemplateMatchResult MatchPrepared(byte[] sourceGray, int logicalWidth, int logicalHeight) =>
         MatchGray(sourceGray, logicalWidth, logicalHeight, _template, _templateWidth, _templateHeight);
 
+    public TemplateMatchResult MatchMultiScale(
+        BitmapSource searchImage, int logicalWidth, int logicalHeight, params double[] scales)
+    {
+        byte[] source = ToGray(searchImage, logicalWidth, logicalHeight);
+        TemplateMatchResult? best = null;
+        foreach (double scale in scales)
+        {
+            int width = Math.Clamp((int)Math.Round(_templateWidth * scale), 1, logicalWidth);
+            int height = Math.Clamp((int)Math.Round(_templateHeight * scale), 1, logicalHeight);
+            byte[] template = width == _templateWidth && height == _templateHeight
+                ? _template
+                : ResizeGray(_template, _templateWidth, _templateHeight, width, height);
+            TemplateMatchResult match = MatchGray(
+                source, logicalWidth, logicalHeight, template, width, height);
+            if (best is null || match.Score > best.Score)
+                best = match;
+        }
+        return best ?? MatchGray(
+            source, logicalWidth, logicalHeight, _template, _templateWidth, _templateHeight);
+    }
+
     public static TemplateMatchResult MatchGray(
         byte[] source, int sourceWidth, int sourceHeight,
         byte[] template, int templateWidth, int templateHeight)
@@ -147,6 +168,26 @@ public sealed class TemplateMatcher
                 double top = original[y0 * sourceWidth + x0] * (1 - fx) + original[y0 * sourceWidth + x1] * fx;
                 double bottom = original[y1 * sourceWidth + x0] * (1 - fx) + original[y1 * sourceWidth + x1] * fx;
                 resized[y * targetWidth + x] = (byte)Math.Clamp(Math.Round(top * (1 - fy) + bottom * fy), 0, 255);
+            }
+        }
+        return resized;
+    }
+
+    private static byte[] ResizeGray(
+        byte[] source, int sourceWidth, int sourceHeight, int targetWidth, int targetHeight)
+    {
+        byte[] resized = new byte[targetWidth * targetHeight];
+        for (int y = 0; y < targetHeight; y++)
+        {
+            int sourceY = Math.Clamp(
+                (int)Math.Round((y + 0.5) * sourceHeight / targetHeight - 0.5),
+                0, sourceHeight - 1);
+            for (int x = 0; x < targetWidth; x++)
+            {
+                int sourceX = Math.Clamp(
+                    (int)Math.Round((x + 0.5) * sourceWidth / targetWidth - 0.5),
+                    0, sourceWidth - 1);
+                resized[y * targetWidth + x] = source[sourceY * sourceWidth + sourceX];
             }
         }
         return resized;

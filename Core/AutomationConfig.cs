@@ -5,6 +5,11 @@ namespace BetterMuv.Core;
 public sealed class AutomationConfig
 {
     public string WindowTitleKeyword { get; set; } = "マブラヴ";
+    /// <summary>game=按游戏标题自动查找；selected=恢复用户选择的浏览器/其他窗口。</summary>
+    public string WindowSelectionMode { get; set; } = "game";
+    public string SelectedWindowProcessName { get; set; } = "";
+    public string SelectedWindowClassName { get; set; } = "";
+    public string SelectedWindowTitle { get; set; } = "";
     /// <summary>截图器启动时是否一并启动游戏。</summary>
     public bool LaunchGameWithCapture { get; set; }
     public bool CaptureTaskEnabled { get; set; } = true;
@@ -16,7 +21,7 @@ public sealed class AutomationConfig
     public double MatchThreshold { get; set; } = 0.78;
     public bool SaveDiagnostics { get; set; } = false;
     public string DiagnosticDirectory { get; set; } = "diagnostics";
-    /// <summary>配置坐标基准分辨率（1080p）。屏幕点击 = Display 原点 + 点 × (Display/Reference)。</summary>
+    /// <summary>配置坐标基准分辨率（1080p）。映射到窗口客户区，横纵方向独立缩放。</summary>
     public int ReferenceWidth { get; set; } = 1920;
     public int ReferenceHeight { get; set; } = 1080;
 
@@ -88,7 +93,7 @@ public sealed class AutomationConfig
     public ConfigPoint RouteTreasureOptionsTopLeft { get; set; } = new(661, 243);
     public ConfigSize RouteTreasureOptionsSize { get; set; } = new(209, 554);
     public List<string> TreasurePriority { get; set; } = ["diamond", "shield", "sword", "heart", "skull", "sparkle"];
-    // 写死点击点（1080p）；实际点击 = Display 原点 + 点 × (Display宽高 / Reference宽高)。
+    // 写死点击点（1080p）；实际点击 = Client 原点 + 点 × (Client宽高 / Reference宽高)。
     public ConfigPoint FirstClick { get; set; } = new(1143, 961);
     public ConfigPoint SecondClick { get; set; } = new(1611, 473);
     public ConfigPoint ThirdClick { get; set; } = new(1667, 836);
@@ -104,10 +109,10 @@ public sealed class AutomationConfig
     // 4K (2658,652)→(3406,902) → 1080p
     public ConfigPoint DifficultyDigitTopLeft { get; set; } = new(1329, 326);
     public ConfigSize DifficultyDigitSize { get; set; } = new(374, 125);
-    // 4K (1792,754) / (3652,754)
+    // 难度面板左右箭头：4K (1792,754) / (3652,754)，每次减/加 1。
     public ConfigPoint DifficultyDecreaseClick { get; set; } = new(896, 377);
     public ConfigPoint DifficultyIncreaseClick { get; set; } = new(1826, 377);
-    // 4K (3266,522)
+    // 中间数字区域：点击后打开滚动选择 UI（与左右箭头是两种不同交互）。
     public ConfigPoint DifficultyOpenSliderClick { get; set; } = new(1633, 261);
     // 4K (1158,584)→(1522,1706)
     public ConfigPoint DifficultyListTopLeft { get; set; } = new(579, 292);
@@ -188,6 +193,8 @@ public sealed class AutomationConfig
     {
         if (string.IsNullOrWhiteSpace(WindowTitleKeyword))
             throw new InvalidDataException("windowTitleKeyword 不能为空。");
+        WindowSelectionMode = WindowSelectionMode.Equals("selected", StringComparison.OrdinalIgnoreCase)
+            ? "selected" : "game";
         if (MatchThreshold is <= 0 or > 1)
             throw new InvalidDataException("matchThreshold 必须在 (0, 1] 内。");
         if (TreasureMatchThreshold is <= 0 or > 1)

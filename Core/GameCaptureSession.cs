@@ -28,17 +28,20 @@ public sealed class GameCaptureSession
         {
             // 游戏尚未启动；若用户已启用自动启动，下面会处理。
         }
-        if (existingWindow is null && config.LaunchGameWithCapture)
+        if (existingWindow is null && config.LaunchGameWithCapture &&
+            !config.WindowSelectionMode.Equals("selected", StringComparison.OrdinalIgnoreCase))
             await LaunchGameAndWaitAsync(config, screen, cancellationToken);
 
         GameWindow window = existingWindow ?? screen.FindWindow(config.WindowTitleKeyword);
         if (!await screen.FocusAsync(window.Handle, cancellationToken))
             throw new InvalidOperationException("无法将游戏置于前台。请先手动恢复游戏窗口。");
         window = screen.Refresh(window);
-        screen.EnsureSixteenByNine(window);
+        screen.EnsureUsableViewport(window);
         Window = window;
         IsRunning = true;
-        _log($"截图器已启动：{window.Title}（显示器 {window.DisplayRect.Width}×{window.DisplayRect.Height}）。");
+        ScreenRect viewport = screen.Viewport(window);
+        string mode = config.WindowSelectionMode == "selected" ? "选择窗口/客户区" : "默认游戏/显示器";
+        _log($"截图器已启动：{window.Title}（{mode} {viewport.Width}×{viewport.Height}）。");
     }
 
     public void Stop()

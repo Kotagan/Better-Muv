@@ -12,6 +12,104 @@
         <Style x:Key="ToggleSwitch" TargetType="CheckBox"><Setter Property="Cursor" Value="Hand"/><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="CheckBox"><Grid Width="52" Height="29"><Border x:Name="Track" Background="#434C59" BorderBrush="#53606F" BorderThickness="1" CornerRadius="15"/><Ellipse x:Name="Thumb" Width="21" Height="21" Fill="#F6F7F9" HorizontalAlignment="Left" Margin="4,0,0,0"/></Grid><ControlTemplate.Triggers><Trigger Property="IsChecked" Value="True"><Setter TargetName="Track" Property="Background" Value="#3EA6F1"/><Setter TargetName="Track" Property="BorderBrush" Value="#55B3F6"/><Setter TargetName="Thumb" Property="HorizontalAlignment" Value="Right"/><Setter TargetName="Thumb" Property="Margin" Value="0,0,4,0"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style>
         <Style x:Key="MazeSettingsNavButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}"><Setter Property="HorizontalContentAlignment" Value="Center"/><Setter Property="Padding" Value="14,7"/><Setter Property="Margin" Value="0,0,8,0"/><Setter Property="FontSize" Value="13"/><Setter Property="MinWidth" Value="0"/></Style>
         <Style x:Key="PriorityList" TargetType="ListBox"><Setter Property="Background" Value="#1B212A"/><Setter Property="BorderBrush" Value="#46505E"/><Setter Property="BorderThickness" Value="1"/><Setter Property="Padding" Value="6"/><Setter Property="FontSize" Value="16"/><Setter Property="ItemContainerStyle"><Setter.Value><Style TargetType="ListBoxItem"><Setter Property="Foreground" Value="#F2F5F8"/><Setter Property="FontSize" Value="16"/><Setter Property="Padding" Value="14,12"/><Setter Property="Margin" Value="0,3"/><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem"><Border x:Name="ItemSurface" Background="Transparent" CornerRadius="6"><ContentPresenter/></Border><ControlTemplate.Triggers><Trigger Property="IsSelected" Value="True"><Setter TargetName="ItemSurface" Property="Background" Value="#3B4657"/><Setter Property="FontWeight" Value="SemiBold"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style></Setter.Value></Setter></Style>
+        <Style x:Key="DarkComboBox" TargetType="ComboBox">
+            <Setter Property="Background" Value="#1B212A"/>
+            <Setter Property="Foreground" Value="#F5F7FA"/>
+            <Setter Property="BorderBrush" Value="#46505E"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="10,4"/>
+            <Setter Property="Height" Value="34"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled"/>
+            <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto"/>
+            <Setter Property="ItemContainerStyle">
+                <Setter.Value>
+                    <Style TargetType="ComboBoxItem">
+                        <Setter Property="Foreground" Value="#F5F7FA"/>
+                        <Setter Property="Background" Value="Transparent"/>
+                        <Setter Property="Padding" Value="10,8"/>
+                        <Setter Property="HorizontalContentAlignment" Value="Left"/>
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="ComboBoxItem">
+                                    <Border x:Name="ItemSurface" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
+                                        <ContentPresenter VerticalAlignment="Center"/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsHighlighted" Value="True">
+                                            <Setter TargetName="ItemSurface" Property="Background" Value="#3B4657"/>
+                                        </Trigger>
+                                        <Trigger Property="IsSelected" Value="True">
+                                            <Setter TargetName="ItemSurface" Property="Background" Value="#3EA6F1"/>
+                                            <Setter Property="FontWeight" Value="SemiBold"/>
+                                        </Trigger>
+                                        <Trigger Property="IsEnabled" Value="False">
+                                            <Setter Property="Opacity" Value="0.45"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBox">
+                        <Grid>
+                            <ToggleButton x:Name="ToggleButton" Focusable="False" ClickMode="Press" IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
+                                <ToggleButton.Template>
+                                    <ControlTemplate TargetType="ToggleButton">
+                                        <Border x:Name="ComboBorder" Background="#1B212A" BorderBrush="#46505E" BorderThickness="1" CornerRadius="7" SnapsToDevicePixels="True">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="28"/>
+                                                </Grid.ColumnDefinitions>
+                                                <Border Background="Transparent"/>
+                                                <Path Grid.Column="1" Data="M0,0 L6,6 L12,0" Stroke="#F5F7FA" StrokeThickness="1.5" HorizontalAlignment="Center" VerticalAlignment="Center" Width="12" Height="6" Stretch="Fill"/>
+                                            </Grid>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="ComboBorder" Property="BorderBrush" Value="#5B6A80"/>
+                                            </Trigger>
+                                            <Trigger Property="IsChecked" Value="True">
+                                                <Setter TargetName="ComboBorder" Property="BorderBrush" Value="#3EA6F1"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </ToggleButton.Template>
+                            </ToggleButton>
+                            <ContentPresenter Margin="10,0,30,0" VerticalAlignment="Center" HorizontalAlignment="Left" IsHitTestVisible="False"
+                                              Content="{TemplateBinding SelectionBoxItem}" ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                              ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}" ContentStringFormat="{TemplateBinding SelectionBoxItemStringFormat}"/>
+                            <Popup x:Name="Popup" Placement="Bottom" IsOpen="{TemplateBinding IsDropDownOpen}" AllowsTransparency="True" Focusable="False" PopupAnimation="Slide">
+                                <Border x:Name="DropDown" MinWidth="{TemplateBinding ActualWidth}" MaxHeight="{TemplateBinding MaxDropDownHeight}" Background="#1B212A" BorderBrush="#46505E" BorderThickness="1" CornerRadius="8" Margin="0,4,0,0" Padding="4">
+                                    <Border.Effect>
+                                        <DropShadowEffect Color="#000000" Opacity="0.35" BlurRadius="12" ShadowDepth="2"/>
+                                    </Border.Effect>
+                                    <ScrollViewer Margin="0" SnapsToDevicePixels="True" CanContentScroll="True">
+                                        <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Contained"/>
+                                    </ScrollViewer>
+                                </Border>
+                            </Popup>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="HasItems" Value="False">
+                                <Setter TargetName="DropDown" Property="MinHeight" Value="40"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.45"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
         <Style TargetType="TextBox"><Setter Property="Background" Value="#1B212A"/><Setter Property="Foreground" Value="#F5F7FA"/><Setter Property="BorderBrush" Value="#3C4655"/><Setter Property="BorderThickness" Value="1"/><Setter Property="Padding" Value="8,4"/><Setter Property="MinHeight" Value="28"/><Setter Property="FontSize" Value="13"/><Setter Property="VerticalContentAlignment" Value="Center"/><Setter Property="VerticalAlignment" Value="Center"/><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="TextBox"><Border x:Name="Field" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="7" Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True"><ScrollViewer x:Name="PART_ContentHost" Focusable="False" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden"/></Border><ControlTemplate.Triggers><Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Field" Property="BorderBrush" Value="#5B6A80"/></Trigger><Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.45"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style>
         <Style TargetType="CheckBox"><Setter Property="Foreground" Value="#EAF0F7"/><Setter Property="Cursor" Value="Hand"/><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="CheckBox"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="24"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><Border x:Name="Box" Width="20" Height="20" Background="#1B212A" BorderBrush="#4A5667" BorderThickness="1" CornerRadius="5" VerticalAlignment="Center"/><TextBlock x:Name="Mark" Text="✓" Foreground="White" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed"/><ContentPresenter Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center"/></Grid><ControlTemplate.Triggers><Trigger Property="IsChecked" Value="True"><Setter TargetName="Box" Property="Background" Value="#3EA6F1"/><Setter TargetName="Box" Property="BorderBrush" Value="#3EA6F1"/><Setter TargetName="Mark" Property="Visibility" Value="Visible"/></Trigger><Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.45"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style>
         <Style TargetType="RadioButton"><Setter Property="Foreground" Value="#EEF2F6"/><Setter Property="Cursor" Value="Hand"/><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="RadioButton"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="26"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><Border x:Name="Ring" Width="20" Height="20" Background="#1B212A" BorderBrush="#667487" BorderThickness="2" CornerRadius="10" VerticalAlignment="Center"/><Ellipse x:Name="Dot" Width="10" Height="10" Fill="#3EA6F1" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed"/><ContentPresenter Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center"/></Grid><ControlTemplate.Triggers><Trigger Property="IsChecked" Value="True"><Setter TargetName="Ring" Property="BorderBrush" Value="#3EA6F1"/><Setter TargetName="Dot" Property="Visibility" Value="Visible"/><Setter Property="FontWeight" Value="SemiBold"/></Trigger><Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.45"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style>
@@ -49,6 +147,7 @@
             <ScrollViewer x:Name="HomePanel" Grid.Column="1" VerticalScrollBarVisibility="Auto"><StackPanel Margin="28,22,28,24">
                 <Border Height="210" CornerRadius="12" ClipToBounds="True"><Border.Background><ImageBrush ImageSource="Assets/Branding/home-banner.png" Stretch="UniformToFill" AlignmentX="Center" AlignmentY="Center" RelativeTransform="1.15,0,0,1.15,0,0"/></Border.Background><Border CornerRadius="12"><Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint="1,0"><GradientStop Color="#D9141B24"/><GradientStop Color="#90141B24" Offset=".45"/><GradientStop Color="#20141B24" Offset="1"/></LinearGradientBrush></Border.Background><StackPanel Margin="32,0" VerticalAlignment="Center"><TextBlock Text="Better-Muv" FontSize="30" FontWeight="SemiBold"/><TextBlock Text="更好的 MuvLuv Girls Garden" FontSize="17" FontWeight="SemiBold" Margin="0,4,0,0"/></StackPanel></Border></Border>
                 <Border Style="{StaticResource Card}"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="40"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="▷" FontSize="22" VerticalAlignment="Center"/><StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="Better-Muv 截图器" FontSize="17"/><TextBlock x:Name="CaptureStatusText" Visibility="Collapsed"/></StackPanel><Button x:Name="CaptureStartButton" Grid.Column="2" Style="{StaticResource PrimaryButton}" Content="▷  启动" Click="CaptureStartButton_Click"/></Grid></Border>
+                <Border Style="{StaticResource Card}"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="40"/><ColumnDefinition Width="*"/><ColumnDefinition Width="310"/></Grid.ColumnDefinitions><TextBlock Text="▤" FontSize="21" VerticalAlignment="Center"/><StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="运行窗口" FontSize="17"/><TextBlock Text="默认使用游戏窗口；浏览器选择会自动保存" Foreground="#AEB8C5" FontSize="12"/></StackPanel><ComboBox x:Name="RunWindowComboBox" Grid.Column="2" Style="{StaticResource DarkComboBox}" DropDownOpened="RunWindowComboBox_DropDownOpened" SelectionChanged="RunWindowComboBox_SelectionChanged"/></Grid></Border>
                 <Border Style="{StaticResource Card}"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="40"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="◉" FontSize="21" VerticalAlignment="Center"/><TextBlock Grid.Column="1" Text="同时启动 MuvLuv Girls Garden" FontSize="17" VerticalAlignment="Center"/><Button Grid.Column="2" Style="{StaticResource PrimaryButton}" Click="GameSettingsButton_Click"><StackPanel Orientation="Horizontal" VerticalAlignment="Center"><TextBlock FontFamily="Segoe Fluent Icons" FontSize="14" Text="&#xE713;" VerticalAlignment="Center"/><TextBlock Margin="6,0,0,0" Text="设置" VerticalAlignment="Center"/></StackPanel></Button><CheckBox x:Name="LaunchGameCheckBox" Grid.Column="3" Style="{StaticResource ToggleSwitch}" Margin="14,0,0,0" Checked="LaunchGameCheckBox_Changed" Unchecked="LaunchGameCheckBox_Changed"/></Grid></Border>
                 <Border Style="{StaticResource Card}"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="40"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="▣" FontSize="21" VerticalAlignment="Center"/><TextBlock Grid.Column="1" Text="Better-Muv 桌面分身" FontSize="17" VerticalAlignment="Center"/><Button Grid.Column="2" Style="{StaticResource PrimaryButton}" Content="打开" Click="OpenCloneButton_Click"/></Grid></Border>
             </StackPanel></ScrollViewer>
@@ -299,7 +398,7 @@
                         <Button Grid.Column="1" Style="{StaticResource PrimaryButton}" Padding="10,6" MinHeight="30" Margin="0,0,4,0" Content="导出" ToolTip="导出为 txt" Click="ExportLogButton_Click"/>
                         <Button Grid.Column="2" Content="×" Background="Transparent" Foreground="White" BorderThickness="0" FontSize="22" Click="CloseLogDrawerButton_Click"/>
                     </Grid>
-                    <TextBox x:Name="LogBox" Grid.Row="1" Margin="12,8,12,12" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" Background="#171C23" BorderThickness="0" Padding="10" FontFamily="Consolas" FontSize="12" VerticalAlignment="Stretch" VerticalScrollBarVisibility="Auto"/>
+                    <TextBox x:Name="LogBox" Grid.Row="1" Margin="12,8,12,12" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" Background="#171C23" BorderThickness="0" Padding="10" FontFamily="Consolas" FontSize="12" VerticalAlignment="Stretch" VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Hidden"/>
                 </Grid>
             </Border>
         </Grid>

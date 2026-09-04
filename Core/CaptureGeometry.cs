@@ -11,7 +11,7 @@ public readonly record struct ScreenRect(int Left, int Top, int Width, int Heigh
 
 /// <summary>
 /// 配置坐标（Reference，默认 1080p）↔ 屏幕坐标的唯一缩放入口。
-/// 系数：ScaleX = Display.Width / ReferenceWidth，ScaleY = Display.Height / ReferenceHeight。
+/// 映射区域可以是任意宽高比；横纵方向分别缩放。
 /// </summary>
 public sealed class CaptureGeometry
 {
@@ -19,30 +19,32 @@ public sealed class CaptureGeometry
     public const int LogicalHeight = 1080;
     private const double AspectTolerance = 0.005;
 
-    public CaptureGeometry(ScreenRect displayRect, int referenceWidth, int referenceHeight)
+    public CaptureGeometry(ScreenRect viewportRect, int referenceWidth, int referenceHeight)
     {
-        if (displayRect.Width <= 0 || displayRect.Height <= 0)
-            throw new ArgumentOutOfRangeException(nameof(displayRect), "显示器尺寸必须大于零。");
+        if (viewportRect.Width <= 0 || viewportRect.Height <= 0)
+            throw new ArgumentOutOfRangeException(nameof(viewportRect), "映射区域尺寸必须大于零。");
         if (referenceWidth <= 0 || referenceHeight <= 0)
             throw new ArgumentOutOfRangeException(nameof(referenceWidth), "参考分辨率必须大于零。");
 
-        ClientRect = displayRect;
+        ViewportRect = viewportRect;
         ReferenceWidth = referenceWidth;
         ReferenceHeight = referenceHeight;
-        ScaleX = displayRect.Width / (double)referenceWidth;
-        ScaleY = displayRect.Height / (double)referenceHeight;
+        ScaleX = viewportRect.Width / (double)referenceWidth;
+        ScaleY = viewportRect.Height / (double)referenceHeight;
     }
 
-    public ScreenRect ClientRect { get; }
+    public ScreenRect ViewportRect { get; }
+    // 保留旧名称，避免外部调用方一次性迁移；其含义现在是映射视口。
+    public ScreenRect ClientRect => ViewportRect;
     public int ReferenceWidth { get; }
     public int ReferenceHeight { get; }
     public double ScaleX { get; }
     public double ScaleY { get; }
 
     public bool IsSixteenByNine =>
-        Math.Abs(ClientRect.Width / (double)ClientRect.Height - 16.0 / 9.0) <= AspectTolerance;
+        Math.Abs(ViewportRect.Width / (double)ViewportRect.Height - 16.0 / 9.0) <= AspectTolerance;
 
-    /// <summary>配置点 → 屏幕点：screen = Display原点 + point × (ScaleX, ScaleY)。</summary>
+    /// <summary>配置点 → 屏幕点：screen = Viewport原点 + point × (ScaleX, ScaleY)。</summary>
     public Point ToScreen(ConfigPoint point) => new(
         ClientRect.Left + point.X * ScaleX,
         ClientRect.Top + point.Y * ScaleY);

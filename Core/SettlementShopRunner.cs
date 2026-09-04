@@ -32,13 +32,13 @@ public sealed class SettlementShopRunner
         _config = config;
         _screen = screen;
         _log = log;
-        _settlementMatcher = new TemplateMatcher(Path.Combine(templateDirectory, "settlement-complete.png"));
-        _lvMaxMatcher = new TemplateMatcher(Path.Combine(templateDirectory, "lv-max.png"));
-        _buyDisabledMatcher = new TemplateMatcher(Path.Combine(templateDirectory, "buy-disabled.png"));
-        _confirmMatcher = new TemplateMatcher(Path.Combine(templateDirectory, "settlement-confirm.png"));
-        _multiplierX1Matcher = new TemplateMatcher(Path.Combine(templateDirectory, "multiplier-x1.png"));
-        _multiplierX10Matcher = new TemplateMatcher(Path.Combine(templateDirectory, "multiplier-x10.png"));
-        _multiplierMaxMatcher = new TemplateMatcher(Path.Combine(templateDirectory, "multiplier-max.png"));
+        _settlementMatcher = TemplateAssets.Load(templateDirectory, "settlement-complete.png");
+        _lvMaxMatcher = TemplateAssets.Load(templateDirectory, "lv-max.png");
+        _buyDisabledMatcher = TemplateAssets.Load(templateDirectory, "buy-disabled.png");
+        _confirmMatcher = TemplateAssets.Load(templateDirectory, "settlement-confirm.png");
+        _multiplierX1Matcher = TemplateAssets.Load(templateDirectory, "multiplier-x1.png");
+        _multiplierX10Matcher = TemplateAssets.Load(templateDirectory, "multiplier-x10.png");
+        _multiplierMaxMatcher = TemplateAssets.Load(templateDirectory, "multiplier-max.png");
     }
 
     public TemplateMatcher SettlementMatcher => _settlementMatcher;
