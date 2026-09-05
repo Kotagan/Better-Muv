@@ -39,6 +39,12 @@ public static class ConfigStore
     public static AutomationConfig Load()
     {
         AutomationConfig config = AutomationConfig.Load(EnsureUserConfigPath());
+        // 旧版窄条 ROI 无法容纳新版按钮模板及窗口布局偏移。
+        if (config.RouteSelectionSize.Width == 181 && config.RouteSelectionSize.Height == 37)
+        {
+            config.RouteSelectionTopLeft = new ConfigPoint(1500, 880);
+            config.RouteSelectionSize = new ConfigSize(360, 180);
+        }
         if (MigrateTreasureRecognitionDefaults(config) || MigrateExecutionDefaults(config))
             Save(config);
         return config;
@@ -89,7 +95,8 @@ public static class ConfigStore
         // 旧 4K 宝物条 → 1080p 默认。
         if (config.TreasureOptionsTopLeft is { X: 956, Y: 632 } ||
             config.TreasureOptionsSize is { Width: 2162, Height: 180 } ||
-            config.TreasureClickOffset is { X: -80, Y: 110 } or { X: 0, Y: 70 } or { X: -120, Y: 90 })
+            config.TreasureOptionsSize is { Width: 1440, Height: 640 } ||
+            config.TreasureClickOffset is { X: -80, Y: 110 } or { X: 0, Y: 70 } or { X: -120, Y: 90 } or { X: 0, Y: 60 })
         {
             config.TreasureOptionsTopLeft = new ConfigPoint(478, 316);
             config.TreasureOptionsSize = new ConfigSize(1081, 90);
@@ -115,13 +122,36 @@ public static class ConfigStore
             changed = true;
         }
 
+        // 难度数字 ROI：保持能完整框住三位数的区域；过窄会裁掉末位。
+        // 误读 140→100 由 DigitOcrService 形态学区分开口 4 / 斜杠 0 解决，不靠过度收窄 ROI。
+        if (config.DifficultyDigitTopLeft is { X: 1200, Y: 340 } &&
+            config.DifficultyDigitSize is { Width: 280, Height: 90 })
+        {
+            config.DifficultyDigitTopLeft = new ConfigPoint(1329, 326);
+            config.DifficultyDigitSize = new ConfigSize(374, 125);
+            changed = true;
+        }
+
+        // 提速：旧轮询 250ms / 双击间隔 100ms 偏慢。
+        if (config.DetectionPollIntervalMs > 120)
+        {
+            config.DetectionPollIntervalMs = 120;
+            changed = true;
+        }
+        if (config.DoubleClickIntervalMs > 50)
+        {
+            config.DoubleClickIntervalMs = 50;
+            changed = true;
+        }
+
         // 默认优先级迁移：钻石 → 盾 → 剑 → 心 → 骷髅（闪光殿后）。
         string[] desired = ["diamond", "shield", "sword", "heart", "skull", "sparkle"];
         string[][] legacyDefaults =
         [
             ["diamond", "sparkle", "shield", "sword", "heart"],
             ["diamond", "skull", "sword", "sparkle", "shield", "heart"],
-            ["diamond", "skull", "sword", "shield", "sparkle", "heart"]
+            ["diamond", "skull", "sword", "shield", "sparkle", "heart"],
+            ["sparkle", "sword", "shield", "diamond", "heart", "skull"]
         ];
         bool isLegacy = legacyDefaults.Any(legacy =>
             config.TreasurePriority.SequenceEqual(legacy, StringComparer.OrdinalIgnoreCase));
@@ -154,11 +184,12 @@ public static class ConfigStore
             changed = true;
         }
 
-        // 探索准备 ROI 高需 ≥ 模板逻辑高 38（原 31 会触发模板大于搜索图）。
-        if (config.FourthSearchSize.Height < 38)
+        // 探索按钮 ROI：需盖住完整粉钮「探索」，旧 182×38 只扫到上沿。
+        if (config.FourthSearchSize.Width < 280 || config.FourthSearchSize.Height < 90)
         {
-            config.FourthSearchSize = new ConfigSize(
-                Math.Max(config.FourthSearchSize.Width, 182), 38);
+            config.FourthSearchTopLeft = new ConfigPoint(1560, 910);
+            config.FourthSearchSize = new ConfigSize(320, 120);
+            config.FourthClick = new ConfigPoint(1700, 960);
             changed = true;
         }
 

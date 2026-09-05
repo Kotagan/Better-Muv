@@ -32,23 +32,27 @@ public sealed class AutomationConfig
     public ConfigSize SecondSearchSize { get; set; } = new(220, 59);
     public ConfigPoint ThirdSearchTopLeft { get; set; } = new(1568, 796);
     public ConfigSize ThirdSearchSize { get; set; } = new(208, 98);
-    public ConfigPoint FourthSearchTopLeft { get; set; } = new(1602, 927);
-    /// <summary>4K 用户框高 62，但模板 76→逻辑 38，搜索高至少盖住模板。</summary>
-    public ConfigSize FourthSearchSize { get; set; } = new(182, 38);
-    public ConfigPoint FifthSearchTopLeft { get; set; } = new(1621, 927);
-    public ConfigSize FifthSearchSize { get; set; } = new(103, 64);
+    public ConfigPoint FourthSearchTopLeft { get; set; } = new(1560, 910);
+    /// <summary>右下角粉钮「探索」完整区域（旧 182×38 只扫到上沿，分数卡在 0.74）。</summary>
+    public ConfigSize FourthSearchSize { get; set; } = new(320, 120);
+    public ConfigPoint FifthSearchTopLeft { get; set; } = new(1500, 880);
+    public ConfigSize FifthSearchSize { get; set; } = new(360, 180);
     public ConfigPoint PartnerSelectionTopLeft { get; set; } = new(1633, 919);
     public ConfigSize PartnerSelectionSize { get; set; } = new(183, 75);
     public ConfigPoint BattleSkipTopLeft { get; set; } = new(1760, 40);
     public ConfigSize BattleSkipSize { get; set; } = new(112, 51);
+    /// <summary>活动/商店宣传弹窗右上角关闭「X」搜索区（1080p）。</summary>
+    public ConfigPoint PopupCloseTopLeft { get; set; } = new(1720, 15);
+    public ConfigSize PopupCloseSize { get; set; } = new(180, 100);
+    public ConfigPoint PopupCloseClick { get; set; } = new(1810, 55);
     public ConfigPoint EventChoiceTopLeft { get; set; } = new(1018, 628);
     public ConfigSize EventChoiceSize { get; set; } = new(814, 367);
     public ConfigPoint EventChoiceFirstOption { get; set; } = new(1300, 700);
     public ConfigPoint EventChoiceSecondOption { get; set; } = new(1300, 825);
     /// <summary>结算「完了」点击坐标（1080p）。</summary>
     public ConfigPoint SettlementTopLeft { get; set; } = new(1674, 948);
-    public ConfigPoint SettlementSearchTopLeft { get; set; } = new(1626, 917);
-    public ConfigSize SettlementSearchSize { get; set; } = new(97, 62);
+    public ConfigPoint SettlementSearchTopLeft { get; set; } = new(1500, 880);
+    public ConfigSize SettlementSearchSize { get; set; } = new(360, 180);
     public ConfigPoint SettlementCategoryDaily { get; set; } = new(70, 338);
     public ConfigPoint SettlementCategoryEquipment { get; set; } = new(58, 456);
     public ConfigPoint SettlementCategoryExcavation { get; set; } = new(96, 572);
@@ -70,8 +74,8 @@ public sealed class AutomationConfig
         new(1630, 720)
     ];
     public ConfigPoint SettlementMultiplierToggle { get; set; } = new(1610, 200);
-    public ConfigPoint SettlementMultiplierTopLeft { get; set; } = new(1673, 181);
-    public ConfigSize SettlementMultiplierSize { get; set; } = new(81, 49);
+    public ConfigPoint SettlementMultiplierTopLeft { get; set; } = new(1640, 165);
+    public ConfigSize SettlementMultiplierSize { get; set; } = new(140, 70);
     public ConfigPoint SettlementBuyButtonSearchInset { get; set; } = new(12, 12);
     public ConfigSize SettlementBuyButtonSearchSize { get; set; } = new(301, 119);
     public ConfigPoint SettlementConfirmTopLeft { get; set; } = new(685, 520);
@@ -88,8 +92,8 @@ public sealed class AutomationConfig
     public int TreasureMatchRetryCount { get; set; } = 3;
     public int TreasureMatchRetryDelayMs { get; set; } = 150;
     public ConfigPoint TreasureClickOffset { get; set; } = new(-40, 55);
-    public ConfigPoint RouteSelectionTopLeft { get; set; } = new(1595, 924);
-    public ConfigSize RouteSelectionSize { get; set; } = new(181, 37);
+    public ConfigPoint RouteSelectionTopLeft { get; set; } = new(1500, 880);
+    public ConfigSize RouteSelectionSize { get; set; } = new(360, 180);
     public ConfigPoint RouteTreasureOptionsTopLeft { get; set; } = new(661, 243);
     public ConfigSize RouteTreasureOptionsSize { get; set; } = new(209, 554);
     public List<string> TreasurePriority { get; set; } = ["diamond", "shield", "sword", "heart", "skull", "sparkle"];
@@ -97,7 +101,7 @@ public sealed class AutomationConfig
     public ConfigPoint FirstClick { get; set; } = new(1143, 961);
     public ConfigPoint SecondClick { get; set; } = new(1611, 473);
     public ConfigPoint ThirdClick { get; set; } = new(1667, 836);
-    public ConfigPoint FourthClick { get; set; } = new(1693, 942);
+    public ConfigPoint FourthClick { get; set; } = new(1700, 960);
     public ConfigPoint FifthClick { get; set; } = new(1672, 959);
     public ConfigPoint PartnerClick { get; set; } = new(1724, 956);
     public ConfigPoint BattleSkipClick { get; set; } = new(1816, 65);
@@ -106,7 +110,7 @@ public sealed class AutomationConfig
     public string MazeDifficultyMode { get; set; } = "keep";
     /// <summary>自选难度目标（仅 custom 生效）。</summary>
     public int MazeDifficultyTarget { get; set; } = 1;
-    // 4K (2658,652)→(3406,902) → 1080p
+    // 难度大数字在左右箭头之间；ROI 过大易扫到旁路「100」把 140 盖掉。
     public ConfigPoint DifficultyDigitTopLeft { get; set; } = new(1329, 326);
     public ConfigSize DifficultyDigitSize { get; set; } = new(374, 125);
     // 难度面板左右箭头：4K (1792,754) / (3652,754)，每次减/加 1。
@@ -119,8 +123,8 @@ public sealed class AutomationConfig
     public ConfigSize DifficultyListSize { get; set; } = new(182, 561);
     // 4K (2250,1860)
     public ConfigPoint DifficultyConfirmClick { get; set; } = new(1125, 930);
-    public int DoubleClickIntervalMs { get; set; } = 100;
-    public int DetectionPollIntervalMs { get; set; } = 250;
+    public int DoubleClickIntervalMs { get; set; } = 50;
+    public int DetectionPollIntervalMs { get; set; } = 120;
     public int DetectionTimeoutMs { get; set; } = 10000;
     /// <summary>迷宫轮次上限；0 表示无限。</summary>
     public int MazeRunLimit { get; set; }
@@ -139,6 +143,27 @@ public sealed class AutomationConfig
     public ConfigSize MainQuestStartSize { get; set; } = new(480, 160);
     public ConfigPoint MainQuestSortieTopLeft { get; set; } = new(1400, 860);
     public ConfigSize MainQuestSortieSize { get; set; } = new(480, 180);
+    /// <summary>剧情界面右上角展开菜单按钮（1080p）。</summary>
+    public ConfigPoint MainQuestScenarioMenuTopLeft { get; set; } = new(1780, 0);
+    public ConfigSize MainQuestScenarioMenuSize { get; set; } = new(140, 130);
+    /// <summary>剧情菜单展开后最左侧加速按钮搜索区（1080p）。</summary>
+    public ConfigPoint MainQuestScenarioSpeedTopLeft { get; set; } = new(1180, 0);
+    public ConfigSize MainQuestScenarioSpeedSize { get; set; } = new(280, 160);
+    /// <summary>剧情/奖励确认弹窗中下方 OK 按钮搜索区（1080p）。</summary>
+    public ConfigPoint MainQuestScenarioOkTopLeft { get; set; } = new(700, 820);
+    public ConfigSize MainQuestScenarioOkSize { get; set; } = new(520, 200);
+    /// <summary>剧情分支粉色选项按钮搜索区（1080p，偏右中；含 CAUTION 特殊选项下移）。</summary>
+    public ConfigPoint MainQuestScenarioChoiceTopLeft { get; set; } = new(850, 250);
+    public ConfigSize MainQuestScenarioChoiceSize { get; set; } = new(1050, 550);
+    /// <summary>粉色选项命中左端后，向右偏移到按钮中部（1080p）。</summary>
+    public ConfigPoint MainQuestScenarioChoiceClickOffset { get; set; } = new(220, 0);
+    /// <summary>剧情特殊选项：双立绘框搜索区（1080p，仅左框）。</summary>
+    public ConfigPoint MainQuestScenarioPortraitTopLeft { get; set; } = new(200, 140);
+    public ConfigSize MainQuestScenarioPortraitSize { get; set; } = new(700, 720);
+    /// <summary>立绘选项默认点左侧头像中心（1080p）；命中后不再用角点偏移。</summary>
+    public ConfigPoint MainQuestScenarioPortraitClick { get; set; } = new(700, 480);
+    /// <summary>剧情选项默认点击点（1080p，第一项中心；模板未命中时兜底）。</summary>
+    public ConfigPoint MainQuestScenarioChoiceClick { get; set; } = new(1395, 520);
     public ConfigPoint MainQuestSkipTopLeft { get; set; } = new(1600, 10);
     public ConfigSize MainQuestSkipSize { get; set; } = new(300, 120);
     public ConfigPoint MainQuestNextTopLeft { get; set; } = new(1500, 880);
@@ -163,6 +188,9 @@ public sealed class AutomationConfig
     public bool FirstRunNoticeAccepted { get; set; }
     /// <summary>上次日常已买够配置数量的游戏日（yyyy-MM-dd，每天 4:00 起算新一日）。</summary>
     public string? LastDailyShopDay { get; set; }
+    /// <summary>商店绿色「强化素材不足」提示搜索区（1080p）。</summary>
+    public ConfigPoint SettlementShopTipTopLeft { get; set; } = new(400, 180);
+    public ConfigSize SettlementShopTipSize { get; set; } = new(1120, 520);
 
     public static AutomationConfig Load(string path)
     {
@@ -210,11 +238,14 @@ public sealed class AutomationConfig
         ConfigSize[] requiredSizes =
         [
             FirstSearchSize, SecondSearchSize, ThirdSearchSize, FourthSearchSize, FifthSearchSize,
-            PartnerSelectionSize, BattleSkipSize, EventChoiceSize, SettlementSearchSize,
+            PartnerSelectionSize, BattleSkipSize, PopupCloseSize, EventChoiceSize, SettlementSearchSize,
             SettlementMultiplierSize, SettlementBuyButtonSearchSize, SettlementConfirmSize,
+            SettlementShopTipSize,
             TreasureStateSize, TreasureOptionsSize, RouteSelectionSize, RouteTreasureOptionsSize,
             DifficultyDigitSize, DifficultyListSize,
             MainQuestHomeSize, MainQuestBannerSize, MainQuestStartSize, MainQuestSortieSize,
+            MainQuestScenarioMenuSize, MainQuestScenarioSpeedSize, MainQuestScenarioOkSize,
+            MainQuestScenarioChoiceSize, MainQuestScenarioPortraitSize,
             MainQuestSkipSize, MainQuestNextSize, MainQuestRematchSize, MainQuestToHomeSize,
             HardQuestDifficultySize, HardQuestBattleSize, HudHomeSize
         ];
@@ -245,6 +276,8 @@ public sealed class AutomationConfig
         if (GameLaunchTimeoutSeconds is < 5 or > 600)
             throw new InvalidDataException("gameLaunchTimeoutSeconds 必须在 5–600 秒。");
         NormalizeSettlementPurchases();
+        if (SettlementShopTipSize.Width <= 0 || SettlementShopTipSize.Height <= 0)
+            throw new InvalidDataException("settlementShopTipSize 宽高必须大于零。");
     }
 
     public static IReadOnlyList<string> NormalizePipelineTaskOrder(IEnumerable<string>? order)

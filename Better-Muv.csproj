@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
@@ -23,16 +23,21 @@
     <Content Include="Assets\Branding\home-banner.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Branding\app-icon.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\quest.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\quest-badge.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\maze-search.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\exploration-ready.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\exploration-action.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\maze-next.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\partner-leave.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\battle-skip.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\popup-close.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\event-choice.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\settlement-complete.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\lv-max.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\buy-disabled.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\shop-daily-dark.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\shop-orange-limit.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\shop-green-done.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\settlement-confirm.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\multiplier-x1.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\multiplier-x10.png" CopyToOutputDirectory="PreserveNewest" />
@@ -57,6 +62,13 @@
     <Content Include="Assets\Templates\main-quest-start.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\main-quest-sortie.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\main-quest-scenario-replay.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\main-quest-scenario-menu.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\main-quest-scenario-speed.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\main-quest-scenario-speed-on.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\main-quest-scenario-ok.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\main-quest-scenario-choice.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\main-quest-scenario-choice-alt.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\main-quest-scenario-choice-portrait.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\main-quest-skip.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\main-quest-next.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\main-quest-rematch.png" CopyToOutputDirectory="PreserveNewest" />

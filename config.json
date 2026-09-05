@@ -1,126 +1,394 @@
-{
-  "windowTitleKeyword": "マブラヴ",
-  "launchGameWithCapture": false,
-  "gameExecutablePath": "",
-  "gameLaunchArguments": "",
-  "gameLaunchTimeoutSeconds": 90,
-  "matchThreshold": 0.78,
-  "saveDiagnostics": false,
-  "diagnosticDirectory": "diagnostics",
-  "referenceWidth": 1920,
-  "referenceHeight": 1080,
-  "searchTopLeft": { "x": 1113, "y": 919 },
-  "firstSearchSize": { "width": 65, "height": 50 },
-  "secondSearchTopLeft": { "x": 1501, "y": 444 },
-  "secondSearchSize": { "width": 220, "height": 59 },
-  "thirdSearchTopLeft": { "x": 1568, "y": 796 },
-  "thirdSearchSize": { "width": 208, "height": 98 },
-  "fourthSearchTopLeft": { "x": 1602, "y": 927 },
-  "fourthSearchSize": { "width": 182, "height": 38 },
-  "fifthSearchTopLeft": { "x": 1621, "y": 927 },
-  "fifthSearchSize": { "width": 103, "height": 64 },
-  "partnerSelectionTopLeft": { "x": 1633, "y": 919 },
-  "partnerSelectionSize": { "width": 183, "height": 75 },
-  "battleSkipTopLeft": { "x": 1760, "y": 40 },
-  "battleSkipSize": { "width": 112, "height": 51 },
-  "eventChoiceTopLeft": { "x": 1018, "y": 628 },
-  "eventChoiceSize": { "width": 814, "height": 367 },
-  "eventChoiceFirstOption": { "x": 1300, "y": 700 },
-  "eventChoiceSecondOption": { "x": 1300, "y": 825 },
-  "settlementTopLeft": { "x": 1674, "y": 948 },
-  "settlementSearchTopLeft": { "x": 1626, "y": 917 },
-  "settlementSearchSize": { "width": 97, "height": 62 },
-  "settlementCategoryDaily": { "x": 70, "y": 338 },
-  "settlementCategoryEquipment": { "x": 58, "y": 456 },
-  "settlementCategoryExcavation": { "x": 96, "y": 572 },
-  "settlementCategoryArtifactor": { "x": 67, "y": 674 },
-  "settlementSubcategoryTabs": [
-    { "x": 416, "y": 200 },
-    { "x": 625, "y": 200 },
-    { "x": 840, "y": 200 },
-    { "x": 1050, "y": 200 }
-  ],
-  "settlementBuyButtons": [
-    { "x": 890, "y": 355 },
-    { "x": 1630, "y": 355 },
-    { "x": 890, "y": 545 },
-    { "x": 1630, "y": 545 },
-    { "x": 890, "y": 720 },
-    { "x": 1630, "y": 720 }
-  ],
-  "settlementMultiplierToggle": { "x": 1610, "y": 200 },
-  "settlementMultiplierTopLeft": { "x": 1673, "y": 181 },
-  "settlementMultiplierSize": { "width": 81, "height": 49 },
-  "settlementBuyButtonSearchInset": { "x": 12, "y": 12 },
-  "settlementBuyButtonSearchSize": { "width": 301, "height": 119 },
-  "settlementConfirmTopLeft": { "x": 685, "y": 520 },
-  "settlementConfirmSize": { "width": 592, "height": 424 },
-  "settlementConfirmCancel": { "x": 810, "y": 790 },
-  "settlementConfirmOk": { "x": 1115, "y": 790 },
-  "settlementConfirmLeftover": true,
-  "settlementPurchases": {
-    "daily": {
-      "skillBook1": [0, 0, 0, 0, 0, 0],
-      "skillBook2": [0, 0, 0, 0, 0, 0],
-      "disk": [0, 0, 0, 0, 0, 0],
-      "unit": [0, 0, 0, 0, 0, 0]
-    },
-    "equipment": {
-      "physics": [0, 0, 0, 0],
-      "en": [0, 0, 0, 0],
-      "agility": [0, 0, 0, 0]
-    },
-    "excavation": {
-      "funds": 0,
-      "training": 0,
-      "technical": 0
-    },
-    "artifactor": {
-      "physics": [0, 0, 0, 0, 0],
-      "en": [0, 0, 0, 0, 0],
-      "agility": [0, 0, 0, 0, 0]
-    }
-  },
-  "treasureStateTopLeft": { "x": 775, "y": 34 },
-  "treasureStateSize": { "width": 376, "height": 82 },
-  "treasureOptionsTopLeft": { "x": 478, "y": 316 },
-  "treasureOptionsSize": { "width": 1081, "height": 90 },
-  "treasureMatchThreshold": 0.58,
-  "treasureMatchRetryCount": 3,
-  "treasureMatchRetryDelayMs": 150,
-  "treasureClickOffset": { "x": -40, "y": 55 },
-  "routeSelectionTopLeft": { "x": 1595, "y": 924 },
-  "routeSelectionSize": { "width": 181, "height": 37 },
-  "routeTreasureOptionsTopLeft": { "x": 661, "y": 243 },
-  "routeTreasureOptionsSize": { "width": 209, "height": 554 },
-  "treasurePriority": [ "diamond", "shield", "sword", "heart", "skull", "sparkle" ],
-  "firstClick": { "x": 1143, "y": 961 },
-  "secondClick": { "x": 1611, "y": 473 },
-  "thirdClick": { "x": 1667, "y": 836 },
-  "fourthClick": { "x": 1693, "y": 942 },
-  "fifthClick": { "x": 1672, "y": 959 },
-  "partnerClick": { "x": 1724, "y": 956 },
-  "battleSkipClick": { "x": 1816, "y": 65 },
-  "routeClick": { "x": 1680, "y": 940 },
-  "mazeDifficultyMode": "keep",
-  "mazeDifficultyTarget": 1,
-  "difficultyDigitTopLeft": { "x": 1329, "y": 326 },
-  "difficultyDigitSize": { "width": 374, "height": 125 },
-  "difficultyDecreaseClick": { "x": 896, "y": 377 },
-  "difficultyIncreaseClick": { "x": 1826, "y": 377 },
-  "difficultyOpenSliderClick": { "x": 1633, "y": 261 },
-  "difficultyListTopLeft": { "x": 579, "y": 292 },
-  "difficultyListSize": { "width": 182, "height": 561 },
-  "difficultyConfirmClick": { "x": 1125, "y": 930 },
-  "doubleClickIntervalMs": 100,
-  "detectionPollIntervalMs": 250,
-  "detectionTimeoutMs": 10000,
-  "mazeRunLimit": 0,
-  "mainQuestRunLimit": 10,
-  "mainQuestTaskEnabled": true,
-  "toggleHotkey": "F10",
-  "pauseHotkey": "F10",
-  "stopHotkey": "F11",
-  "firstRunNoticeAccepted": false,
-  "lastDailyShopDay": null
+﻿{
+    "windowTitleKeyword":  "マブラヴ",
+    "launchGameWithCapture":  false,
+    "gameExecutablePath":  "",
+    "gameLaunchArguments":  "",
+    "gameLaunchTimeoutSeconds":  90,
+    "matchThreshold":  0.78,
+    "saveDiagnostics":  false,
+    "diagnosticDirectory":  "diagnostics",
+    "referenceWidth":  1920,
+    "referenceHeight":  1080,
+    "searchTopLeft":  {
+                          "x":  1113,
+                          "y":  919
+                      },
+    "firstSearchSize":  {
+                            "width":  65,
+                            "height":  50
+                        },
+    "secondSearchTopLeft":  {
+                                "x":  1501,
+                                "y":  444
+                            },
+    "secondSearchSize":  {
+                             "width":  220,
+                             "height":  59
+                         },
+    "thirdSearchTopLeft":  {
+                               "x":  1568,
+                               "y":  796
+                           },
+    "thirdSearchSize":  {
+                            "width":  208,
+                            "height":  98
+                        },
+    "fourthSearchTopLeft":  {
+                                "x":  1602,
+                                "y":  927
+                            },
+    "fourthSearchSize":  {
+                             "width":  182,
+                             "height":  38
+                         },
+    "fifthSearchTopLeft":  {
+                               "x":  1621,
+                               "y":  927
+                           },
+    "fifthSearchSize":  {
+                            "width":  103,
+                            "height":  64
+                        },
+    "partnerSelectionTopLeft":  {
+                                    "x":  1633,
+                                    "y":  919
+                                },
+    "partnerSelectionSize":  {
+                                 "width":  183,
+                                 "height":  75
+                             },
+    "battleSkipTopLeft":  {
+                              "x":  1760,
+                              "y":  40
+                          },
+    "battleSkipSize":  {
+                           "width":  112,
+                           "height":  51
+                       },
+    "eventChoiceTopLeft":  {
+                               "x":  1018,
+                               "y":  628
+                           },
+    "eventChoiceSize":  {
+                            "width":  814,
+                            "height":  367
+                        },
+    "eventChoiceFirstOption":  {
+                                   "x":  1300,
+                                   "y":  700
+                               },
+    "eventChoiceSecondOption":  {
+                                    "x":  1300,
+                                    "y":  825
+                                },
+    "settlementTopLeft":  {
+                              "x":  1674,
+                              "y":  948
+                          },
+    "settlementSearchTopLeft":  {
+                                    "x":  1626,
+                                    "y":  917
+                                },
+    "settlementSearchSize":  {
+                                 "width":  97,
+                                 "height":  62
+                             },
+    "settlementCategoryDaily":  {
+                                    "x":  70,
+                                    "y":  338
+                                },
+    "settlementCategoryEquipment":  {
+                                        "x":  58,
+                                        "y":  456
+                                    },
+    "settlementCategoryExcavation":  {
+                                         "x":  96,
+                                         "y":  572
+                                     },
+    "settlementCategoryArtifactor":  {
+                                         "x":  67,
+                                         "y":  674
+                                     },
+    "settlementSubcategoryTabs":  [
+                                      {
+                                          "x":  416,
+                                          "y":  200
+                                      },
+                                      {
+                                          "x":  625,
+                                          "y":  200
+                                      },
+                                      {
+                                          "x":  840,
+                                          "y":  200
+                                      },
+                                      {
+                                          "x":  1050,
+                                          "y":  200
+                                      }
+                                  ],
+    "settlementBuyButtons":  [
+                                 {
+                                     "x":  890,
+                                     "y":  355
+                                 },
+                                 {
+                                     "x":  1630,
+                                     "y":  355
+                                 },
+                                 {
+                                     "x":  890,
+                                     "y":  545
+                                 },
+                                 {
+                                     "x":  1630,
+                                     "y":  545
+                                 },
+                                 {
+                                     "x":  890,
+                                     "y":  720
+                                 },
+                                 {
+                                     "x":  1630,
+                                     "y":  720
+                                 }
+                             ],
+    "settlementMultiplierToggle":  {
+                                       "x":  1610,
+                                       "y":  200
+                                   },
+    "settlementMultiplierTopLeft":  {
+                                        "x":  1673,
+                                        "y":  181
+                                    },
+    "settlementMultiplierSize":  {
+                                     "width":  81,
+                                     "height":  49
+                                 },
+    "settlementBuyButtonSearchInset":  {
+                                           "x":  12,
+                                           "y":  12
+                                       },
+    "settlementBuyButtonSearchSize":  {
+                                          "width":  301,
+                                          "height":  119
+                                      },
+    "settlementConfirmTopLeft":  {
+                                     "x":  685,
+                                     "y":  520
+                                 },
+    "settlementConfirmSize":  {
+                                  "width":  592,
+                                  "height":  424
+                              },
+    "settlementConfirmCancel":  {
+                                    "x":  810,
+                                    "y":  790
+                                },
+    "settlementConfirmOk":  {
+                                "x":  1115,
+                                "y":  790
+                            },
+    "settlementConfirmLeftover":  true,
+    "settlementPurchases":  {
+                                "daily":  {
+                                              "skillBook1":  [
+                                                                 0,
+                                                                 0,
+                                                                 0,
+                                                                 0,
+                                                                 0,
+                                                                 0
+                                                             ],
+                                              "skillBook2":  [
+                                                                 0,
+                                                                 0,
+                                                                 0,
+                                                                 0,
+                                                                 0,
+                                                                 0
+                                                             ],
+                                              "disk":  [
+                                                           0,
+                                                           0,
+                                                           0,
+                                                           0,
+                                                           0,
+                                                           0
+                                                       ],
+                                              "unit":  [
+                                                           0,
+                                                           0,
+                                                           0,
+                                                           0,
+                                                           0,
+                                                           0
+                                                       ]
+                                          },
+                                "equipment":  {
+                                                  "physics":  [
+                                                                  0,
+                                                                  0,
+                                                                  0,
+                                                                  0
+                                                              ],
+                                                  "en":  [
+                                                             0,
+                                                             0,
+                                                             0,
+                                                             0
+                                                         ],
+                                                  "agility":  [
+                                                                  0,
+                                                                  0,
+                                                                  0,
+                                                                  0
+                                                              ]
+                                              },
+                                "excavation":  {
+                                                   "funds":  0,
+                                                   "training":  0,
+                                                   "technical":  0
+                                               },
+                                "artifactor":  {
+                                                   "physics":  [
+                                                                   0,
+                                                                   0,
+                                                                   0,
+                                                                   0,
+                                                                   0
+                                                               ],
+                                                   "en":  [
+                                                              0,
+                                                              0,
+                                                              0,
+                                                              0,
+                                                              0
+                                                          ],
+                                                   "agility":  [
+                                                                   0,
+                                                                   0,
+                                                                   0,
+                                                                   0,
+                                                                   0
+                                                               ]
+                                               }
+                            },
+    "treasureStateTopLeft":  {
+                                 "x":  775,
+                                 "y":  34
+                             },
+    "treasureStateSize":  {
+                              "width":  376,
+                              "height":  82
+                          },
+    "treasureOptionsTopLeft":  {
+                                   "x":  478,
+                                   "y":  316
+                               },
+    "treasureOptionsSize":  {
+                                "width":  1081,
+                                "height":  90
+                            },
+    "treasureMatchThreshold":  0.58,
+    "treasureMatchRetryCount":  3,
+    "treasureMatchRetryDelayMs":  150,
+    "treasureClickOffset":  {
+                                "x":  -40,
+                                "y":  55
+                            },
+    "routeSelectionTopLeft":  {
+                                  "x":  1595,
+                                  "y":  924
+                              },
+    "routeSelectionSize":  {
+                               "width":  181,
+                               "height":  37
+                           },
+    "routeTreasureOptionsTopLeft":  {
+                                        "x":  661,
+                                        "y":  243
+                                    },
+    "routeTreasureOptionsSize":  {
+                                     "width":  209,
+                                     "height":  554
+                                 },
+    "treasurePriority": [ "diamond", "shield", "sword", "heart", "skull", "sparkle" ],
+    "firstClick":  {
+                       "x":  1143,
+                       "y":  961
+                   },
+    "secondClick":  {
+                        "x":  1611,
+                        "y":  473
+                    },
+    "thirdClick":  {
+                       "x":  1667,
+                       "y":  836
+                   },
+    "fourthClick":  {
+                        "x":  1693,
+                        "y":  942
+                    },
+    "fifthClick":  {
+                       "x":  1672,
+                       "y":  959
+                   },
+    "partnerClick":  {
+                         "x":  1724,
+                         "y":  956
+                     },
+    "battleSkipClick":  {
+                            "x":  1816,
+                            "y":  65
+                        },
+    "routeClick":  {
+                       "x":  1680,
+                       "y":  940
+                   },
+    "mazeDifficultyMode":  "keep",
+    "mazeDifficultyTarget":  1,
+    "difficultyDigitTopLeft":  {
+                                   "x":  1329,
+                                   "y":  326
+                               },
+    "difficultyDigitSize":  {
+                                "width":  374,
+                                "height":  125
+                            },
+    "difficultyDecreaseClick":  {
+                                    "x":  896,
+                                    "y":  377
+                                },
+    "difficultyIncreaseClick":  {
+                                    "x":  1826,
+                                    "y":  377
+                                },
+    "difficultyOpenSliderClick":  {
+                                      "x":  1633,
+                                      "y":  261
+                                  },
+    "difficultyListTopLeft":  {
+                                  "x":  579,
+                                  "y":  292
+                              },
+    "difficultyListSize":  {
+                               "width":  182,
+                               "height":  561
+                           },
+    "difficultyConfirmClick":  {
+                                   "x":  1125,
+                                   "y":  930
+                               },
+    "doubleClickIntervalMs":  100,
+    "detectionPollIntervalMs":  250,
+    "detectionTimeoutMs":  10000,
+    "mazeRunLimit":  0,
+    "mainQuestRunLimit":  10,
+    "mainQuestTaskEnabled":  true,
+    "toggleHotkey":  "F10",
+    "pauseHotkey":  "F10",
+    "stopHotkey":  "F11",
+    "firstRunNoticeAccepted":  false,
+    "lastDailyShopDay":  null
 }

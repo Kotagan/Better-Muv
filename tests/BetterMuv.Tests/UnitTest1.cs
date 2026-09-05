@@ -134,8 +134,8 @@ public class AutomationConfigTests
 
         Assert.Equal(1920, config.ReferenceWidth);
         Assert.Equal(1080, config.ReferenceHeight);
-        Assert.Equal(new ConfigPoint(1595, 924), config.RouteSelectionTopLeft);
-        Assert.Equal(new ConfigSize(181, 37), config.RouteSelectionSize);
+        Assert.Equal(new ConfigPoint(1500, 880), config.RouteSelectionTopLeft);
+        Assert.Equal(new ConfigSize(360, 180), config.RouteSelectionSize);
         Assert.Equal(new ConfigPoint(661, 243), config.RouteTreasureOptionsTopLeft);
         Assert.Equal(new ConfigSize(209, 554), config.RouteTreasureOptionsSize);
         Assert.Equal(
@@ -213,6 +213,7 @@ public class AutomationConfigTests
     public void TreasureOptionDefaultsUseTightIconStrip()
     {
         var config = new AutomationConfig();
+        Assert.Equal(new ConfigPoint(478, 316), config.TreasureOptionsTopLeft);
         Assert.Equal(new ConfigSize(1081, 90), config.TreasureOptionsSize);
         Assert.Equal(0.58, config.TreasureMatchThreshold);
         Assert.Equal(new ConfigPoint(-40, 55), config.TreasureClickOffset);
