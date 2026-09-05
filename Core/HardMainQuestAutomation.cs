@@ -13,6 +13,7 @@ public sealed class HardMainQuestAutomation
     private const double PresenceThreshold = 0.62;
     private const int MissTimeoutMs = 120000;
     private const int ClickCooldownMs = 900;
+    private const int StartAppearSettleMs = 1200;
 
     private enum Phase { Home, Banner, Start, Sortie, Battle, Next }
 
@@ -30,6 +31,7 @@ public sealed class HardMainQuestAutomation
     private readonly TemplateMatcher _toHome;
     private readonly TemplateMatcher _difficulty;
     private readonly TemplateMatcher _hardMark;
+    private readonly TemplateMatcher _scenarioOk;
 
     public HardMainQuestAutomation(AutomationConfig config, Action<string> log)
     {
@@ -47,6 +49,7 @@ public sealed class HardMainQuestAutomation
         _toHome = TemplateAssets.Load("main-quest-to-home.png");
         _difficulty = TemplateAssets.Load("hard-quest-difficulty.png");
         _hardMark = TemplateAssets.Load("hard-quest-battle.png");
+        _scenarioOk = TemplateAssets.Load("main-quest-scenario-ok.png");
     }
 
     public async Task RunOnceAsync(CancellationToken cancellationToken)
@@ -75,6 +78,7 @@ public sealed class HardMainQuestAutomation
         var missTimer = Stopwatch.StartNew();
         var lastLog = Stopwatch.StartNew();
         Stopwatch? battleSkipFallback = null;
+        Stopwatch? startAppearAt = null;
         bool hardConfirmed = false;
 
         while (true)
@@ -84,20 +88,32 @@ public sealed class HardMainQuestAutomation
 
             IReadOnlyList<(string Key, TemplateMatcher Matcher)> active = phase switch
             {
-                Phase.Home => [("homeQuest", _homeQuest)],
+                Phase.Home =>
+                [
+                    ("homeQuest", _homeQuest), ("banner", _banner), ("start", _start),
+                    ("sortie", _sortie), ("hardMark", _hardMark)
+                ],
                 Phase.Banner => [("banner", _banner), ("start", _start), ("hardMark", _hardMark)],
                 Phase.Start =>
                 [
                     ("hardMark", _hardMark), ("difficulty", _difficulty),
-                    ("start", _start), ("sortie", _sortie)
+                    ("start", _start), ("sortie", _sortie), ("next", _next), ("scenarioOk", _scenarioOk)
                 ],
                 Phase.Sortie =>
                 [
                     ("hardMark", _hardMark), ("sortie", _sortie),
-                    ("skip", _skip), ("skipAlt", _skipAlt), ("rematch", _rematch), ("toHome", _toHome)
+                    ("skip", _skip), ("skipAlt", _skipAlt), ("next", _next), ("rematch", _rematch), ("toHome", _toHome)
                 ],
-                Phase.Battle => [("skip", _skip), ("skipAlt", _skipAlt), ("next", _next), ("rematch", _rematch), ("toHome", _toHome)],
-                _ => [("next", _next), ("start", _start), ("hardMark", _hardMark), ("rematch", _rematch), ("toHome", _toHome)]
+                Phase.Battle =>
+                [
+                    ("scenarioOk", _scenarioOk), ("skip", _skip), ("skipAlt", _skipAlt),
+                    ("next", _next), ("rematch", _rematch), ("toHome", _toHome)
+                ],
+                _ =>
+                [
+                    ("scenarioOk", _scenarioOk), ("next", _next), ("start", _start),
+                    ("hardMark", _hardMark), ("rematch", _rematch), ("toHome", _toHome)
+                ]
             };
 
             IReadOnlyDictionary<string, TemplateProbeResult> probes;
@@ -128,7 +144,8 @@ public sealed class HardMainQuestAutomation
                 lastLog.Restart();
             }
 
-            if (TryHit(probes, "rematch", out _) || TryHit(probes, "toHome", out _))
+            // 必须以「再戦」为准；単独 toHome 易在其它界面误匹配，不能当失败。
+            if (TryHit(probes, "rematch", out _))
             {
                 _log("检测到再戦，点击ホームへ后结束困难主线。");
                 if (TryHit(probes, "toHome", out TemplateProbeResult homeBtn))
@@ -140,6 +157,15 @@ public sealed class HardMainQuestAutomation
                 return;
             }
 
+            if (TryHit(probes, "scenarioOk", out TemplateProbeResult scenarioOk) &&
+                ReadyToClick(lastClick, lastClickAt, "scenarioOk"))
+            {
+                MarkClick(ref lastClick, ref lastClickAt, "scenarioOk");
+                await ClickMatchAsync(window, scenarioOk, "升级OK", cancellationToken);
+                missTimer.Restart();
+                continue;
+            }
+
             if (phase is Phase.Start &&
                 !hardConfirmed &&
                 TryHit(probes, "difficulty", out TemplateProbeResult difficulty) &&
@@ -147,6 +173,27 @@ public sealed class HardMainQuestAutomation
             {
                 MarkClick(ref lastClick, ref lastClickAt, "difficulty");
                 await ClickMatchAsync(window, difficulty, "难易度变更", cancellationToken);
+                missTimer.Restart();
+                continue;
+            }
+
+            // 结算「下一步」优先：避免 Start 且未确认困难时卡在结算页空转。
+            if (TryHit(probes, "next", out TemplateProbeResult nextEarly) &&
+                ReadyToClick(lastClick, lastClickAt, "next"))
+            {
+                MarkClick(ref lastClick, ref lastClickAt, "next");
+                bool clearedEarly = await ClickNextUntilGoneAsync(window, nextEarly, cancellationToken);
+                if (!clearedEarly)
+                {
+                    phase = Phase.Next;
+                    missTimer.Restart();
+                    continue;
+                }
+
+                completed++;
+                _log($"困难主线：已通关第 {completed} 轮，继续下一关。");
+                phase = Phase.Start;
+                startAppearAt = null;
                 missTimer.Restart();
                 continue;
             }
@@ -198,18 +245,7 @@ public sealed class HardMainQuestAutomation
                 battleSkipFallback = null;
             }
 
-            if (phase is Phase.Next or Phase.Battle &&
-                TryHit(probes, "next", out TemplateProbeResult next) &&
-                ReadyToClick(lastClick, lastClickAt, "next"))
-            {
-                MarkClick(ref lastClick, ref lastClickAt, "next");
-                await ClickMatchAsync(window, next, "下一步", cancellationToken);
-                completed++;
-                _log($"困难主线：已通关第 {completed} 轮，继续下一关。");
-                phase = Phase.Start;
-                missTimer.Restart();
-                continue;
-            }
+            // next 已在上方统一处理。
 
             if (TryHit(probes, "sortie", out TemplateProbeResult sortie) &&
                 ReadyToClick(lastClick, lastClickAt, "sortie"))
@@ -221,12 +257,13 @@ public sealed class HardMainQuestAutomation
                 continue;
             }
 
-            if (TryHit(probes, "start", out TemplateProbeResult start) &&
+            if (TryReadyStartClick(probes, ref startAppearAt, out TemplateProbeResult start) &&
                 ReadyToClick(lastClick, lastClickAt, "start"))
             {
                 MarkClick(ref lastClick, ref lastClickAt, "start");
                 await ClickMatchAsync(window, start, "任务开始", cancellationToken);
                 phase = Phase.Sortie;
+                startAppearAt = null;
                 missTimer.Restart();
                 continue;
             }
@@ -271,6 +308,7 @@ public sealed class HardMainQuestAutomation
             double threshold = key switch
             {
                 "skip" or "skipAlt" or "next" => 0.52,
+                "scenarioOk" => 0.55,
                 "rematch" => 0.72,
                 "hardMark" => 0.58,
                 _ => PresenceThreshold
@@ -288,6 +326,7 @@ public sealed class HardMainQuestAutomation
         "sortie" => (_config.MainQuestSortieTopLeft, _config.MainQuestSortieSize),
         "skip" or "skipAlt" => (_config.MainQuestSkipTopLeft, _config.MainQuestSkipSize),
         "next" => (_config.MainQuestNextTopLeft, _config.MainQuestNextSize),
+        "scenarioOk" => (_config.MainQuestScenarioOkTopLeft, _config.MainQuestScenarioOkSize),
         "rematch" => (_config.MainQuestRematchTopLeft, _config.MainQuestRematchSize),
         "difficulty" => (_config.HardQuestDifficultyTopLeft, _config.HardQuestDifficultySize),
         "hardMark" => (_config.HardQuestBattleTopLeft, _config.HardQuestBattleSize),
@@ -336,5 +375,46 @@ public sealed class HardMainQuestAutomation
         GameWindow window, TemplateProbeResult probe, string reason, CancellationToken cancellationToken)
     {
         await _screen.ClickProbeAsync(window, probe, reason, cancellationToken);
+    }
+
+    private async Task<bool> ClickNextUntilGoneAsync(
+        GameWindow window, TemplateProbeResult next, CancellationToken cancellationToken)
+    {
+        await ClickMatchAsync(window, next, "下一步", cancellationToken);
+        await Task.Delay(700, cancellationToken);
+        window = _screen.Refresh(window);
+        IReadOnlyDictionary<string, TemplateProbeResult> probes =
+            await ProbeClientAsync(window, [("next", _next)], cancellationToken);
+        if (!TryHit(probes, "next", out TemplateProbeResult stillNext))
+            return true;
+
+        _log("下一步仍在，再点一次。");
+        await ClickMatchAsync(window, stillNext, "下一步(2)", cancellationToken);
+        await Task.Delay(700, cancellationToken);
+        window = _screen.Refresh(window);
+        probes = await ProbeClientAsync(window, [("next", _next)], cancellationToken);
+        if (!TryHit(probes, "next", out _))
+            return true;
+
+        _log("结算下一步仍在，稍后继续点。");
+        return false;
+    }
+
+    private bool TryReadyStartClick(
+        IReadOnlyDictionary<string, TemplateProbeResult> probes,
+        ref Stopwatch? startAppearAt,
+        out TemplateProbeResult start)
+    {
+        if (!TryHit(probes, "start", out start))
+        {
+            startAppearAt = null;
+            return false;
+        }
+
+        startAppearAt ??= Stopwatch.StartNew();
+        if (startAppearAt.ElapsedMilliseconds < StartAppearSettleMs)
+            return false;
+
+        return true;
     }
 }
