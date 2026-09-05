@@ -50,6 +50,13 @@ public sealed class ScreenAutomation
         _calibrationOffsetY += deltaY;
     }
 
+    /// <summary>清除累计校准偏移（每轮开局前调用，避免脏偏移残留）。</summary>
+    public void ResetCalibration()
+    {
+        _calibrationOffsetX = 0;
+        _calibrationOffsetY = 0;
+    }
+
     public CaptureGeometry Geometry(GameWindow window) =>
         new(Viewport(window), _config.ReferenceWidth, _config.ReferenceHeight);
 
@@ -219,8 +226,10 @@ public sealed class ScreenAutomation
         ConfigPoint topLeft,
         ConfigSize size,
         CancellationToken cancellationToken,
-        int? timeoutMs = null)
+        int? timeoutMs = null,
+        double? matchThreshold = null)
     {
+        double threshold = matchThreshold ?? _config.MatchThreshold;
         window = Refresh(window);
         EnsureUsableViewport(window);
         RegionCapture region = CaptureRegion(window, topLeft, size, matcher);
@@ -235,12 +244,12 @@ public sealed class ScreenAutomation
             match = await Task.Run(
                 () => Match(matcher, image, region.LogicalWidth, region.LogicalHeight),
                 cancellationToken);
-            if (match.Score >= _config.MatchThreshold ||
+            if (match.Score >= threshold ||
                 timer.ElapsedMilliseconds >= effectiveTimeoutMs)
                 break;
         }
 
-        return (match.Score >= _config.MatchThreshold, match, image);
+        return (match.Score >= threshold, match, image);
     }
 
     // ---- 点击 ----
@@ -269,7 +278,7 @@ public sealed class ScreenAutomation
         TemplateProbeResult probe,
         string reason,
         CancellationToken cancellationToken,
-        int settleDelayMs = 500)
+        int settleDelayMs = 250)
     {
         _log($"{reason}命中 {probe.Score:F3}，点击 ({probe.Center.X:F0},{probe.Center.Y:F0})");
         await ClickScreenAsync(window, probe.Center, cancellationToken);

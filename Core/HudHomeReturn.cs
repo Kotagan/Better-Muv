@@ -8,7 +8,8 @@ namespace BetterMuv.Core;
 public sealed class HudHomeReturn
 {
     private const int MaxClicks = 3;
-    private const int AfterClickDelayMs = 800;
+    private const int AfterClickDelayMs = 400;
+    private const double HomeButtonThreshold = 0.78;
     // 浏览器客户区宽高可变；右上角锚点使用较宽的参考区域兜底搜索。
     private static readonly ConfigPoint TopRightAnchorTopLeft = new(1420, 0);
     private static readonly ConfigSize TopRightAnchorSize = new(500, 260);
@@ -38,7 +39,8 @@ public sealed class HudHomeReturn
                 _matcher,
                 _config.HudHomeTopLeft,
                 _config.HudHomeSize,
-                cancellationToken);
+                cancellationToken,
+                HomeButtonThreshold);
             if (!probe.IsMatch &&
                 (_config.HudHomeTopLeft != TopRightAnchorTopLeft ||
                  _config.HudHomeSize != TopRightAnchorSize))
@@ -48,7 +50,8 @@ public sealed class HudHomeReturn
                     _matcher,
                     TopRightAnchorTopLeft,
                     TopRightAnchorSize,
-                    cancellationToken);
+                    cancellationToken,
+                    HomeButtonThreshold);
                 if (anchorProbe.Score > probe.Score)
                     probe = anchorProbe;
             }
@@ -63,6 +66,7 @@ public sealed class HudHomeReturn
 
             clicked++;
             _log($"发现主界面按钮 {probe.Score:F3}，点击返回主页（{clicked}/{MaxClicks}）。");
+            // 点模板命中中心，避免写死坐标在未校准时点偏。
             await _screen.ClickScreenAsync(window, probe.Center, cancellationToken);
             await Task.Delay(AfterClickDelayMs, cancellationToken);
         }
