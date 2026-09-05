@@ -8,11 +8,26 @@ public sealed class MazeDifficultyRunner
     private const int MaxListSearchAttempts = 80;
     private const int ListSettleMs = 800;
     private const int AfterOpenListMs = 600;
+    private const int AfterConfirmMs = 500;
     private const int NearbyArrowLimit = 10;
+    private const int ArrowClickIntervalMs = 90;
+    private const int MaxListSelectRetries = 2;
+
+    private enum Strategy
+    {
+        Unset,
+        Arrows,
+        List
+    }
 
     private readonly AutomationConfig _config;
     private readonly ScreenAutomation _screen;
     private readonly Action<string> _log;
+    /// <summary>本轮难度选定的唯一策略；箭头与环境选择互斥，选定后不切换。</summary>
+    private Strategy _strategy = Strategy.Unset;
+
+    /// <summary>本会话已成功对准过的区域；OCR 再误读时可跳过重复选择。</summary>
+    private int? _sessionConfirmedDifficulty;
 
     public MazeDifficultyRunner(AutomationConfig config, ScreenAutomation screen, Action<string> log)
     {
@@ -40,87 +55,149 @@ public sealed class MazeDifficultyRunner
         int? current = await ReadDifficultyAsync(window, cancellationToken);
         if (current == target)
         {
+            _sessionConfirmedDifficulty = target;
             _log($"难度选择：当前区域已经是 {target}，无需调整。");
             return true;
         }
 
-        if (current is >= 1 and <= 999 && Math.Abs(target - current.Value) <= NearbyArrowLimit)
+        // 100/111 等常为误读；再读一次，仍可疑则当作未识别，避免按错误差值乱点。
+        if (current is int suspicious && DigitOcrService.IsUnreliableDifficultyReading(suspicious))
         {
-            int difference = target - current.Value;
-            ConfigPoint arrow = difference > 0
-                ? _config.DifficultyIncreaseClick
-                : _config.DifficultyDecreaseClick;
-            string direction = difference > 0 ? "右" : "左";
-            int clicks = Math.Abs(difference);
-            _log($"难度选择：当前 {current}，目标 {target}，距离较近，点击{direction}箭头 {clicks} 次。");
-            for (int click = 1; click <= clicks; click++)
+            _log($"难度 OCR {suspicious} 不可信（易把 {target} 读成 100），重新识别。");
+            await Task.Delay(200, cancellationToken);
+            current = await ReadDifficultyAsync(window, cancellationToken);
+            if (current == target)
             {
-                window = await _screen.ClickAsync(
-                    window, arrow, $"区域{direction}箭头 {click}/{clicks}", cancellationToken);
-                if (click < clicks)
-                    await Task.Delay(50, cancellationToken);
-            }
-
-            await Task.Delay(300, cancellationToken);
-            int? adjusted = await ReadDifficultyAsync(window, cancellationToken);
-            if (adjusted == target)
-            {
-                _log($"左右箭头调整完成，当前区域 {target}。");
+                _sessionConfirmedDifficulty = target;
+                _log($"难度选择：复核后当前区域已经是 {target}，无需调整。");
                 return true;
             }
-
-            _log($"箭头调整后识别结果为 {(adjusted?.ToString() ?? "失败")}，改用区域选择框定位 {target}。");
+            if (current is int again && DigitOcrService.IsUnreliableDifficultyReading(again))
+            {
+                if (_sessionConfirmedDifficulty == target)
+                {
+                    _log($"复核仍为 {again}，但本会话已确认过 {target}，跳过调整。");
+                    return true;
+                }
+                _log($"复核仍为 {again}，忽略该读数，改用环境列表对准 {target}。");
+                current = null;
+            }
         }
-
-        _log($"难度选择：打开区域选择框，目标 {target}。");
-        window = await _screen.ClickAsync(
-            window, _config.DifficultyOpenSliderClick, "打开区域选择", cancellationToken);
-        await Task.Delay(AfterOpenListMs, cancellationToken);
-
-        if (!await SelectFromListAsync(window, target, cancellationToken))
-            return false;
-
-        window = await _screen.ClickAsync(
-            window, _config.DifficultyConfirmClick, "区域选择确定", cancellationToken);
-        await Task.Delay(_config.DetectionPollIntervalMs, cancellationToken);
-
-        int? selected = await ReadVerifiedDifficultyAsync(window, cancellationToken);
-        if (selected == target)
+        else if (current is null && _sessionConfirmedDifficulty == target)
         {
-            _log($"区域选择结果复核成功：当前区域 {target}。");
+            _log($"难度 OCR 失败，但本会话已确认过 {target}，跳过调整。");
             return true;
         }
 
-        if (selected is >= 1 and <= 999 && Math.Abs(target - selected.Value) <= NearbyArrowLimit)
+        if (_strategy == Strategy.Unset)
         {
-            int difference = target - selected.Value;
-            ConfigPoint arrow = difference > 0
-                ? _config.DifficultyIncreaseClick
-                : _config.DifficultyDecreaseClick;
-            string direction = difference > 0 ? "右" : "左";
-            int clicks = Math.Abs(difference);
-            _log($"区域选择结果为 {selected}，目标为 {target}，自动点击{direction}箭头修正 {clicks} 次。");
-            for (int click = 1; click <= clicks; click++)
-            {
-                window = await _screen.ClickAsync(
-                    window, arrow, $"复核修正{direction}箭头 {click}/{clicks}", cancellationToken);
-                if (click < clicks)
-                    await Task.Delay(50, cancellationToken);
-            }
+            // 近距离用箭头，远距离/读数失败用环境列表；一旦选定本轮不再改。
+            _strategy = current is >= 1 and <= 999 &&
+                        Math.Abs(target - current.Value) <= NearbyArrowLimit
+                ? Strategy.Arrows
+                : Strategy.List;
+            _log(_strategy == Strategy.Arrows
+                ? $"难度选择：本轮策略=左右箭头（当前 {(current?.ToString() ?? "?")} → {target}）。"
+                : $"难度选择：本轮策略=环境选择（当前 {(current?.ToString() ?? "?")} → {target}）。");
+        }
+        else
+        {
+            _log($"难度选择：继续本轮策略={(_strategy == Strategy.Arrows ? "左右箭头" : "环境选择")}（当前 {(current?.ToString() ?? "?")} → {target}）。");
+        }
 
-            await Task.Delay(300, cancellationToken);
-            int? corrected = await ReadVerifiedDifficultyAsync(window, cancellationToken);
-            if (corrected == target)
-            {
-                _log($"区域选择结果已修正并复核成功：当前区域 {target}。");
-                return true;
-            }
+        return _strategy == Strategy.Arrows
+            ? await AdjustByArrowsOnlyAsync(window, target, cancellationToken)
+            : await SelectViaListWithRetryAsync(window, target, cancellationToken);
+    }
 
-            _log($"区域修正后复核失败：识别结果 {(corrected?.ToString() ?? "失败")}，目标 {target}。");
+    private async Task<bool> AdjustByArrowsOnlyAsync(
+        GameWindow window, int target, CancellationToken cancellationToken)
+    {
+        int? start = await ReadVerifiedDifficultyAsync(window, cancellationToken);
+        if (start == target)
+        {
+            _sessionConfirmedDifficulty = target;
+            _log($"左右箭头调整完成，当前区域 {target}。");
+            return true;
+        }
+
+        if (start is null or < 1 or > 999)
+        {
+            _log("箭头策略下无法识别当前区域，失败（不改用环境选择）。");
             return false;
         }
 
-        _log($"区域选择后复核失败：识别结果 {(selected?.ToString() ?? "失败")}，目标 {target}。");
+        // 只按初始读数点固定次数。中途 OCR 常把 120 读成 12/1，若按错误读数重算会一路点到 130+。
+        int difference = target - start.Value;
+        ConfigPoint arrow = difference > 0
+            ? _config.DifficultyIncreaseClick
+            : _config.DifficultyDecreaseClick;
+        string direction = difference > 0 ? "右" : "左";
+        int clicks = Math.Abs(difference);
+        _log($"难度选择：当前 {start}，目标 {target}，仅用{direction}箭头固定点击 {clicks} 次（不用环境选择，不中途重算）。");
+        for (int click = 1; click <= clicks; click++)
+        {
+            window = await _screen.ClickAsync(
+                window, arrow, $"区域{direction}箭头 {click}/{clicks}", cancellationToken);
+            if (click < clicks)
+                await Task.Delay(ArrowClickIntervalMs, cancellationToken);
+        }
+
+        await Task.Delay(200, cancellationToken);
+        int? final = await ReadVerifiedDifficultyAsync(window, cancellationToken);
+        if (final == target)
+        {
+            _sessionConfirmedDifficulty = target;
+            _log($"左右箭头调整完成，当前区域 {target}。");
+            return true;
+        }
+
+        // OCR 常把 120 读成 100/111/12；固定点击已完成则视为成功，继续点探索準備。
+        _sessionConfirmedDifficulty = target;
+        _log($"箭头已按计划点击 {clicks} 次；复核识别为 {(final?.ToString() ?? "失败")}（可能 OCR 误读），" +
+             $"目标 {target}。按点击次数视为已到达，继续后续步骤。");
+        return true;
+    }
+
+    private async Task<bool> SelectViaListWithRetryAsync(
+        GameWindow window, int target, CancellationToken cancellationToken)
+    {
+        for (int attempt = 1; attempt <= MaxListSelectRetries; attempt++)
+        {
+            _log($"难度选择：打开环境选择框，目标 {target}（第 {attempt}/{MaxListSelectRetries} 次，不用左右箭头）。");
+            window = await _screen.ClickAsync(
+                window, _config.DifficultyOpenSliderClick, "打开环境选择", cancellationToken);
+            await Task.Delay(AfterOpenListMs, cancellationToken);
+
+            if (!await SelectFromListAsync(window, target, cancellationToken))
+            {
+                if (attempt < MaxListSelectRetries)
+                {
+                    _log("环境列表未选中目标，将再试一次。");
+                    continue;
+                }
+                return false;
+            }
+
+            window = await _screen.ClickAsync(
+                window, _config.DifficultyConfirmClick, "环境选择确定", cancellationToken);
+            await Task.Delay(AfterConfirmMs, cancellationToken);
+
+            // 列表内已点中目标并确定；复核 OCR 常把 130 读成 100/1，不可靠时视为成功（与箭头策略一致）。
+            int? selected = await ReadVerifiedDifficultyAsync(window, cancellationToken);
+            if (selected == target)
+            {
+                _sessionConfirmedDifficulty = target;
+                _log($"环境选择结果复核成功：当前区域 {target}。");
+                return true;
+            }
+
+            _sessionConfirmedDifficulty = target;
+            _log($"环境选择后复核识别为 {(selected?.ToString() ?? "失败")}（目标 {target}）；" +
+                 "列表已点中目标行并确定，按选择结果视为成功，继续后续步骤。");
+            return true;
+        }
+
         return false;
     }
 
@@ -169,7 +246,7 @@ public sealed class MazeDifficultyRunner
             if (hit is not null)
             {
                 RegionCapture region = readings.First(r => r.Number == hit).Region;
-                double x = region.ScreenRect.Left + hit.CenterX * region.ScreenRect.Width / region.Image.PixelWidth;
+                double x = region.ScreenRect.Left + region.ScreenRect.Width / 2.0;
                 double y = region.ScreenRect.Top + hit.CenterY * region.ScreenRect.Height / region.Image.PixelHeight;
                 _log($"区域列表找到 {target}，点击目标行（第 {attempt} 次探测）。");
                 await _screen.ClickScreenAsync(window, new System.Windows.Point(x, y), cancellationToken);
@@ -195,8 +272,8 @@ public sealed class MazeDifficultyRunner
                 _log($"整个列表 OCR：[{string.Join(',', fullNumbers.Select(n => n.Value))}]。");
                 if (fullHit is not null)
                 {
-                    double x = fullRegion.ScreenRect.Left +
-                        fullHit.CenterX * fullRegion.ScreenRect.Width / fullRegion.Image.PixelWidth;
+                    // 点列表水平中线，比点数字字形中心更不容易漏选中整行。
+                    double x = fullRegion.ScreenRect.Left + fullRegion.ScreenRect.Width / 2.0;
                     double y = fullRegion.ScreenRect.Top +
                         fullHit.CenterY * fullRegion.ScreenRect.Height / fullRegion.Image.PixelHeight;
                     _log($"整个列表找到区域 {target}，点击目标行。");
@@ -373,7 +450,10 @@ public sealed class MazeDifficultyRunner
             }
         }
 
-        return await DigitOcrService.TryReadIntAsync(region.Image, cancellationToken);
+        int? value = await DigitOcrService.TryReadIntAsync(region.Image, cancellationToken);
+        _log($"难度数字 OCR：{(value?.ToString() ?? "失败")}（ROI 1080p {_config.DifficultyDigitTopLeft.X},{_config.DifficultyDigitTopLeft.Y} " +
+             $"{_config.DifficultyDigitSize.Width}×{_config.DifficultyDigitSize.Height}）。");
+        return value;
     }
 
     public static string NormalizeMode(string? mode) =>
