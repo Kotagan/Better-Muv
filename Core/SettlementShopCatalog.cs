@@ -94,6 +94,23 @@ public static class SettlementShopCatalog
         }
     }
 
+    /// <summary>将指定栏位购买量设为 0（关闭）。返回是否发生了变更。</summary>
+    public static bool DisableSlot(
+        SettlementPurchases purchases, string category, string? subcategory, int slotIndex)
+    {
+        int active = ActiveSlotCount(category);
+        if (slotIndex < 0 || slotIndex >= active)
+            return false;
+
+        int[] quantities = GetQuantities(purchases, category, subcategory);
+        if (quantities[slotIndex] == 0)
+            return false;
+
+        quantities[slotIndex] = 0;
+        SetQuantities(purchases, category, subcategory, quantities);
+        return true;
+    }
+
     private static int[] Pad(int[] source, int length)
     {
         var result = new int[length];
