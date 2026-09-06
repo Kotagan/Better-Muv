@@ -88,7 +88,16 @@ public partial class MainWindow
         foreach ((string key, string name) in subs)
         {
             var button = new Button { Content = name, Tag = key, Margin = new Thickness(0, 0, 6, 0), Padding = new Thickness(8, 5, 8, 5), Background = key == _shopSubcategory ? new SolidColorBrush(Color.FromRgb(59, 66, 78)) : new SolidColorBrush(Color.FromRgb(42, 48, 58)), Foreground = Brushes.White, BorderThickness = new Thickness(0) };
-            button.Click += (_, _) => { PersistShopPurchases(true); _shopSubcategory = key; foreach (Button sibling in ShopSubcategoryPanel.Children.OfType<Button>()) sibling.Background = Equals(sibling.Tag, key) ? new SolidColorBrush(Color.FromRgb(59, 66, 78)) : new SolidColorBrush(Color.FromRgb(42, 48, 58)); LoadShopItemValues(); };
+            button.Click += (_, _) =>
+            {
+                PersistShopPurchases(true);
+                _shopSubcategory = key;
+                foreach (Button sibling in ShopSubcategoryPanel.Children.OfType<Button>())
+                    sibling.Background = Equals(sibling.Tag, key)
+                        ? new SolidColorBrush(Color.FromRgb(59, 66, 78))
+                        : new SolidColorBrush(Color.FromRgb(42, 48, 58));
+                LoadShopItemValues();
+            };
             ShopSubcategoryPanel.Children.Add(button);
         }
         LoadShopItemValues();
@@ -123,6 +132,11 @@ public partial class MainWindow
             _shopBuyAllSwitches[i].IsEnabled = true;
             _shopItemCards[i].Opacity = 1;
         }
+
+        ShopSubcategoryBuyAllSwitch.IsChecked =
+            SettlementShopCatalog.IsPageBuyAll(_shopPurchases, _shopCategory, _shopSubcategory);
+        ShopCategoryBuyAllSwitch.IsChecked =
+            SettlementShopCatalog.IsCategoryBuyAll(_shopPurchases, _shopCategory);
         _isLoadingShopValues = false;
     }
 
@@ -142,6 +156,30 @@ public partial class MainWindow
     {
         if (_isLoadingShopValues) return;
         _shopQuantityBoxes[slot].IsEnabled = _shopBuyAllSwitches[slot].IsChecked != true;
+        PersistShopPurchases(true);
+        _isLoadingShopValues = true;
+        ShopSubcategoryBuyAllSwitch.IsChecked =
+            SettlementShopCatalog.IsPageBuyAll(_shopPurchases, _shopCategory, _shopSubcategory);
+        ShopCategoryBuyAllSwitch.IsChecked =
+            SettlementShopCatalog.IsCategoryBuyAll(_shopPurchases, _shopCategory);
+        _isLoadingShopValues = false;
+    }
+
+    private void ShopCategoryBuyAllSwitch_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_isLoadingShopValues) return;
+        bool buyAll = ShopCategoryBuyAllSwitch.IsChecked == true;
+        SettlementShopCatalog.SetCategoryBuyAll(_shopPurchases, _shopCategory, buyAll);
+        LoadShopItemValues();
+        PersistShopPurchases(true);
+    }
+
+    private void ShopSubcategoryBuyAllSwitch_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_isLoadingShopValues) return;
+        bool buyAll = ShopSubcategoryBuyAllSwitch.IsChecked == true;
+        SettlementShopCatalog.SetPageBuyAll(_shopPurchases, _shopCategory, _shopSubcategory, buyAll);
+        LoadShopItemValues();
         PersistShopPurchases(true);
     }
 

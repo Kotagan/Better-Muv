@@ -33,6 +33,8 @@ public sealed class SettlementShopRunner
     private readonly TemplateMatcher _multiplierMaxMatcher;
     private readonly Action<string> _log;
     private bool _sessionBuyDone;
+    /// <summary>本会话已确认的倍率，避免每次全买前重复识别/切换。</summary>
+    private MultiplierState? _confirmedMultiplier;
 
     public SettlementShopRunner(
         AutomationConfig config,
@@ -75,6 +77,7 @@ public sealed class SettlementShopRunner
         var totalTimer = Stopwatch.StartNew();
         const int ShopBudgetMs = 90000;
         _sessionBuyDone = false;
+        _confirmedMultiplier = null;
 
         try
         {
@@ -162,8 +165,9 @@ public sealed class SettlementShopRunner
     private async Task RunDailyAsync(
         GameWindow window, DailySettlementPurchases daily, CancellationToken cancellationToken)
     {
-        window = await SelectTabAsync(window, _config.SettlementCategoryDaily, "结算大类：日常", cancellationToken);
-        await Task.Delay(_config.DetectionPollIntervalMs, cancellationToken);
+        if (!await TrySelectCategoryAsync(window, _config.SettlementCategoryDaily, "结算大类：日常", cancellationToken))
+            return;
+        await Task.Delay(350, cancellationToken);
         if (!await BuySubcategorySlotsAsync(window, "daily", "skillBook1", 0, daily.SkillBook1, cancellationToken))
             return;
         if (!await BuySubcategorySlotsAsync(window, "daily", "skillBook2", 1, daily.SkillBook2, cancellationToken))
@@ -176,8 +180,9 @@ public sealed class SettlementShopRunner
     private async Task RunEquipmentAsync(
         GameWindow window, EquipmentSettlementPurchases equipment, CancellationToken cancellationToken)
     {
-        window = await SelectTabAsync(window, _config.SettlementCategoryEquipment, "结算大类：装备", cancellationToken);
-        await Task.Delay(_config.DetectionPollIntervalMs, cancellationToken);
+        if (!await TrySelectCategoryAsync(window, _config.SettlementCategoryEquipment, "结算大类：装备", cancellationToken))
+            return;
+        await Task.Delay(350, cancellationToken);
         if (!await BuySubcategorySlotsAsync(window, "equipment", "physics", 0, equipment.Physics, cancellationToken))
             return;
         if (!await BuySubcategorySlotsAsync(window, "equipment", "en", 1, equipment.En, cancellationToken))
@@ -188,21 +193,38 @@ public sealed class SettlementShopRunner
     private async Task RunExcavationAsync(
         GameWindow window, ExcavationSettlementPurchases excavation, CancellationToken cancellationToken)
     {
-        window = await SelectTabAsync(window, _config.SettlementCategoryExcavation, "结算大类：挖掘", cancellationToken);
-        await Task.Delay(_config.DetectionPollIntervalMs, cancellationToken);
+        if (!await TrySelectCategoryAsync(window, _config.SettlementCategoryExcavation, "结算大类：挖掘", cancellationToken))
+            return;
+        await Task.Delay(350, cancellationToken);
         await BuySlotsAsync(window, "excavation", null, excavation.ToSlots(), cancellationToken);
     }
 
     private async Task RunArtifactorAsync(
         GameWindow window, ArtifactorSettlementPurchases artifactor, CancellationToken cancellationToken)
     {
-        window = await SelectTabAsync(window, _config.SettlementCategoryArtifactor, "结算大类：Artifactor", cancellationToken);
-        await Task.Delay(_config.DetectionPollIntervalMs, cancellationToken);
+        if (!await TrySelectCategoryAsync(window, _config.SettlementCategoryArtifactor, "结算大类：Artifactor", cancellationToken))
+            return;
+        await Task.Delay(350, cancellationToken);
         if (!await BuySubcategorySlotsAsync(window, "artifactor", "physics", 0, artifactor.Physics, cancellationToken))
             return;
         if (!await BuySubcategorySlotsAsync(window, "artifactor", "en", 1, artifactor.En, cancellationToken))
             return;
         await BuySubcategorySlotsAsync(window, "artifactor", "agility", 2, artifactor.Agility, cancellationToken);
+    }
+
+    private async Task<bool> TrySelectCategoryAsync(
+        GameWindow window, ConfigPoint tab, string name, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await SelectTabAsync(window, tab, name, cancellationToken);
+            return true;
+        }
+        catch (InvalidOperationException ex)
+        {
+            _log($"{ex.Message}，跳过该大类。");
+            return false;
+        }
     }
 
     private async Task<bool> BuySubcategorySlotsAsync(
@@ -218,9 +240,18 @@ public sealed class SettlementShopRunner
 
         string scope = $"{SettlementShopCatalog.CategoryDisplayName(category)}/{subcategoryKey}";
         ConfigPoint tab = _config.SettlementSubcategoryTabs[tabIndex];
-        window = await SelectTabAsync(
-            window, tab, $"结算小类：{scope}", cancellationToken);
-        await Task.Delay(_config.DetectionPollIntervalMs, cancellationToken);
+        try
+        {
+            window = await SelectTabAsync(
+                window, tab, $"结算小类：{scope}", cancellationToken);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _log($"{ex.Message}，跳过该小类，继续后续购买。");
+            return !_sessionBuyDone;
+        }
+
+        await Task.Delay(150, cancellationToken);
         return await BuySlotsAsync(window, category, subcategoryKey, quantities, cancellationToken);
     }
 
@@ -229,21 +260,31 @@ public sealed class SettlementShopRunner
     private async Task<GameWindow> SelectTabAsync(
         GameWindow window, ConfigPoint tab, string name, CancellationToken cancellationToken)
     {
-        for (int attempt = 1; attempt <= 3; attempt++)
+        window = _screen.Refresh(window);
+        double already = SelectedBlueFraction(window, tab);
+        if (already >= 0.45)
+        {
+            _log($"{name}：已是选中态（{already:P0}），无需点击。");
+            return window;
+        }
+
+        for (int attempt = 1; attempt <= 5; attempt++)
         {
             window = _screen.Refresh(window);
-            await _screen.ClickAsync(window, tab, $"{name}（{attempt}/3）", cancellationToken);
-            await Task.Delay(450, cancellationToken);
+            await _screen.ClickAsync(window, tab, $"{name}（{attempt}/5）", cancellationToken);
+            // 大类切页后小类条会晚一拍出现；等 UI 稳定再验蓝底。
+            await Task.Delay(attempt <= 2 ? 450 : 600, cancellationToken);
             window = _screen.Refresh(window);
             double selected = SelectedBlueFraction(window, tab);
             _log($"{name}：选中蓝底占比 {selected:P0}。");
             if (selected < 0.45)
                 continue;
-            await Task.Delay(180, cancellationToken);
+            await Task.Delay(120, cancellationToken);
             if (SelectedBlueFraction(_screen.Refresh(window), tab) >= 0.45)
                 return window;
         }
-        throw new InvalidOperationException($"{name}未确认选中（已重试 3 次）");
+
+        throw new InvalidOperationException($"{name}未确认选中（已重试 5 次）");
     }
 
     private double SelectedBlueFraction(GameWindow window, ConfigPoint tab)
@@ -293,7 +334,7 @@ public sealed class SettlementShopRunner
 
             if (visual == BuySlotVisual.DailyDark)
             {
-                _log($"{scope} 第 {i + 1} 格为每日暗色，无法再买，跳过。");
+                _log($"{scope} 第 {i + 1} 格为每日暗色/已买完，跳过。");
                 continue;
             }
 
@@ -305,29 +346,15 @@ public sealed class SettlementShopRunner
                     continue;
                 }
 
-                visual = await ReadBuySlotVisualAsync(window, button, cancellationToken);
-                if (visual == BuySlotVisual.AtLimit)
-                {
-                    DisableSlotInConfig(category, subcategory, quantities, i, scope);
-                    continue;
-                }
-
-                if (visual == BuySlotVisual.DailyDark)
-                {
-                    _log($"{scope} 第 {i + 1} 格为每日暗色，无法再买，跳过。");
-                    continue;
-                }
-
-                // -1：最多点 2 次，避免禁用/满级模板漏检时死循环。
+                // 全买：点一下就复查是否已购完；已购完则不再点第二次。
                 for (int n = 0; n < 2; n++)
                 {
                     if (_sessionBuyDone)
                         return false;
-                    if (!await EnsureMultiplierAsync(window, MultiplierState.Max, cancellationToken))
-                    {
-                        _log($"{scope} 第 {i + 1} 格购买前倍率 MAX 丢失，停止该格。");
-                        break;
-                    }
+
+                    window = await _screen.ClickAsync(
+                        window, button, $"{scope} 第 {i + 1} 格全买({n + 1}/2)", cancellationToken);
+                    await Task.Delay(50, cancellationToken);
 
                     visual = await ReadBuySlotVisualAsync(window, button, cancellationToken);
                     if (visual == BuySlotVisual.AtLimit)
@@ -335,13 +362,12 @@ public sealed class SettlementShopRunner
                         DisableSlotInConfig(category, subcategory, quantities, i, scope);
                         break;
                     }
-
                     if (visual == BuySlotVisual.DailyDark)
+                    {
+                        _log($"{scope} 第 {i + 1} 格已变为暗色，停止该格。");
                         break;
+                    }
 
-                    window = await _screen.ClickAsync(
-                        window, button, $"{scope} 第 {i + 1} 格全买({n + 1}/2)", cancellationToken);
-                    await Task.Delay(_config.DetectionPollIntervalMs, cancellationToken);
                     if (await DetectGreenDoneAsync(window, cancellationToken))
                         return false;
                 }
@@ -367,25 +393,17 @@ public sealed class SettlementShopRunner
                     {
                         if (_sessionBuyDone)
                             return false;
-                        if (!await EnsureMultiplierAsync(window, MultiplierState.X10, cancellationToken))
-                        {
-                            _log($"{scope} 第 {i + 1} 格购买前倍率 ×10 丢失，停止 ×10 段。");
-                            break;
-                        }
-
-                        visual = await ReadBuySlotVisualAsync(window, button, cancellationToken);
-                        if (visual == BuySlotVisual.AtLimit)
-                        {
-                            DisableSlotInConfig(category, subcategory, quantities, i, scope);
-                            break;
-                        }
-
-                        if (visual == BuySlotVisual.DailyDark)
-                            break;
 
                         window = await _screen.ClickAsync(
                             window, button, $"{scope} 第 {i + 1} 格 ×10 ({n + 1}/{tens})", cancellationToken);
-                        await Task.Delay(_config.DetectionPollIntervalMs, cancellationToken);
+                        await Task.Delay(50, cancellationToken);
+                        visual = await ReadBuySlotVisualAsync(window, button, cancellationToken);
+                        if (visual is BuySlotVisual.AtLimit or BuySlotVisual.DailyDark)
+                        {
+                            if (visual == BuySlotVisual.AtLimit)
+                                DisableSlotInConfig(category, subcategory, quantities, i, scope);
+                            break;
+                        }
                         if (await DetectGreenDoneAsync(window, cancellationToken))
                             return false;
                     }
@@ -404,25 +422,17 @@ public sealed class SettlementShopRunner
                     {
                         if (_sessionBuyDone)
                             return false;
-                        if (!await EnsureMultiplierAsync(window, MultiplierState.X1, cancellationToken))
-                        {
-                            _log($"{scope} 第 {i + 1} 格购买前倍率 ×1 丢失，停止 ×1 段。");
-                            break;
-                        }
-
-                        visual = await ReadBuySlotVisualAsync(window, button, cancellationToken);
-                        if (visual == BuySlotVisual.AtLimit)
-                        {
-                            DisableSlotInConfig(category, subcategory, quantities, i, scope);
-                            break;
-                        }
-
-                        if (visual == BuySlotVisual.DailyDark)
-                            break;
 
                         window = await _screen.ClickAsync(
                             window, button, $"{scope} 第 {i + 1} 格 ×1 ({n + 1}/{ones})", cancellationToken);
-                        await Task.Delay(_config.DetectionPollIntervalMs, cancellationToken);
+                        await Task.Delay(50, cancellationToken);
+                        visual = await ReadBuySlotVisualAsync(window, button, cancellationToken);
+                        if (visual is BuySlotVisual.AtLimit or BuySlotVisual.DailyDark)
+                        {
+                            if (visual == BuySlotVisual.AtLimit)
+                                DisableSlotInConfig(category, subcategory, quantities, i, scope);
+                            break;
+                        }
                         if (await DetectGreenDoneAsync(window, cancellationToken))
                             return false;
                     }
@@ -437,12 +447,19 @@ public sealed class SettlementShopRunner
     private async Task<bool> EnsureMultiplierAsync(
         GameWindow window, MultiplierState target, CancellationToken cancellationToken)
     {
+        if (_confirmedMultiplier == target)
+            return true;
+
         MultiplierState? current = await ReadMultiplierAsync(window, cancellationToken);
         if (current == target)
+        {
+            _confirmedMultiplier = target;
             return true;
+        }
 
         int plannedClicks = current is null ? 3 : ClicksToReach(current.Value, target);
         _log($"右上角倍率当前 {(current is null ? "未知" : Describe(current.Value))}，目标 {Describe(target)}，点击切换。");
+        _confirmedMultiplier = null;
 
         for (int attempt = 0; attempt < 8; attempt++)
         {
@@ -454,12 +471,13 @@ public sealed class SettlementShopRunner
                     window, _config.SettlementMultiplierToggle,
                     $"切换倍率 → {Describe(target)}（轮 {attempt + 1} 点 {n + 1}/{burst}）",
                     cancellationToken);
-                await Task.Delay(Math.Max(_config.DetectionPollIntervalMs, 350), cancellationToken);
+                await Task.Delay(Math.Max(_config.DetectionPollIntervalMs, 150), cancellationToken);
             }
 
             current = await ReadMultiplierAsync(window, cancellationToken);
             if (current == target)
             {
+                _confirmedMultiplier = target;
                 _log($"已确认右上角倍率为 {Describe(target)}。");
                 return true;
             }
@@ -494,23 +512,31 @@ public sealed class SettlementShopRunner
 
     private async Task<MultiplierState?> ReadMultiplierAsync(GameWindow window, CancellationToken cancellationToken)
     {
-        // 倍率字小、底色深，默认 0.78 过高；用较低阈值并取最高分。
-        const double threshold = 0.50;
-        TemplateProbeResult x1 = await _screen.ProbeAsync(
-            window, _multiplierX1Matcher, _config.SettlementMultiplierTopLeft,
-            _config.SettlementMultiplierSize, cancellationToken, matchThreshold: threshold);
-        TemplateProbeResult x10 = await _screen.ProbeAsync(
-            window, _multiplierX10Matcher, _config.SettlementMultiplierTopLeft,
-            _config.SettlementMultiplierSize, cancellationToken, matchThreshold: threshold);
-        TemplateProbeResult max = await _screen.ProbeAsync(
-            window, _multiplierMaxMatcher, _config.SettlementMultiplierTopLeft,
-            _config.SettlementMultiplierSize, cancellationToken, matchThreshold: threshold);
+        // 倍率字小、底色深；同一 ROI 只截一次，三模板并行匹配后取最高分。
+        window = _screen.Refresh(window);
+        RegionCapture region = _screen.CaptureRegion(
+            window, _config.SettlementMultiplierTopLeft, _config.SettlementMultiplierSize);
+        BitmapSource image = region.Image;
+        image.Freeze();
 
-        var candidates = new List<(MultiplierState State, double Score)>
+        TemplateMatchResult[] matches = await Task.Run(() =>
         {
-            (MultiplierState.X1, x1.Score),
-            (MultiplierState.X10, x10.Score),
-            (MultiplierState.Max, max.Score)
+            var results = new TemplateMatchResult[3];
+            Parallel.Invoke(
+                () => results[0] = _screen.Match(
+                    _multiplierX1Matcher, image, region.LogicalWidth, region.LogicalHeight),
+                () => results[1] = _screen.Match(
+                    _multiplierX10Matcher, image, region.LogicalWidth, region.LogicalHeight),
+                () => results[2] = _screen.Match(
+                    _multiplierMaxMatcher, image, region.LogicalWidth, region.LogicalHeight));
+            return results;
+        }, cancellationToken);
+
+        var candidates = new (MultiplierState State, double Score)[]
+        {
+            (MultiplierState.X1, matches[0].Score),
+            (MultiplierState.X10, matches[1].Score),
+            (MultiplierState.Max, matches[2].Score)
         };
         (MultiplierState State, double Score) best = candidates.OrderByDescending(c => c.Score).First();
         if (best.Score < 0.40)
@@ -522,27 +548,84 @@ public sealed class SettlementShopRunner
         GameWindow window, ConfigPoint button, CancellationToken cancellationToken)
     {
         ConfigPoint inset = _config.SettlementBuyButtonSearchInset;
-        ConfigSize size = _config.SettlementBuyButtonSearchSize;
-        var topLeft = new ConfigPoint(button.X - inset.X, button.Y - inset.Y);
+        // 模板 shop-orange-limit≈340×100、shop-daily-dark≈542×170，搜索区必须不小于模板。
+        ConfigSize size = ScreenAutomation.EnsureFitsTemplate(
+            ScreenAutomation.EnsureFitsTemplate(_config.SettlementBuyButtonSearchSize, _lvMaxMatcher),
+            _buyDisabledMatcher);
+        var topLeft = new ConfigPoint(
+            Math.Max(0, button.X - inset.X),
+            Math.Max(0, button.Y - inset.Y));
 
-        TemplateProbeResult lvMax = await _screen.ProbeAsync(
-            window, _lvMaxMatcher, topLeft, size, cancellationToken);
-        TemplateProbeResult disabled = await _screen.ProbeAsync(
-            window, _buyDisabledMatcher, topLeft, size, cancellationToken);
+        window = _screen.Refresh(window);
+        RegionCapture region = _screen.CaptureRegion(window, topLeft, size);
+        BitmapSource image = region.Image;
+        image.Freeze();
 
-        // 橙色上限优先：暗色按钮也可能局部相似，但 LvMAX 更明确。
-        if (lvMax.IsMatch && (!disabled.IsMatch || lvMax.Score >= disabled.Score))
+        TemplateMatchResult[] matches = await Task.Run(() =>
+        {
+            var results = new TemplateMatchResult[2];
+            Parallel.Invoke(
+                () => results[0] = _screen.Match(
+                    _lvMaxMatcher, image, region.LogicalWidth, region.LogicalHeight),
+                () => results[1] = _screen.Match(
+                    _buyDisabledMatcher, image, region.LogicalWidth, region.LogicalHeight));
+            return results;
+        }, cancellationToken);
+
+        // 已购完判定阈值低于全局 0.78；再辅以橙色像素兜底。
+        const double soldOutThreshold = 0.55;
+        double lvMaxScore = matches[0].Score;
+        double darkScore = matches[1].Score;
+        bool lvMaxHit = lvMaxScore >= soldOutThreshold;
+        bool disabledHit = darkScore >= soldOutThreshold;
+        bool orangeHint = OrangeLimitFraction(image) >= 0.08;
+
+        if (lvMaxHit || (orangeHint && lvMaxScore >= 0.40))
+        {
+            if (!lvMaxHit)
+                _log($"格子已购完(橙色兜底)：LvMAX={lvMaxScore:F2} 暗色={darkScore:F2}");
             return BuySlotVisual.AtLimit;
-        if (disabled.IsMatch)
+        }
+
+        if (disabledHit)
             return BuySlotVisual.DailyDark;
+
         return BuySlotVisual.Available;
+    }
+
+    /// <summary>LvMAX 橙底占比：模板漏检时的颜色兜底。</summary>
+    private static double OrangeLimitFraction(BitmapSource image)
+    {
+        var bitmap = new FormatConvertedBitmap(image, PixelFormats.Bgra32, null, 0);
+        int stride = bitmap.PixelWidth * 4;
+        byte[] pixels = new byte[stride * bitmap.PixelHeight];
+        bitmap.CopyPixels(pixels, stride, 0);
+        int orange = 0;
+        int total = bitmap.PixelWidth * bitmap.PixelHeight;
+        for (int i = 0; i < pixels.Length; i += 4)
+        {
+            byte b = pixels[i], g = pixels[i + 1], r = pixels[i + 2];
+            if (r > 200 && g is > 70 and < 170 && b < 90 && r > g + 40)
+                orange++;
+        }
+        return total == 0 ? 0 : orange / (double)total;
     }
 
     private async Task<bool> DetectGreenDoneAsync(GameWindow window, CancellationToken cancellationToken)
     {
+        // 旧配置可能把 tip ROI 拉到 1120×520，4K 下每次全买匹配可达数秒；运行时夹紧。
+        ConfigPoint tipTopLeft = _config.SettlementShopTipTopLeft;
+        ConfigSize tipSize = _config.SettlementShopTipSize;
+        if (tipSize.Width > 480 || tipSize.Height > 160)
+        {
+            tipTopLeft = new ConfigPoint(
+                tipTopLeft.X + Math.Max(0, (tipSize.Width - 480) / 2),
+                tipTopLeft.Y + Math.Max(0, (tipSize.Height - 140) / 2));
+            tipSize = new ConfigSize(480, 140);
+        }
+
         TemplateProbeResult tip = await _screen.ProbeAsync(
-            window, _greenDoneMatcher,
-            _config.SettlementShopTipTopLeft, _config.SettlementShopTipSize,
+            window, _greenDoneMatcher, tipTopLeft, tipSize,
             cancellationToken, matchThreshold: 0.55);
         if (!tip.IsMatch)
             return false;

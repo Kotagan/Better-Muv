@@ -32,7 +32,7 @@ public partial class MainWindow
         bool stop = RegisterHotKey(handle, StopHotkeyId, 0, (uint)KeyInterop.VirtualKeyFromKey(Enum.Parse<Key>(config.StopHotkey)));
         int stopError = stop ? 0 : Marshal.GetLastWin32Error();
         AppendLog(pause && stop
-            ? $"已注册热键：{config.PauseHotkey} 暂停/继续，{config.StopHotkey} 停止。"
+            ? $"已注册热键：{config.PauseHotkey} 启动/停止，{config.StopHotkey} 停止。"
             : BuildHotkeyRegistrationFailure(config, pause, pauseError, stop, stopError));
     }
 
@@ -52,8 +52,15 @@ public partial class MainWindow
         {
             if (wParam == PauseHotkeyId)
             {
+                // F10：空闲启动；运行中/暂停中均为停止（不是暂停）。
                 if (_runCancellation is not null || _isPaused)
-                    PauseResumeButton_Click(this, new RoutedEventArgs());
+                    StopButton_Click(this, new RoutedEventArgs());
+                else if (MazePipelineToggle.IsChecked == true ||
+                         MainQuestPipelineToggle.IsChecked == true ||
+                         HardMainQuestPipelineToggle.IsChecked == true)
+                    RunPipelineButton_Click(this, new RoutedEventArgs());
+                else
+                    RunMazeButton_Click(this, new RoutedEventArgs());
             }
             else if (wParam == StopHotkeyId)
             {

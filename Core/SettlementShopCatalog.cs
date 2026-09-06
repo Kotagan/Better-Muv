@@ -111,6 +111,66 @@ public static class SettlementShopCatalog
         return true;
     }
 
+    /// <summary>将指定小类（或无小类的当前页）全部栏位设为全买(-1)或清零。</summary>
+    public static void SetPageBuyAll(
+        SettlementPurchases purchases, string category, string? subcategory, bool buyAll)
+    {
+        int active = ActiveSlotCount(category);
+        IReadOnlyList<string> names = ItemNames(category, subcategory);
+        var values = new int[6];
+        int fill = buyAll ? -1 : 0;
+        for (int i = 0; i < active; i++)
+            values[i] = string.IsNullOrWhiteSpace(names[i]) ? 0 : fill;
+        SetQuantities(purchases, category, subcategory, values);
+    }
+
+    /// <summary>当前小类页是否全部为全买。</summary>
+    public static bool IsPageBuyAll(SettlementPurchases purchases, string category, string? subcategory)
+    {
+        int[] quantities = GetQuantities(purchases, category, subcategory);
+        IReadOnlyList<string> names = ItemNames(category, subcategory);
+        int active = ActiveSlotCount(category);
+        bool any = false;
+        for (int i = 0; i < active; i++)
+        {
+            if (string.IsNullOrWhiteSpace(names[i]))
+                continue;
+            any = true;
+            if (quantities[i] != -1)
+                return false;
+        }
+        return any;
+    }
+
+    /// <summary>将该大类下所有小类全部设为全买或清零。</summary>
+    public static void SetCategoryBuyAll(SettlementPurchases purchases, string category, bool buyAll)
+    {
+        IReadOnlyList<(string Key, string Name)> subs = Subcategories(category);
+        if (subs.Count == 0)
+        {
+            SetPageBuyAll(purchases, category, null, buyAll);
+            return;
+        }
+
+        foreach ((string key, _) in subs)
+            SetPageBuyAll(purchases, category, key, buyAll);
+    }
+
+    /// <summary>该大类下所有小类是否全部为全买。</summary>
+    public static bool IsCategoryBuyAll(SettlementPurchases purchases, string category)
+    {
+        IReadOnlyList<(string Key, string Name)> subs = Subcategories(category);
+        if (subs.Count == 0)
+            return IsPageBuyAll(purchases, category, null);
+
+        foreach ((string key, _) in subs)
+        {
+            if (!IsPageBuyAll(purchases, category, key))
+                return false;
+        }
+        return true;
+    }
+
     private static int[] Pad(int[] source, int length)
     {
         var result = new int[length];

@@ -277,10 +277,10 @@
                     <Border x:Name="SettingsHotkeySection" Style="{StaticResource Card}" Margin="0" Visibility="Collapsed" VerticalAlignment="Top">
                         <StackPanel>
                             <TextBlock Text="快捷键" FontSize="16" FontWeight="SemiBold"/>
-                            <TextBlock Text="仅支持 F1–F12，且两项不能相同。" Foreground="#AEB9C5" Margin="0,4,0,12"/>
+                            <TextBlock Text="仅支持 F1–F12，且两项不能相同。启动键在运行中会停止任务（不是暂停）。" Foreground="#AEB9C5" Margin="0,4,0,12"/>
                             <Grid Margin="0,0,0,10">
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="100"/></Grid.ColumnDefinitions>
-                                <TextBlock Text="启动 / 暂停" VerticalAlignment="Center"/>
+                                <TextBlock Text="启动 / 停止" VerticalAlignment="Center"/>
                                 <TextBox x:Name="PauseHotkeyBox" Grid.Column="1" LostKeyboardFocus="HotkeyBoxes_LostKeyboardFocus"/>
                             </Grid>
                             <Grid>
@@ -359,10 +359,28 @@
                                 <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
                             <TextBlock Text="结算商店购买" FontSize="16" FontWeight="SemiBold"/>
-                            <StackPanel Grid.Row="1" x:Name="ShopCategoryPanel" Orientation="Horizontal" Margin="0,10,0,8"/>
+                            <Grid Grid.Row="1" Margin="0,10,0,8">
+                                <StackPanel x:Name="ShopCategoryPanel" Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                    <TextBlock Text="大类全买" Foreground="#BEC7D2" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                    <CheckBox x:Name="ShopCategoryBuyAllSwitch" Style="{StaticResource ToggleSwitch}"
+                                              ToolTip="将该大类下所有小类商品设为全买"
+                                              Checked="ShopCategoryBuyAllSwitch_Changed"
+                                              Unchecked="ShopCategoryBuyAllSwitch_Changed"/>
+                                </StackPanel>
+                            </Grid>
                             <Border Grid.Row="2" Background="#202630" CornerRadius="10" Padding="10">
                                 <DockPanel LastChildFill="True">
-                                    <StackPanel x:Name="ShopSubcategoryPanel" DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8"/>
+                                    <Grid DockPanel.Dock="Top" Margin="0,0,0,8">
+                                        <StackPanel x:Name="ShopSubcategoryPanel" Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                            <TextBlock Text="小类全买" Foreground="#BEC7D2" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                            <CheckBox x:Name="ShopSubcategoryBuyAllSwitch" Style="{StaticResource ToggleSwitch}"
+                                                      ToolTip="将当前小类（本页）所有商品设为全买"
+                                                      Checked="ShopSubcategoryBuyAllSwitch_Changed"
+                                                      Unchecked="ShopSubcategoryBuyAllSwitch_Changed"/>
+                                        </StackPanel>
+                                    </Grid>
                                     <ScrollViewer VerticalScrollBarVisibility="Auto">
                                         <Grid x:Name="ShopItemGrid">
                                             <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>

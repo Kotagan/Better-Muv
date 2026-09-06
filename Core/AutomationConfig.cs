@@ -76,8 +76,9 @@ public sealed class AutomationConfig
     public ConfigPoint SettlementMultiplierToggle { get; set; } = new(1610, 200);
     public ConfigPoint SettlementMultiplierTopLeft { get; set; } = new(1640, 165);
     public ConfigSize SettlementMultiplierSize { get; set; } = new(140, 70);
-    public ConfigPoint SettlementBuyButtonSearchInset { get; set; } = new(12, 12);
-    public ConfigSize SettlementBuyButtonSearchSize { get; set; } = new(301, 119);
+    public ConfigPoint SettlementBuyButtonSearchInset { get; set; } = new(40, 20);
+    /// <summary>须盖住 LvMAX(约340×100) 与暗色購入钮；过小会导致已购完无法检出。</summary>
+    public ConfigSize SettlementBuyButtonSearchSize { get; set; } = new(380, 140);
     public ConfigPoint SettlementConfirmTopLeft { get; set; } = new(685, 520);
     public ConfigSize SettlementConfirmSize { get; set; } = new(592, 424);
     public ConfigPoint SettlementConfirmCancel { get; set; } = new(810, 790);
@@ -189,8 +190,9 @@ public sealed class AutomationConfig
     /// <summary>上次日常已买够配置数量的游戏日（yyyy-MM-dd，每天 4:00 起算新一日）。</summary>
     public string? LastDailyShopDay { get; set; }
     /// <summary>商店绿色「强化素材不足」提示搜索区（1080p）。</summary>
-    public ConfigPoint SettlementShopTipTopLeft { get; set; } = new(400, 180);
-    public ConfigSize SettlementShopTipSize { get; set; } = new(1120, 520);
+    /// <summary>商店「强化素材不足」绿提示搜索区（宜紧，过大匹配很慢）。</summary>
+    public ConfigPoint SettlementShopTipTopLeft { get; set; } = new(720, 300);
+    public ConfigSize SettlementShopTipSize { get; set; } = new(520, 200);
 
     public static AutomationConfig Load(string path)
     {

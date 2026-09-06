@@ -31,6 +31,7 @@ public partial class MainWindow : Window
     private const double LogDrawerWidth = 360;
     private const string FluentPlay = "\uE768";
     private const string FluentPause = "\uE769";
+    private const string FluentStop = "\uE71A";
     private enum ActiveTask { None, Maze, MainQuest, HardMainQuest, Pipeline }
     private ActiveTask _activeTask = ActiveTask.None;
     private readonly List<string> _pipelineQueue = [];
@@ -408,6 +409,11 @@ public partial class MainWindow : Window
 
     private async void RunMazeButton_Click(object sender, RoutedEventArgs e)
     {
+        if (_activeTask == ActiveTask.Maze && (_runCancellation is not null || _isPaused))
+        {
+            PauseResumeButton_Click(sender, e);
+            return;
+        }
         if (_runCancellation is not null || _isPaused)
             return;
         OpenLogDrawer();
@@ -418,6 +424,11 @@ public partial class MainWindow : Window
 
     private async void RunMainQuestButton_Click(object sender, RoutedEventArgs e)
     {
+        if (_activeTask == ActiveTask.MainQuest && (_runCancellation is not null || _isPaused))
+        {
+            PauseResumeButton_Click(sender, e);
+            return;
+        }
         if (_runCancellation is not null || _isPaused)
             return;
         OpenLogDrawer();
@@ -428,6 +439,11 @@ public partial class MainWindow : Window
 
     private async void RunHardMainQuestButton_Click(object sender, RoutedEventArgs e)
     {
+        if (_activeTask == ActiveTask.HardMainQuest && (_runCancellation is not null || _isPaused))
+        {
+            PauseResumeButton_Click(sender, e);
+            return;
+        }
         if (_runCancellation is not null || _isPaused)
             return;
         OpenLogDrawer();
@@ -438,6 +454,11 @@ public partial class MainWindow : Window
 
     private async void RunPipelineButton_Click(object sender, RoutedEventArgs e)
     {
+        if (_activeTask == ActiveTask.Pipeline && (_runCancellation is not null || _isPaused))
+        {
+            PauseResumeButton_Click(sender, e);
+            return;
+        }
         if (_runCancellation is not null || _isPaused)
             return;
         OpenLogDrawer();
@@ -623,7 +644,9 @@ public partial class MainWindow : Window
         if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
         _runCancellation?.Dispose();
         _runCancellation = null;
-        _isPaused = _pauseRequested;
+        // 仅用户点「暂停」时保留可继续；停止键 / 任务自行结束一律清空。
+        bool keepPaused = _pauseRequested;
+        _isPaused = keepPaused;
         _pauseRequested = false;
         if (!_isPaused)
         {
@@ -656,13 +679,14 @@ public partial class MainWindow : Window
                 _ = StartMazeAsync();
             return;
         }
+
         if (_runCancellation is not null)
         {
             _pauseRequested = true;
-            PauseResumeButton.IsEnabled = false;
-            PauseMainQuestButton.IsEnabled = false;
-            PauseHardMainQuestButton.IsEnabled = false;
-            PausePipelineButton.IsEnabled = false;
+            RunMazeButton.IsEnabled = false;
+            RunMainQuestButton.IsEnabled = false;
+            RunHardMainQuestButton.IsEnabled = false;
+            RunPipelineButton.IsEnabled = false;
             _runCancellation.Cancel();
         }
     }
@@ -692,38 +716,50 @@ public partial class MainWindow : Window
         bool pipelineUi = _activeTask == ActiveTask.Pipeline;
         bool idle = !running && !_isPaused;
 
-        RunMazeButton.IsEnabled = idle;
-        RunMainQuestButton.IsEnabled = idle;
-        RunHardMainQuestButton.IsEnabled = idle;
-        RunPipelineButton.IsEnabled = idle;
+        RunMazeButton.IsEnabled = idle || mazeUi;
+        RunMainQuestButton.IsEnabled = idle || mainQuestUi;
+        RunHardMainQuestButton.IsEnabled = idle || hardMainQuestUi;
+        RunPipelineButton.IsEnabled = idle || pipelineUi;
         MazePipelineToggle.IsEnabled = idle;
         MainQuestPipelineToggle.IsEnabled = idle;
         HardMainQuestPipelineToggle.IsEnabled = idle;
 
-        PauseResumeButton.Visibility = showControls && mazeUi ? Visibility.Visible : Visibility.Collapsed;
-        StopButton.Visibility = showControls && mazeUi ? Visibility.Visible : Visibility.Collapsed;
-        PauseMainQuestButton.Visibility = showControls && mainQuestUi ? Visibility.Visible : Visibility.Collapsed;
-        StopMainQuestButton.Visibility = showControls && mainQuestUi ? Visibility.Visible : Visibility.Collapsed;
-        PauseHardMainQuestButton.Visibility = showControls && hardMainQuestUi ? Visibility.Visible : Visibility.Collapsed;
-        StopHardMainQuestButton.Visibility = showControls && hardMainQuestUi ? Visibility.Visible : Visibility.Collapsed;
-        PausePipelineButton.Visibility = showControls && pipelineUi ? Visibility.Visible : Visibility.Collapsed;
-        StopPipelineButton.Visibility = showControls && pipelineUi ? Visibility.Visible : Visibility.Collapsed;
-        RunPipelineButton.Visibility = pipelineUi && showControls ? Visibility.Collapsed : Visibility.Visible;
+        // 独立暂停键隐藏；运行键兼任暂停/继续，旁边保留停止键。
+        PauseResumeButton.Visibility = Visibility.Collapsed;
+        PauseMainQuestButton.Visibility = Visibility.Collapsed;
+        PauseHardMainQuestButton.Visibility = Visibility.Collapsed;
+        PausePipelineButton.Visibility = Visibility.Collapsed;
 
-        PauseResumeButton.IsEnabled = true;
-        PauseMainQuestButton.IsEnabled = true;
-        PauseHardMainQuestButton.IsEnabled = true;
-        PausePipelineButton.IsEnabled = true;
-        string pauseGlyph = _isPaused ? FluentPlay : FluentPause;
-        string pauseTip = _isPaused ? "继续" : "暂停";
-        PauseResumeButton.Content = pauseGlyph;
-        PauseMainQuestButton.Content = pauseGlyph;
-        PauseHardMainQuestButton.Content = pauseGlyph;
-        PausePipelineButton.Content = pauseGlyph;
-        PauseResumeButton.ToolTip = pauseTip;
-        PauseMainQuestButton.ToolTip = pauseTip;
-        PauseHardMainQuestButton.ToolTip = pauseTip;
-        PausePipelineButton.ToolTip = pauseTip;
+        StopButton.Visibility = showControls && mazeUi ? Visibility.Visible : Visibility.Collapsed;
+        StopMainQuestButton.Visibility = showControls && mainQuestUi ? Visibility.Visible : Visibility.Collapsed;
+        StopHardMainQuestButton.Visibility = showControls && hardMainQuestUi ? Visibility.Visible : Visibility.Collapsed;
+        StopPipelineButton.Visibility = showControls && pipelineUi ? Visibility.Visible : Visibility.Collapsed;
+        RunPipelineButton.Visibility = Visibility.Visible;
+
+        // 运行中：暂停 + 停止；暂停中：继续(播放) + 停止。
+        string runGlyph = !showControls ? FluentPlay : _isPaused ? FluentPlay : FluentPause;
+        RunMazeButton.Content = mazeUi && showControls ? runGlyph : FluentPlay;
+        RunMainQuestButton.Content = mainQuestUi && showControls ? runGlyph : FluentPlay;
+        RunHardMainQuestButton.Content = hardMainQuestUi && showControls ? runGlyph : FluentPlay;
+        RunMazeButton.ToolTip = mazeUi && running ? "暂停" : mazeUi && _isPaused ? "继续" : "运行";
+        RunMainQuestButton.ToolTip = mainQuestUi && running ? "暂停" : mainQuestUi && _isPaused ? "继续" : "运行";
+        RunHardMainQuestButton.ToolTip = hardMainQuestUi && running ? "暂停" : hardMainQuestUi && _isPaused ? "继续" : "运行";
+        RunPipelineButton.Content = pipelineUi && running ? "暂停"
+            : pipelineUi && _isPaused ? "继续"
+            : "运行";
+
+        StopButton.Content = FluentStop;
+        StopMainQuestButton.Content = FluentStop;
+        StopHardMainQuestButton.Content = FluentStop;
+        StopPipelineButton.Content = FluentStop;
+        StopButton.ToolTip = "停止";
+        StopMainQuestButton.ToolTip = "停止";
+        StopHardMainQuestButton.ToolTip = "停止";
+        StopPipelineButton.ToolTip = "停止";
+        StopButton.IsEnabled = true;
+        StopMainQuestButton.IsEnabled = true;
+        StopHardMainQuestButton.IsEnabled = true;
+        StopPipelineButton.IsEnabled = true;
 
         MazeStatusText.Text = mazeUi && running ? "迷宫探索运行中。"
             : mazeUi && _isPaused ? "迷宫探索已暂停。"
