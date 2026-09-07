@@ -13,17 +13,16 @@ public sealed class MainQuestAutomation
     private const double PresenceThreshold = 0.62;
     private const int MissTimeoutMs = 120000;
     private const int ScenarioMissTimeoutMs = 900000;
-    private const int ClickCooldownMs = 900;
-    /// <summary>任务开始入场动画约 1s，需稳定出现后再单点，避免连点误触出击。</summary>
-    private const int StartAppearSettleMs = 1200;
+    /// <summary>同键连点冷却。</summary>
+    private const int ClickCooldownMs = 100;
+    /// <summary>任务开始按钮出现后的稳定等待。</summary>
+    private const int StartAppearSettleMs = 100;
 
-    private enum Phase { Home, Banner, Start, Sortie, Battle, Scenario, Next }
+    private enum Phase { Start, Sortie, Battle, Scenario, Next }
 
     private readonly AutomationConfig _config;
     private readonly ScreenAutomation _screen;
     private readonly Action<string> _log;
-    private readonly TemplateMatcher _homeQuest;
-    private readonly TemplateMatcher _banner;
     private readonly TemplateMatcher _start;
     private readonly TemplateMatcher _sortie;
     private readonly TemplateMatcher _scenarioReplay;
@@ -38,14 +37,13 @@ public sealed class MainQuestAutomation
     private readonly TemplateMatcher _next;
     private readonly TemplateMatcher _rematch;
     private readonly TemplateMatcher _toHome;
+    private readonly PromoPopupDismisser _promoPopup;
 
     public MainQuestAutomation(AutomationConfig config, Action<string> log)
     {
         _config = config;
         _log = log;
         _screen = new ScreenAutomation(config, log);
-        _homeQuest = TemplateAssets.Load("main-quest-home-quest.png");
-        _banner = TemplateAssets.Load("main-quest-banner.png");
         _start = TemplateAssets.Load("main-quest-start.png");
         _sortie = TemplateAssets.Load("main-quest-sortie.png");
         _scenarioReplay = TemplateAssets.Load("main-quest-scenario-replay.png");
@@ -60,6 +58,7 @@ public sealed class MainQuestAutomation
         _next = TemplateAssets.Load("main-quest-next.png");
         _rematch = TemplateAssets.Load("main-quest-rematch.png");
         _toHome = TemplateAssets.Load("main-quest-to-home.png");
+        _promoPopup = new PromoPopupDismisser(config, _screen, log);
     }
 
     public async Task RunOnceAsync(CancellationToken cancellationToken)
@@ -80,10 +79,14 @@ public sealed class MainQuestAutomation
         await new HudHomeReturn(_config, _screen, _log).TryAsync(window, cancellationToken);
         window = _screen.Refresh(window);
 
-        _log("自动主线：通关点「下一步」后继续；剧情开菜单加速；出现再戦则回主页并结束。");
+        _log("自动主线：开局只看是否已在关卡内；否则回主页连点进主线。通关点「下一步」后继续；剧情开菜单加速；再戦则回主页结束。");
+        _log($"自动主线：模板逻辑尺寸 start={_start.LogicalWidth}×{_start.LogicalHeight}");
+
+        (Phase phase, bool abort) = await BootstrapEntryAsync(window, cancellationToken);
+        if (abort)
+            return;
 
         int completed = 0;
-        var phase = Phase.Home;
         string? lastClick = null;
         var lastClickAt = Stopwatch.StartNew();
         var missTimer = Stopwatch.StartNew();
@@ -91,29 +94,27 @@ public sealed class MainQuestAutomation
         Stopwatch? battleSkipFallback = null;
         Stopwatch? startAppearAt = null;
         bool scenarioSped = false;
-        _log($"自动主线：模板逻辑尺寸 home={_homeQuest.LogicalWidth}×{_homeQuest.LogicalHeight} start={_start.LogicalWidth}×{_start.LogicalHeight}");
 
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
             window = _screen.Refresh(window);
 
+            if (ShouldCheckPromoPopup(phase) &&
+                await _promoPopup.TryAsync(window, cancellationToken))
+            {
+                missTimer.Restart();
+                await Task.Delay(250, cancellationToken);
+                continue;
+            }
+
+            // 进关后不再扫主页/任务页；只盯当前阶段必要模板。
             IReadOnlyList<(string Key, TemplateMatcher Matcher)> active = phase switch
             {
-                Phase.Home =>
-                [
-                    ("homeQuest", _homeQuest), ("banner", _banner), ("start", _start),
-                    ("sortie", _sortie), ("scenarioReplay", _scenarioReplay), ("next", _next)
-                ],
-                Phase.Banner =>
-                [
-                    ("banner", _banner), ("start", _start), ("sortie", _sortie),
-                    ("scenarioReplay", _scenarioReplay), ("next", _next)
-                ],
                 Phase.Start =>
                 [
-                    ("scenarioOk", _scenarioOk), ("start", _start), ("sortie", _sortie),
-                    ("scenarioReplay", _scenarioReplay), ("next", _next)
+                    ("start", _start), ("sortie", _sortie),
+                    ("scenarioReplay", _scenarioReplay)
                 ],
                 Phase.Sortie =>
                 [
@@ -121,21 +122,30 @@ public sealed class MainQuestAutomation
                     ("skip", _skip), ("skipAlt", _skipAlt), ("next", _next), ("rematch", _rematch), ("toHome", _toHome)
                 ],
                 Phase.Battle => [("scenarioOk", _scenarioOk), ("skip", _skip), ("skipAlt", _skipAlt), ("next", _next), ("rematch", _rematch), ("toHome", _toHome)],
-                Phase.Scenario =>
-                [
-                    ("scenarioOk", _scenarioOk),
-                    ("scenarioReplay", _scenarioReplay),
-                    ("scenarioChoice", _scenarioChoice),
-                    ("scenarioChoiceAlt", _scenarioChoiceAlt),
-                    ("scenarioPortrait", _scenarioPortrait),
-                    ("scenarioSpeed", _scenarioSpeed),
-                    ("scenarioMenu", _scenarioMenu),
-                    ("next", _next),
-                    ("start", _start),
-                    ("sortie", _sortie),
-                    ("rematch", _rematch),
-                    ("toHome", _toHome)
-                ],
+                Phase.Scenario => scenarioSped
+                    ?
+                    [
+                        ("scenarioOk", _scenarioOk),
+                        ("scenarioReplay", _scenarioReplay),
+                        ("scenarioChoice", _scenarioChoice),
+                        ("scenarioChoiceAlt", _scenarioChoiceAlt),
+                        ("scenarioPortrait", _scenarioPortrait),
+                        ("next", _next),
+                        ("start", _start),
+                        ("sortie", _sortie),
+                        ("rematch", _rematch),
+                        ("toHome", _toHome)
+                    ]
+                    :
+                    [
+                        ("scenarioMenu", _scenarioMenu),
+                        ("scenarioSpeed", _scenarioSpeed),
+                        ("scenarioOk", _scenarioOk),
+                        ("scenarioReplay", _scenarioReplay),
+                        ("next", _next),
+                        ("rematch", _rematch),
+                        ("toHome", _toHome)
+                    ],
                 _ => [("scenarioOk", _scenarioOk), ("next", _next), ("start", _start), ("rematch", _rematch), ("toHome", _toHome)]
             };
 
@@ -210,7 +220,59 @@ public sealed class MainQuestAutomation
                     continue;
                 }
 
-                // 普通/CAUTION 粉条选项。
+                // 未加速：先开右上角菜单再点加速，绝不先点剧情选项（易误匹配拖慢）。
+                if (!scenarioSped)
+                {
+                    if (TryHit(probes, "scenarioMenu", out TemplateProbeResult menu) &&
+                        ReadyToClick(lastClick, lastClickAt, "scenarioMenu"))
+                    {
+                        MarkClick(ref lastClick, ref lastClickAt, "scenarioMenu");
+                        await ClickMatchAsync(window, menu, "剧情菜单", cancellationToken);
+                        missTimer.Restart();
+                        continue;
+                    }
+
+                    if (TryHit(probes, "scenarioSpeed", out TemplateProbeResult speed) &&
+                        ReadyToClick(lastClick, lastClickAt, "scenarioSpeed"))
+                    {
+                        MarkClick(ref lastClick, ref lastClickAt, "scenarioSpeed");
+                        await ClickMatchAsync(window, speed, "剧情加速", cancellationToken);
+                        scenarioSped = true;
+                        missTimer.Restart();
+                        _log("剧情已开启加速，等待播放结束。");
+                        continue;
+                    }
+
+                    if (TryHit(probes, "next", out TemplateProbeResult earlyNext) &&
+                        ReadyToClick(lastClick, lastClickAt, "next"))
+                    {
+                        MarkClick(ref lastClick, ref lastClickAt, "next");
+                        bool clearedEarly = await ClickNextUntilGoneAsync(window, earlyNext, cancellationToken);
+                        if (!clearedEarly)
+                        {
+                            phase = Phase.Next;
+                            missTimer.Restart();
+                            continue;
+                        }
+
+                        completed++;
+                        _log($"自动主线：剧情结束，已通关第 {completed} 轮。");
+                        phase = Phase.Start;
+                        scenarioSped = false;
+                        startAppearAt = null;
+                        missTimer.Restart();
+                        continue;
+                    }
+
+                    int earlyTimeout = MissTimeoutMs;
+                    if (missTimer.ElapsedMilliseconds >= earlyTimeout)
+                        throw new TimeoutException($"自动主线剧情持续 {earlyTimeout / 1000} 秒未开启加速。");
+
+                    await Task.Delay(_config.DetectionPollIntervalMs, cancellationToken);
+                    continue;
+                }
+
+                // 已加速后才处理选项 / 立绘。
                 if (TryPickBestPinkChoice(probes, out string choiceKey, out TemplateProbeResult choice) &&
                     ReadyToClick(lastClick, lastClickAt, "scenarioChoice"))
                 {
@@ -220,35 +282,11 @@ public sealed class MainQuestAutomation
                     continue;
                 }
 
-                // 双立绘特殊选项（仅在没有シナリオ再生时，避免剧情 CG 误判）。
                 if (TryHit(probes, "scenarioPortrait", out TemplateProbeResult portrait) &&
                     ReadyToClick(lastClick, lastClickAt, "scenarioChoice"))
                 {
                     MarkClick(ref lastClick, ref lastClickAt, "scenarioChoice");
                     await ClickScenarioChoiceAsync(window, "scenarioPortrait", portrait, cancellationToken);
-                    missTimer.Restart();
-                    continue;
-                }
-
-                // 注意：加速开/关在灰度上几乎一样，不能用「已加速」模板推断，必须实际点击一次。
-                if (!scenarioSped &&
-                    TryHit(probes, "scenarioSpeed", out TemplateProbeResult speed) &&
-                    ReadyToClick(lastClick, lastClickAt, "scenarioSpeed"))
-                {
-                    MarkClick(ref lastClick, ref lastClickAt, "scenarioSpeed");
-                    await ClickMatchAsync(window, speed, "剧情加速", cancellationToken);
-                    scenarioSped = true;
-                    missTimer.Restart();
-                    _log("剧情已开启加速，等待播放结束。");
-                    continue;
-                }
-
-                if (!scenarioSped &&
-                    TryHit(probes, "scenarioMenu", out TemplateProbeResult menu) &&
-                    ReadyToClick(lastClick, lastClickAt, "scenarioMenu"))
-                {
-                    MarkClick(ref lastClick, ref lastClickAt, "scenarioMenu");
-                    await ClickMatchAsync(window, menu, "剧情菜单", cancellationToken);
                     missTimer.Restart();
                     continue;
                 }
@@ -297,7 +335,7 @@ public sealed class MainQuestAutomation
                     continue;
                 }
 
-                int scenarioTimeout = scenarioSped ? ScenarioMissTimeoutMs : MissTimeoutMs;
+                int scenarioTimeout = ScenarioMissTimeoutMs;
                 if (missTimer.ElapsedMilliseconds >= scenarioTimeout)
                     throw new TimeoutException($"自动主线剧情持续 {scenarioTimeout / 1000} 秒未结束（sped={scenarioSped}）。");
 
@@ -398,31 +436,77 @@ public sealed class MainQuestAutomation
                 continue;
             }
 
-            if (TryHit(probes, "banner", out TemplateProbeResult banner) &&
-                ReadyToClick(lastClick, lastClickAt, "banner"))
-            {
-                MarkClick(ref lastClick, ref lastClickAt, "banner");
-                await ClickMatchAsync(window, banner, "主线任务", cancellationToken);
-                phase = Phase.Start;
-                missTimer.Restart();
-                continue;
-            }
-
-            if (TryHit(probes, "homeQuest", out TemplateProbeResult homeQuest) &&
-                ReadyToClick(lastClick, lastClickAt, "homeQuest"))
-            {
-                MarkClick(ref lastClick, ref lastClickAt, "homeQuest");
-                await ClickMatchAsync(window, homeQuest, "任务入口", cancellationToken);
-                phase = Phase.Banner;
-                missTimer.Restart();
-                continue;
-            }
-
             if (missTimer.ElapsedMilliseconds >= MissTimeoutMs)
                 throw new TimeoutException($"自动主线持续 {MissTimeoutMs / 1000} 秒未识别到可操作界面（phase={phase}）。");
 
             await Task.Delay(_config.DetectionPollIntervalMs, cancellationToken);
         }
+    }
+
+    /// <summary>
+    /// 开局：已在关卡内则直接续跑；否则有主页钮先回主页，再固定连点 任务→主线（不识别任务页）。
+    /// </summary>
+    private async Task<(Phase Phase, bool Abort)> BootstrapEntryAsync(
+        GameWindow window, CancellationToken cancellationToken)
+    {
+        var locateJobs = new (string Key, TemplateMatcher Matcher)[]
+        {
+            ("rematch", _rematch), ("toHome", _toHome), ("next", _next),
+            ("start", _start), ("sortie", _sortie), ("scenarioReplay", _scenarioReplay)
+        };
+
+        var timer = Stopwatch.StartNew();
+        while (timer.ElapsedMilliseconds < 3000)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            window = _screen.Refresh(window);
+            IReadOnlyDictionary<string, TemplateProbeResult> probes =
+                await ProbeClientAsync(window, locateJobs, cancellationToken);
+
+            if (TryHit(probes, "rematch", out _))
+            {
+                _log("开局已在再戦，点击ホームへ后结束。");
+                if (TryHit(probes, "toHome", out TemplateProbeResult homeBtn))
+                    await ClickMatchAsync(window, homeBtn, "ホームへ", cancellationToken);
+                else
+                    await WaitForClickAsync(window, "toHome", [("toHome", _toHome)], cancellationToken);
+                return (Phase.Start, true);
+            }
+
+            if (TryHit(probes, "next", out _))
+            {
+                _log("开局定位：结算页（下一步）。");
+                return (Phase.Next, false);
+            }
+
+            if (TryHit(probes, "start", out _))
+            {
+                _log("开局定位：主线开始页。");
+                return (Phase.Start, false);
+            }
+
+            if (TryHit(probes, "sortie", out _))
+            {
+                _log("开局定位：出击页。");
+                return (Phase.Sortie, false);
+            }
+
+            if (TryHit(probes, "scenarioReplay", out _))
+            {
+                _log("开局定位：情景再现/剧情入口。");
+                return (Phase.Scenario, false);
+            }
+
+            await Task.Delay(_config.DetectionPollIntervalMs, cancellationToken);
+        }
+
+        _log("开局不在关卡内：回主页后连点进主线。");
+        await new QuestFromHomeEntry(_config, _screen, _log).RunAsync(
+            window,
+            QuestFromHomeEntry.MainQuestBannerClick(_config),
+            "主线任务",
+            cancellationToken);
+        return (Phase.Start, false);
     }
 
     private async Task<IReadOnlyDictionary<string, TemplateProbeResult>> ProbeClientAsync(
@@ -437,8 +521,10 @@ public sealed class MainQuestAutomation
             double threshold = key switch
             {
                 "skip" or "skipAlt" or "next" => 0.52,
-                "scenarioMenu" or "scenarioSpeed" or "scenarioOk"
-                    or "scenarioChoice" or "scenarioChoiceAlt" => 0.55,
+                "scenarioReplay" => 0.60,
+                // 菜单/加速略放宽，日志里常在 0.40~0.50。
+                "scenarioMenu" or "scenarioSpeed" => 0.40,
+                "scenarioOk" or "scenarioChoice" or "scenarioChoiceAlt" => 0.55,
                 "scenarioPortrait" => 0.88,
                 "rematch" => 0.72,
                 _ => PresenceThreshold
@@ -450,8 +536,6 @@ public sealed class MainQuestAutomation
 
     private (ConfigPoint TopLeft, ConfigSize Size) RoiFor(string key) => key switch
     {
-        "homeQuest" => (_config.MainQuestHomeTopLeft, _config.MainQuestHomeSize),
-        "banner" => (_config.MainQuestBannerTopLeft, _config.MainQuestBannerSize),
         "start" => (_config.MainQuestStartTopLeft, _config.MainQuestStartSize),
         "sortie" => (_config.MainQuestSortieTopLeft, _config.MainQuestSortieSize),
         "scenarioReplay" => (_config.MainQuestSortieTopLeft, _config.MainQuestSortieSize),
@@ -490,6 +574,10 @@ public sealed class MainQuestAutomation
 
         return false;
     }
+
+    /// <summary>宣传弹窗只在剧情/战斗结束后挡「次へ」等，主页与进关前不扫。</summary>
+    private static bool ShouldCheckPromoPopup(Phase phase) =>
+        phase is Phase.Battle or Phase.Next or Phase.Scenario;
 
     private static bool TryHit(
         IReadOnlyDictionary<string, TemplateProbeResult> probes, string key, out TemplateProbeResult probe)
@@ -538,7 +626,7 @@ public sealed class MainQuestAutomation
         GameWindow window, TemplateProbeResult next, CancellationToken cancellationToken)
     {
         await ClickMatchAsync(window, next, "下一步", cancellationToken);
-        await Task.Delay(700, cancellationToken);
+        await Task.Delay(1000, cancellationToken);
         window = _screen.Refresh(window);
         IReadOnlyDictionary<string, TemplateProbeResult> probes =
             await ProbeClientAsync(window, [("next", _next)], cancellationToken);
@@ -547,7 +635,7 @@ public sealed class MainQuestAutomation
 
         _log("下一步仍在，再点一次。");
         await ClickMatchAsync(window, stillNext, "下一步(2)", cancellationToken);
-        await Task.Delay(700, cancellationToken);
+        await Task.Delay(1000, cancellationToken);
         window = _screen.Refresh(window);
         probes = await ProbeClientAsync(window, [("next", _next)], cancellationToken);
         if (!TryHit(probes, "next", out _))
@@ -602,6 +690,6 @@ public sealed class MainQuestAutomation
             probe.Center.Y + offset.Y * geometry.ScaleY);
         _log($"剧情选项命中 {probe.Score:F3}，偏移点击 ({point.X:F0},{point.Y:F0})");
         await _screen.ClickScreenAsync(window, point, cancellationToken);
-        await Task.Delay(500, cancellationToken);
+        await Task.Delay(100, cancellationToken);
     }
 }

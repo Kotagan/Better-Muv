@@ -27,7 +27,7 @@ public sealed class HudHomeReturn
         _matcher = TemplateAssets.Load("hud-home.png");
     }
 
-    public async Task TryAsync(GameWindow window, CancellationToken cancellationToken)
+    public async Task<bool> TryAsync(GameWindow window, CancellationToken cancellationToken)
     {
         int clicked = 0;
         for (int i = 0; i < MaxClicks; i++)
@@ -60,8 +60,8 @@ public sealed class HudHomeReturn
                 if (clicked == 0)
                     _log($"未发现主界面按钮（{probe.Score:F2}），跳过返回。");
                 else
-                    _log("主界面按钮已消失，视为已返回。");
-                return;
+                    _log("主界面按钮已消失，返回操作结束；页面状态由后续识别确认。");
+                return clicked > 0;
             }
 
             clicked++;
@@ -70,5 +70,6 @@ public sealed class HudHomeReturn
             await _screen.ClickScreenAsync(window, probe.Center, cancellationToken);
             await Task.Delay(AfterClickDelayMs, cancellationToken);
         }
+        return clicked > 0;
     }
 }

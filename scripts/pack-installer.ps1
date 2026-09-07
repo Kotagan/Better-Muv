@@ -4,7 +4,7 @@
   Publish Better-Muv (self-contained win-x64) and build an Inno Setup installer.
 #>
 param(
-    [string]$Version = "1.0.2",
+    [string]$Version = "1.0.3",
     [string]$Configuration = "Release",
     [string]$Runtime = "win-x64"
 )
@@ -15,14 +15,25 @@ if (-not (Test-Path (Join-Path $root "Better-Muv.csproj"))) {
     $root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 }
 
-$publishDir = Join-Path $root "publish\$Runtime"
+if ($Version -notmatch '^(\d+\.\d+\.\d+)(?:-[0-9A-Za-z.-]+)?$') {
+    throw "Invalid version: $Version"
+}
+$numericVersion = "$($Matches[1]).0"
+if ($Runtime -notmatch '^win-(x64|x86|arm64)$') { throw "Invalid runtime: $Runtime" }
+$publishRoot = [IO.Path]::GetFullPath((Join-Path $root "publish"))
+$publishDir = [IO.Path]::GetFullPath((Join-Path $publishRoot "$Version\$Runtime"))
 $distDir = Join-Path $root "dist"
 $iss = Join-Path $root "installer\Better-Muv.iss"
 $project = Join-Path $root "Better-Muv.csproj"
 
 Write-Host "==> Publish $project ($Configuration, $Runtime, v$Version)"
 if (Test-Path $publishDir) {
-    Remove-Item $publishDir -Recurse -Force
+    $resolvedPublishDir = (Resolve-Path -LiteralPath $publishDir).Path
+    if (-not $resolvedPublishDir.StartsWith($publishRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase) -or
+        ((Get-Item -LiteralPath $publishDir).Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+        throw "Unsafe publish directory: $resolvedPublishDir"
+    }
+    Remove-Item -LiteralPath $resolvedPublishDir -Recurse -Force
 }
 New-Item -ItemType Directory -Path $publishDir -Force | Out-Null
 New-Item -ItemType Directory -Path $distDir -Force | Out-Null
@@ -34,8 +45,8 @@ dotnet publish $project `
     -p:PublishSingleFile=false `
     -p:IncludeNativeLibrariesForSelfExtract=true `
     -p:Version=$Version `
-    -p:AssemblyVersion=$Version.0 `
-    -p:FileVersion=$Version.0 `
+    -p:AssemblyVersion=$numericVersion `
+    -p:FileVersion=$numericVersion `
     -o $publishDir
 if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed." }
 
@@ -55,6 +66,7 @@ if (-not $iscc) {
 Write-Host "==> Compile installer with $iscc"
 & $iscc `
     "/DAppVersion=$Version" `
+    "/DAppNumericVersion=$numericVersion" `
     "/DPublishDir=$publishDir" `
     "/DOutputDir=$distDir" `
     $iss

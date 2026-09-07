@@ -3,7 +3,11 @@
 ; registry entries, and a proper uninstaller.
 
 #ifndef AppVersion
-  #define AppVersion "1.0.2"
+  #define AppVersion "1.0.3"
+#endif
+
+#ifndef AppNumericVersion
+  #define AppNumericVersion "1.0.3.0"
 #endif
 
 #ifndef PublishDir
@@ -46,11 +50,11 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 UninstallDisplayIcon={app}\{#MyAppExeName}
 UninstallDisplayName={#MyAppName}
-VersionInfoVersion={#AppVersion}.0
+VersionInfoVersion={#AppNumericVersion}
 VersionInfoCompany={#MyAppPublisher}
 VersionInfoDescription={#MyAppName} Setup
 VersionInfoProductName={#MyAppName}
-VersionInfoProductVersion={#AppVersion}
+VersionInfoProductVersion={#AppNumericVersion}
 ; Keep user LocalAppData config/logs on uninstall (only remove installed files).
 CloseApplications=yes
 RestartApplications=no

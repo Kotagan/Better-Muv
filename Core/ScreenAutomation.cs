@@ -175,23 +175,47 @@ public sealed class ScreenAutomation
         return new TemplateProbeResult(match.Score >= threshold, match.Score, center);
     }
 
-    /// <summary>顺序执行一组模板探测，并以不区分大小写的键返回结果。</summary>
+    /// <summary>
+    /// 各 ROI 串行截图（GDI 限制），模板匹配并行。
+    /// 原先完全串行时，主线 Home 阶段 6 模板在 4K 上约 2.5~3s/轮。
+    /// </summary>
     public async Task<IReadOnlyDictionary<string, TemplateProbeResult>> ProbeManyAsync(
         GameWindow window,
         IEnumerable<TemplateProbe> probes,
         CancellationToken cancellationToken)
     {
         window = Refresh(window);
-        var results = new Dictionary<string, TemplateProbeResult>(StringComparer.OrdinalIgnoreCase);
-        foreach (TemplateProbe probe in probes)
+        TemplateProbe[] list = probes as TemplateProbe[] ?? probes.ToArray();
+        if (list.Length == 0)
+            return new Dictionary<string, TemplateProbeResult>(StringComparer.OrdinalIgnoreCase);
+
+        var jobs = new (string Key, TemplateMatcher Matcher, RegionCapture Region, double Threshold)[list.Length];
+        for (int i = 0; i < list.Length; i++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            results[probe.Key] = await ProbeAsync(
-                window, probe.Matcher, probe.TopLeft, probe.Size,
-                cancellationToken, probe.Threshold);
+            TemplateProbe probe = list[i];
+            RegionCapture region = CaptureRegion(window, probe.TopLeft, probe.Size, probe.Matcher);
+            region.Image.Freeze();
+            jobs[i] = (probe.Key, probe.Matcher, region, probe.Threshold);
         }
 
-        return results;
+        return await Task.Run(() =>
+        {
+            var results = new TemplateProbeResult[jobs.Length];
+            Parallel.For(0, jobs.Length, i =>
+            {
+                var job = jobs[i];
+                TemplateMatchResult match = Match(
+                    job.Matcher, job.Region.Image, job.Region.LogicalWidth, job.Region.LogicalHeight);
+                Point center = MatchCenterToScreen(job.Region, match);
+                results[i] = new TemplateProbeResult(match.Score >= job.Threshold, match.Score, center);
+            });
+
+            var map = new Dictionary<string, TemplateProbeResult>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < jobs.Length; i++)
+                map[jobs[i].Key] = results[i];
+            return map;
+        }, cancellationToken);
     }
 
     /// <summary>轮询模板直到命中或超时；返回期间得分最高的一次结果。</summary>

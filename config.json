@@ -18,12 +18,12 @@
                             "height":  50
                         },
     "secondSearchTopLeft":  {
-                                "x":  1501,
-                                "y":  444
+                                "x":  1470,
+                                "y":  420
                             },
     "secondSearchSize":  {
-                             "width":  220,
-                             "height":  59
+                             "width":  300,
+                             "height":  100
                          },
     "thirdSearchTopLeft":  {
                                "x":  1568,
@@ -313,7 +313,7 @@
                                      "width":  209,
                                      "height":  554
                                  },
-    "treasurePriority": [ "diamond", "shield", "sword", "heart", "skull", "sparkle" ],
+    "treasurePriority": [ "diamond", "shield", "sword", "heart", "skull", "shoe", "sparkle" ],
     "firstClick":  {
                        "x":  1143,
                        "y":  961

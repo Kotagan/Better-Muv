@@ -17,10 +17,12 @@ public partial class MainWindow : Window
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["diamond"] = "钻石", ["skull"] = "骷髅", ["sparkle"] = "闪光",
-            ["shield"] = "盾", ["sword"] = "剑", ["heart"] = "心"
+            ["shield"] = "盾", ["sword"] = "剑", ["heart"] = "心", ["shoe"] = "鞋子"
         };
 
     private readonly GameCaptureSession _captureSession;
+    private readonly DiagnosticTaskSession _diagnosticSession = new();
+    private bool _resumeDiagnosticTask;
     private readonly string _configPath = ConfigStore.EnsureUserConfigPath();
     private readonly object _logFileLock = new();
     private CancellationTokenSource? _runCancellation;
@@ -271,14 +273,14 @@ public partial class MainWindow : Window
         CollapseLogDrawer();
     }
 
-    private void ExportLogButton_Click(object sender, RoutedEventArgs e)
+    private async void ExportLogButton_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new SaveFileDialog
         {
-            Title = "导出运行日志",
-            Filter = "文本文件 (*.txt)|*.txt",
-            DefaultExt = ".txt",
-            FileName = $"Better-Muv-log-{DateTime.Now:yyyyMMdd-HHmmss}.txt",
+            Title = "导出日志和截图",
+            Filter = "日志与截图压缩包 (*.zip)|*.zip",
+            DefaultExt = ".zip",
+            FileName = $"Better-Muv-log-{DateTime.Now:yyyyMMdd-HHmmss}.zip",
             AddExtension = true,
             OverwritePrompt = true
         };
@@ -286,8 +288,13 @@ public partial class MainWindow : Window
             return;
         try
         {
-            File.WriteAllText(dialog.FileName, LogBox.Text ?? "");
-            AppendLog("已导出日志：" + dialog.FileName);
+            string directory = _diagnosticSession.RunDirectoryPath
+                ?? _diagnosticSession.DirectoryPath
+                ?? "";
+            string log = LogBox.Text ?? "";
+            var screenshot = WindowCaptureService.LatestScreenshot;
+            int count = await Task.Run(() => LogBundleExporter.Export(dialog.FileName, log, directory, screenshot));
+            AppendLog($"已导出日志和截图（{count} 张）：{dialog.FileName}");
         }
         catch (Exception exception)
         {
@@ -471,6 +478,8 @@ public partial class MainWindow : Window
     {
         if (_runCancellation is not null) return;
         PersistMazeSettings(quiet: true);
+        _resumeDiagnosticTask = _isPaused;
+        BeginDiagnosticRun(_resumeDiagnosticTask);
         _isPaused = false;
         _pauseRequested = false;
         _activeTask = ActiveTask.Maze;
@@ -499,6 +508,8 @@ public partial class MainWindow : Window
     private async Task StartMainQuestAsync()
     {
         if (_runCancellation is not null) return;
+        _resumeDiagnosticTask = _isPaused;
+        BeginDiagnosticRun(_resumeDiagnosticTask);
         _isPaused = false;
         _pauseRequested = false;
         _activeTask = ActiveTask.MainQuest;
@@ -527,6 +538,8 @@ public partial class MainWindow : Window
     private async Task StartHardMainQuestAsync()
     {
         if (_runCancellation is not null) return;
+        _resumeDiagnosticTask = _isPaused;
+        BeginDiagnosticRun(_resumeDiagnosticTask);
         _isPaused = false;
         _pauseRequested = false;
         _activeTask = ActiveTask.HardMainQuest;
@@ -557,6 +570,8 @@ public partial class MainWindow : Window
         if (_runCancellation is not null) return;
         PersistMazeSettings(quiet: true);
         bool resume = _isPaused && _activeTask == ActiveTask.Pipeline;
+        _resumeDiagnosticTask = resume;
+        BeginDiagnosticRun(resume);
         _isPaused = false;
         _pauseRequested = false;
         if (!resume)
@@ -623,20 +638,55 @@ public partial class MainWindow : Window
 
     private Task RunMazeCoreAsync(CancellationToken cancellationToken)
     {
-        var automation = new MazeAutomation(ConfigStore.Load(), AppendLog);
+        var automation = new MazeAutomation(PrepareDiagnosticTask("maze"), AppendLog);
         return automation.RunOnceAsync(cancellationToken);
     }
 
     private Task RunMainQuestCoreAsync(CancellationToken cancellationToken)
     {
-        var automation = new MainQuestAutomation(ConfigStore.Load(), AppendLog);
+        var automation = new MainQuestAutomation(PrepareDiagnosticTask("mainQuest"), AppendLog);
         return automation.RunOnceAsync(cancellationToken);
     }
 
     private Task RunHardMainQuestCoreAsync(CancellationToken cancellationToken)
     {
-        var automation = new HardMainQuestAutomation(ConfigStore.Load(), AppendLog);
+        var automation = new HardMainQuestAutomation(PrepareDiagnosticTask("hardMainQuest"), AppendLog);
         return automation.RunOnceAsync(cancellationToken);
+    }
+
+    private void BeginDiagnosticRun(bool resume)
+    {
+        AutomationConfig config = ConfigStore.Load();
+        string root = Path.IsPathRooted(config.DiagnosticDirectory)
+            ? config.DiagnosticDirectory
+            : Path.Combine(AppContext.BaseDirectory, config.DiagnosticDirectory);
+        if (!resume)
+            WindowCaptureService.ResetScreenshot();
+        string runDirectory = _diagnosticSession.BeginRun(root, resume);
+        WindowCaptureService.SetArchiveDirectory(Path.Combine(runDirectory, "screenshots"));
+        if (!resume)
+        {
+            int removed = _diagnosticSession.LastCleanupRemovedDirectories;
+            AppendLog(removed > 0
+                ? $"已清空上一批次诊断目录（{removed} 个），本轮：{runDirectory}"
+                : $"本轮诊断批次目录：{runDirectory}");
+        }
+    }
+
+    private AutomationConfig PrepareDiagnosticTask(string taskKey)
+    {
+        AutomationConfig config = ConfigStore.Load();
+        string root = Path.IsPathRooted(config.DiagnosticDirectory)
+            ? config.DiagnosticDirectory
+            : Path.Combine(AppContext.BaseDirectory, config.DiagnosticDirectory);
+        bool resume = _resumeDiagnosticTask && _diagnosticSession.TaskKey == taskKey;
+        _resumeDiagnosticTask = false;
+        // 单任务入口若未先 BeginRun，这里兜底；一条龙已在 StartPipeline 建好批次。
+        if (_diagnosticSession.RunDirectoryPath is null)
+            BeginDiagnosticRun(resume);
+        config.DiagnosticDirectory = _diagnosticSession.Begin(root, taskKey, resume);
+        AppendLog($"{PipelineTaskDisplayName(taskKey)}诊断截图目录：{config.DiagnosticDirectory}");
+        return config;
     }
 
     private void FinishRunSession()

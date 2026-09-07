@@ -9,9 +9,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>1.0.2</Version>
-    <AssemblyVersion>1.0.2.0</AssemblyVersion>
-    <FileVersion>1.0.2.0</FileVersion>
+    <Version>1.0.3</Version>
+    <AssemblyVersion>1.0.3.0</AssemblyVersion>
+    <FileVersion>1.0.3.0</FileVersion>
     <Product>Better-Muv</Product>
     <Company>Kotagan</Company>
     <Authors>Kotagan</Authors>
@@ -51,12 +51,14 @@
     <Content Include="Assets\Templates\treasure-heart-half.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\treasure-sword.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\treasure-greatsword.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\treasure-shoe.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\route-selection.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\route-diamond.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\route-sparkle.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\route-skull.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\route-shield.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\route-heart.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\route-shoe.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\main-quest-home-quest.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\main-quest-banner.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\main-quest-start.png" CopyToOutputDirectory="PreserveNewest" />

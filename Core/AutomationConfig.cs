@@ -28,8 +28,15 @@ public sealed class AutomationConfig
     // 搜索区：1080p 写死矩形（左上 + 宽高）。主页 ROI 对应 4K (2226,1838)→(2356,1938)。
     public ConfigPoint SearchTopLeft { get; set; } = new(1113, 919);
     public ConfigSize FirstSearchSize { get; set; } = new(65, 50);
-    public ConfigPoint SecondSearchTopLeft { get; set; } = new(1501, 444);
-    public ConfigSize SecondSearchSize { get; set; } = new(220, 59);
+    /// <summary>底栏「ホーム」选中态（粉色底）；用于确认真正在主页，避免任务页误判。</summary>
+    public ConfigPoint HomeNavTopLeft { get; set; } = new(590, 910);
+    public ConfigSize HomeNavSize { get; set; } = new(220, 140);
+    /// <summary>底栏「クエスト」选中态（红色底）；用于确认已在任务选择页。</summary>
+    public ConfigPoint QuestNavTopLeft { get; set; } = new(1000, 910);
+    public ConfigSize QuestNavSize { get; set; } = new(260, 150);
+    /// <summary>任务页「メイズ探索」文字带；略大于旧 220×59，避免校准偏移后扫空。</summary>
+    public ConfigPoint SecondSearchTopLeft { get; set; } = new(1470, 420);
+    public ConfigSize SecondSearchSize { get; set; } = new(300, 100);
     public ConfigPoint ThirdSearchTopLeft { get; set; } = new(1568, 796);
     public ConfigSize ThirdSearchSize { get; set; } = new(208, 98);
     public ConfigPoint FourthSearchTopLeft { get; set; } = new(1560, 910);
@@ -97,7 +104,7 @@ public sealed class AutomationConfig
     public ConfigSize RouteSelectionSize { get; set; } = new(360, 180);
     public ConfigPoint RouteTreasureOptionsTopLeft { get; set; } = new(661, 243);
     public ConfigSize RouteTreasureOptionsSize { get; set; } = new(209, 554);
-    public List<string> TreasurePriority { get; set; } = ["diamond", "shield", "sword", "heart", "skull", "sparkle"];
+    public List<string> TreasurePriority { get; set; } = ["diamond", "shield", "sword", "heart", "skull", "shoe", "sparkle"];
     // 写死点击点（1080p）；实际点击 = Client 原点 + 点 × (Client宽高 / Reference宽高)。
     public ConfigPoint FirstClick { get; set; } = new(1143, 961);
     public ConfigPoint SecondClick { get; set; } = new(1611, 473);
@@ -240,6 +247,7 @@ public sealed class AutomationConfig
         ConfigSize[] requiredSizes =
         [
             FirstSearchSize, SecondSearchSize, ThirdSearchSize, FourthSearchSize, FifthSearchSize,
+            HomeNavSize, QuestNavSize,
             PartnerSelectionSize, BattleSkipSize, PopupCloseSize, EventChoiceSize, SettlementSearchSize,
             SettlementMultiplierSize, SettlementBuyButtonSearchSize, SettlementConfirmSize,
             SettlementShopTipSize,

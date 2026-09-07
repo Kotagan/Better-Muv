@@ -139,7 +139,7 @@ public class AutomationConfigTests
         Assert.Equal(new ConfigPoint(661, 243), config.RouteTreasureOptionsTopLeft);
         Assert.Equal(new ConfigSize(209, 554), config.RouteTreasureOptionsSize);
         Assert.Equal(
-            ["diamond", "shield", "sword", "heart", "skull", "sparkle"],
+            ["diamond", "shield", "sword", "heart", "skull", "shoe", "sparkle"],
             config.TreasurePriority);
         Assert.Equal("F10", config.ToggleHotkey);
         Assert.Equal("keep", config.MazeDifficultyMode);
@@ -160,11 +160,11 @@ public class AutomationConfigTests
         var config = new AutomationConfig();
 
         Assert.Equal(new ConfigPoint(1674, 948), config.SettlementTopLeft);
-        Assert.Equal(new ConfigPoint(1626, 917), config.SettlementSearchTopLeft);
-        Assert.Equal(new ConfigSize(97, 62), config.SettlementSearchSize);
+        Assert.Equal(new ConfigPoint(1500, 880), config.SettlementSearchTopLeft);
+        Assert.Equal(new ConfigSize(360, 180), config.SettlementSearchSize);
         Assert.Equal(new ConfigPoint(1610, 200), config.SettlementMultiplierToggle);
-        Assert.Equal(new ConfigPoint(1673, 181), config.SettlementMultiplierTopLeft);
-        Assert.Equal(new ConfigSize(81, 49), config.SettlementMultiplierSize);
+        Assert.Equal(new ConfigPoint(1640, 165), config.SettlementMultiplierTopLeft);
+        Assert.Equal(new ConfigSize(140, 70), config.SettlementMultiplierSize);
         Assert.Equal(6, config.SettlementBuyButtons.Count);
         Assert.Equal(4, config.SettlementSubcategoryTabs.Count);
         Assert.False(config.SettlementPurchases.HasAnyPurchase());

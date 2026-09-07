@@ -144,14 +144,15 @@ public static class ConfigStore
             changed = true;
         }
 
-        // 默认优先级迁移：钻石 → 盾 → 剑 → 心 → 骷髅（闪光殿后）。
-        string[] desired = ["diamond", "shield", "sword", "heart", "skull", "sparkle"];
+        // 默认优先级迁移：钻石 → 盾 → 剑 → 心 → 骷髅 → 鞋子（闪光殿后）。
+        string[] desired = ["diamond", "shield", "sword", "heart", "skull", "shoe", "sparkle"];
         string[][] legacyDefaults =
         [
             ["diamond", "sparkle", "shield", "sword", "heart"],
             ["diamond", "skull", "sword", "sparkle", "shield", "heart"],
             ["diamond", "skull", "sword", "shield", "sparkle", "heart"],
-            ["sparkle", "sword", "shield", "diamond", "heart", "skull"]
+            ["sparkle", "sword", "shield", "diamond", "heart", "skull"],
+            ["diamond", "shield", "sword", "heart", "skull", "sparkle"]
         ];
         bool isLegacy = legacyDefaults.Any(legacy =>
             config.TreasurePriority.SequenceEqual(legacy, StringComparer.OrdinalIgnoreCase));
@@ -160,10 +161,24 @@ public static class ConfigStore
             config.TreasurePriority = [.. desired];
             changed = true;
         }
-        else if (!config.TreasurePriority.Any(k => k.Equals("skull", StringComparison.OrdinalIgnoreCase)))
+        else
         {
-            config.TreasurePriority.Add("skull");
-            changed = true;
+            if (!config.TreasurePriority.Any(k => k.Equals("skull", StringComparison.OrdinalIgnoreCase)))
+            {
+                config.TreasurePriority.Add("skull");
+                changed = true;
+            }
+            if (!config.TreasurePriority.Any(k => k.Equals("shoe", StringComparison.OrdinalIgnoreCase)))
+            {
+                // 插在闪光前；若无闪光则追加末尾。
+                int sparkleIdx = config.TreasurePriority.FindIndex(
+                    k => k.Equals("sparkle", StringComparison.OrdinalIgnoreCase));
+                if (sparkleIdx >= 0)
+                    config.TreasurePriority.Insert(sparkleIdx, "shoe");
+                else
+                    config.TreasurePriority.Add("shoe");
+                changed = true;
+            }
         }
 
         // 配置基准改为 1080p；旧 4K 坐标整表迁移。
@@ -193,6 +208,34 @@ public static class ConfigStore
             changed = true;
         }
 
+        // 任务页「メイズ探索」：旧 220×59 小于新模板逻辑尺寸，且易被校准偏移扫空。
+        if (config.SecondSearchTopLeft is { X: 1501, Y: 444 } ||
+            config.SecondSearchSize.Width < 280 ||
+            config.SecondSearchSize.Height < 90)
+        {
+            config.SecondSearchTopLeft = new ConfigPoint(1470, 420);
+            config.SecondSearchSize = new ConfigSize(300, 100);
+            changed = true;
+        }
+
+        // 底栏ホーム粉：旧 ROI (30,900) 偏到屏幕左侧，扫不到真正粉钮（约 612,930）。
+        if (config.HomeNavTopLeft is { X: 30, Y: 900 } ||
+            config.HomeNavTopLeft.X < 400 ||
+            config.HomeNavSize.Width < 180)
+        {
+            config.HomeNavTopLeft = new ConfigPoint(590, 910);
+            config.HomeNavSize = new ConfigSize(220, 140);
+            changed = true;
+        }
+
+        if (config.QuestNavTopLeft is { X: 1000, Y: 900 } ||
+            config.QuestNavSize.Width < 200)
+        {
+            config.QuestNavTopLeft = new ConfigPoint(1000, 910);
+            config.QuestNavSize = new ConfigSize(260, 150);
+            changed = true;
+        }
+
         return changed;
     }
 
@@ -203,6 +246,10 @@ public static class ConfigStore
         config.ReferenceHeight = defaults.ReferenceHeight;
         config.SearchTopLeft = defaults.SearchTopLeft;
         config.FirstSearchSize = defaults.FirstSearchSize;
+        config.HomeNavTopLeft = defaults.HomeNavTopLeft;
+        config.HomeNavSize = defaults.HomeNavSize;
+        config.QuestNavTopLeft = defaults.QuestNavTopLeft;
+        config.QuestNavSize = defaults.QuestNavSize;
         config.SecondSearchTopLeft = defaults.SecondSearchTopLeft;
         config.SecondSearchSize = defaults.SecondSearchSize;
         config.ThirdSearchTopLeft = defaults.ThirdSearchTopLeft;

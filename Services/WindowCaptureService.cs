@@ -16,6 +16,39 @@ public sealed record WindowCandidate(nint Handle, string Title, string ProcessNa
 
 public sealed class WindowCaptureService
 {
+    private static readonly object ScreenshotLock = new();
+    private static (BitmapSource Image, DateTime CapturedAt)? _latestScreenshot;
+    private static string? _archiveDirectory;
+    private static DateTime _lastArchivedAt = DateTime.MinValue;
+    private const int ArchiveIntervalSeconds = 5;
+    private const int MaxArchivedScreenshots = 120;
+
+    public static (BitmapSource Image, DateTime CapturedAt)? LatestScreenshot
+    {
+        get { lock (ScreenshotLock) return _latestScreenshot; }
+    }
+
+    public static void ResetScreenshot()
+    {
+        lock (ScreenshotLock)
+        {
+            _latestScreenshot = null;
+            _lastArchivedAt = DateTime.MinValue;
+        }
+    }
+
+    /// <summary>设置当前运行批次的整图归档目录；为 null 时只保留内存中的最近一张。</summary>
+    public static void SetArchiveDirectory(string? directory)
+    {
+        lock (ScreenshotLock)
+        {
+            _archiveDirectory = string.IsNullOrWhiteSpace(directory) ? null : directory;
+            _lastArchivedAt = DateTime.MinValue;
+            if (_archiveDirectory is not null)
+                Directory.CreateDirectory(_archiveDirectory);
+        }
+    }
+
     private const int SourceCopy = 0x00CC0020;
     private delegate bool EnumWindowsProc(nint handle, nint parameter);
 
@@ -110,8 +143,12 @@ public sealed class WindowCaptureService
     /// <summary>
     /// 桌面 BitBlt 截取游戏客户区整幅（屏幕坐标）。需本工具已最小化、游戏在前台。
     /// </summary>
-    public BitmapSource CaptureClient(GameWindow window) =>
-        CaptureFromDesktop(window.ClientRect);
+    public BitmapSource CaptureClient(GameWindow window)
+    {
+        BitmapSource image = CaptureFromDesktop(window.ClientRect);
+        RememberScreenshot(image, forceArchive: true);
+        return image;
+    }
 
     /// <summary>从客户区整图裁出屏幕 ROI。</summary>
     public BitmapSource CropFromClient(GameWindow window, BitmapSource fullClient, ScreenRect screenRect)
@@ -135,8 +172,78 @@ public sealed class WindowCaptureService
     }
 
     /// <summary>按屏幕绝对坐标桌面截图（本工具须已不挡游戏）。</summary>
-    public BitmapSource Capture(GameWindow window, ScreenRect screenRect) =>
-        CaptureFromDesktop(screenRect);
+    public BitmapSource Capture(GameWindow window, ScreenRect screenRect)
+    {
+        // 运行中按间隔归档客户区整图，导出日志时可带回整批次现场。
+        try
+        {
+            if (ShouldRefreshArchive())
+                RememberScreenshot(CaptureFromDesktop(window.ClientRect), forceArchive: false);
+        }
+        catch
+        {
+            /* 诊断截图失败不影响原有区域识别。 */
+        }
+        return CaptureFromDesktop(screenRect);
+    }
+
+    private static bool ShouldRefreshArchive()
+    {
+        lock (ScreenshotLock)
+        {
+            if (_latestScreenshot is not { } latest)
+                return true;
+            return DateTime.Now - latest.CapturedAt >= TimeSpan.FromSeconds(ArchiveIntervalSeconds);
+        }
+    }
+
+    private static void RememberScreenshot(BitmapSource image, bool forceArchive)
+    {
+        DateTime now = DateTime.Now;
+        string? archiveDirectory;
+        bool writeArchive;
+        lock (ScreenshotLock)
+        {
+            _latestScreenshot = (image, now);
+            archiveDirectory = _archiveDirectory;
+            writeArchive = archiveDirectory is not null &&
+                (forceArchive || now - _lastArchivedAt >= TimeSpan.FromSeconds(ArchiveIntervalSeconds));
+            if (writeArchive)
+                _lastArchivedAt = now;
+        }
+
+        if (!writeArchive || archiveDirectory is null)
+            return;
+
+        try
+        {
+            Directory.CreateDirectory(archiveDirectory);
+            string path = Path.Combine(archiveDirectory, $"game-{now:yyyyMMdd-HHmmss-fff}.png");
+            using var stream = File.Create(path);
+            var encoder = new PngBitmapEncoder();
+            encoder.Frames.Add(BitmapFrame.Create(image));
+            encoder.Save(stream);
+            TrimArchivedScreenshots(archiveDirectory);
+        }
+        catch
+        {
+            /* 归档失败不影响识别主流程。 */
+        }
+    }
+
+    private static void TrimArchivedScreenshots(string archiveDirectory)
+    {
+        string[] files = Directory.GetFiles(archiveDirectory, "game-*.png");
+        if (files.Length <= MaxArchivedScreenshots)
+            return;
+
+        foreach (string file in files.OrderBy(f => f).Take(files.Length - MaxArchivedScreenshots))
+        {
+            try { File.Delete(file); }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
+    }
 
     private static BitmapSource CaptureFromDesktop(ScreenRect screenRect)
     {

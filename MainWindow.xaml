@@ -413,7 +413,7 @@
                             <ColumnDefinition Width="48"/>
                         </Grid.ColumnDefinitions>
                         <TextBlock Text="运行日志" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" Margin="16,0,0,0"/>
-                        <Button Grid.Column="1" Style="{StaticResource PrimaryButton}" Padding="10,6" MinHeight="30" Margin="0,0,4,0" Content="导出" ToolTip="导出为 txt" Click="ExportLogButton_Click"/>
+                        <Button Grid.Column="1" Style="{StaticResource PrimaryButton}" Padding="10,6" MinHeight="30" Margin="0,0,4,0" Content="导出" ToolTip="打包导出日志和截图（ZIP）" Click="ExportLogButton_Click"/>
                         <Button Grid.Column="2" Content="×" Background="Transparent" Foreground="White" BorderThickness="0" FontSize="22" Click="CloseLogDrawerButton_Click"/>
                     </Grid>
                     <TextBox x:Name="LogBox" Grid.Row="1" Margin="12,8,12,12" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" Background="#171C23" BorderThickness="0" Padding="10" FontFamily="Consolas" FontSize="12" VerticalAlignment="Stretch" VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Hidden"/>

@@ -12,16 +12,14 @@ public sealed class HardMainQuestAutomation
 {
     private const double PresenceThreshold = 0.62;
     private const int MissTimeoutMs = 120000;
-    private const int ClickCooldownMs = 900;
-    private const int StartAppearSettleMs = 1200;
+    private const int ClickCooldownMs = 100;
+    private const int StartAppearSettleMs = 100;
 
-    private enum Phase { Home, Banner, Start, Sortie, Battle, Next }
+    private enum Phase { Start, Sortie, Battle, Next }
 
     private readonly AutomationConfig _config;
     private readonly ScreenAutomation _screen;
     private readonly Action<string> _log;
-    private readonly TemplateMatcher _homeQuest;
-    private readonly TemplateMatcher _banner;
     private readonly TemplateMatcher _start;
     private readonly TemplateMatcher _sortie;
     private readonly TemplateMatcher _skip;
@@ -32,14 +30,13 @@ public sealed class HardMainQuestAutomation
     private readonly TemplateMatcher _difficulty;
     private readonly TemplateMatcher _hardMark;
     private readonly TemplateMatcher _scenarioOk;
+    private readonly PromoPopupDismisser _promoPopup;
 
     public HardMainQuestAutomation(AutomationConfig config, Action<string> log)
     {
         _config = config;
         _log = log;
         _screen = new ScreenAutomation(config, log);
-        _homeQuest = TemplateAssets.Load("main-quest-home-quest.png");
-        _banner = TemplateAssets.Load("main-quest-banner.png");
         _start = TemplateAssets.Load("main-quest-start.png");
         _sortie = TemplateAssets.Load("main-quest-sortie.png");
         _skip = TemplateAssets.Load("main-quest-skip.png");
@@ -50,6 +47,7 @@ public sealed class HardMainQuestAutomation
         _difficulty = TemplateAssets.Load("hard-quest-difficulty.png");
         _hardMark = TemplateAssets.Load("hard-quest-battle.png");
         _scenarioOk = TemplateAssets.Load("main-quest-scenario-ok.png");
+        _promoPopup = new PromoPopupDismisser(config, _screen, log);
     }
 
     public async Task RunOnceAsync(CancellationToken cancellationToken)
@@ -69,10 +67,13 @@ public sealed class HardMainQuestAutomation
         _log($"困难主线：客户区 {window.ClientRect.Width}×{window.ClientRect.Height}，显示器 {window.DisplayRect.Width}×{window.DisplayRect.Height}");
         await new HudHomeReturn(_config, _screen, _log).TryAsync(window, cancellationToken);
         window = _screen.Refresh(window);
-        _log("困难主线：开始界面切到困难（红底 MAIN QUEST BATTLE）后再出击；再戦则回主页结束。");
+        _log("困难主线：开局只看是否已在关卡内；否则回主页连点进主线。开始界面切困难后再出击；再戦则回主页结束。");
+
+        (Phase phase, bool abort) = await BootstrapEntryAsync(window, cancellationToken);
+        if (abort)
+            return;
 
         int completed = 0;
-        var phase = Phase.Home;
         string? lastClick = null;
         var lastClickAt = Stopwatch.StartNew();
         var missTimer = Stopwatch.StartNew();
@@ -86,14 +87,16 @@ public sealed class HardMainQuestAutomation
             cancellationToken.ThrowIfCancellationRequested();
             window = _screen.Refresh(window);
 
+            if (ShouldCheckPromoPopup(phase) &&
+                await _promoPopup.TryAsync(window, cancellationToken))
+            {
+                missTimer.Restart();
+                await Task.Delay(250, cancellationToken);
+                continue;
+            }
+
             IReadOnlyList<(string Key, TemplateMatcher Matcher)> active = phase switch
             {
-                Phase.Home =>
-                [
-                    ("homeQuest", _homeQuest), ("banner", _banner), ("start", _start),
-                    ("sortie", _sortie), ("hardMark", _hardMark)
-                ],
-                Phase.Banner => [("banner", _banner), ("start", _start), ("hardMark", _hardMark)],
                 Phase.Start =>
                 [
                     ("hardMark", _hardMark), ("difficulty", _difficulty),
@@ -268,32 +271,68 @@ public sealed class HardMainQuestAutomation
                 continue;
             }
 
-            if (TryHit(probes, "banner", out TemplateProbeResult banner) &&
-                ReadyToClick(lastClick, lastClickAt, "banner"))
-            {
-                MarkClick(ref lastClick, ref lastClickAt, "banner");
-                await ClickMatchAsync(window, banner, "主线任务", cancellationToken);
-                phase = Phase.Start;
-                hardConfirmed = false;
-                missTimer.Restart();
-                continue;
-            }
-
-            if (TryHit(probes, "homeQuest", out TemplateProbeResult homeQuest) &&
-                ReadyToClick(lastClick, lastClickAt, "homeQuest"))
-            {
-                MarkClick(ref lastClick, ref lastClickAt, "homeQuest");
-                await ClickMatchAsync(window, homeQuest, "任务入口", cancellationToken);
-                phase = Phase.Banner;
-                missTimer.Restart();
-                continue;
-            }
-
             if (missTimer.ElapsedMilliseconds >= MissTimeoutMs)
                 throw new TimeoutException($"困难主线持续 {MissTimeoutMs / 1000} 秒未识别到可操作界面（phase={phase}）。");
 
             await Task.Delay(_config.DetectionPollIntervalMs, cancellationToken);
         }
+    }
+
+    private async Task<(Phase Phase, bool Abort)> BootstrapEntryAsync(
+        GameWindow window, CancellationToken cancellationToken)
+    {
+        var locateJobs = new (string Key, TemplateMatcher Matcher)[]
+        {
+            ("rematch", _rematch), ("toHome", _toHome), ("next", _next),
+            ("start", _start), ("sortie", _sortie)
+        };
+
+        var timer = Stopwatch.StartNew();
+        while (timer.ElapsedMilliseconds < 3000)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            window = _screen.Refresh(window);
+            IReadOnlyDictionary<string, TemplateProbeResult> probes =
+                await ProbeClientAsync(window, locateJobs, cancellationToken);
+
+            if (TryHit(probes, "rematch", out _))
+            {
+                _log("开局已在再戦，点击ホームへ后结束。");
+                if (TryHit(probes, "toHome", out TemplateProbeResult homeBtn))
+                    await ClickMatchAsync(window, homeBtn, "ホームへ", cancellationToken);
+                else
+                    await WaitForClickAsync(window, "toHome", [("toHome", _toHome)], cancellationToken);
+                return (Phase.Start, true);
+            }
+
+            if (TryHit(probes, "next", out _))
+            {
+                _log("开局定位：结算页（下一步）。");
+                return (Phase.Next, false);
+            }
+
+            if (TryHit(probes, "start", out _))
+            {
+                _log("开局定位：主线开始页。");
+                return (Phase.Start, false);
+            }
+
+            if (TryHit(probes, "sortie", out _))
+            {
+                _log("开局定位：出击页。");
+                return (Phase.Sortie, false);
+            }
+
+            await Task.Delay(_config.DetectionPollIntervalMs, cancellationToken);
+        }
+
+        _log("开局不在关卡内：回主页后连点进主线。");
+        await new QuestFromHomeEntry(_config, _screen, _log).RunAsync(
+            window,
+            QuestFromHomeEntry.MainQuestBannerClick(_config),
+            "主线任务",
+            cancellationToken);
+        return (Phase.Start, false);
     }
 
     private async Task<IReadOnlyDictionary<string, TemplateProbeResult>> ProbeClientAsync(
@@ -320,8 +359,6 @@ public sealed class HardMainQuestAutomation
 
     private (ConfigPoint TopLeft, ConfigSize Size) RoiFor(string key) => key switch
     {
-        "homeQuest" => (_config.MainQuestHomeTopLeft, _config.MainQuestHomeSize),
-        "banner" => (_config.MainQuestBannerTopLeft, _config.MainQuestBannerSize),
         "start" => (_config.MainQuestStartTopLeft, _config.MainQuestStartSize),
         "sortie" => (_config.MainQuestSortieTopLeft, _config.MainQuestSortieSize),
         "skip" or "skipAlt" => (_config.MainQuestSkipTopLeft, _config.MainQuestSkipSize),
@@ -356,6 +393,10 @@ public sealed class HardMainQuestAutomation
         return false;
     }
 
+    /// <summary>宣传弹窗只在战斗结束后挡结算，主页与进关前不扫。</summary>
+    private static bool ShouldCheckPromoPopup(Phase phase) =>
+        phase is Phase.Battle or Phase.Next;
+
     private static bool TryHit(
         IReadOnlyDictionary<string, TemplateProbeResult> probes, string key, out TemplateProbeResult probe)
     {
@@ -381,7 +422,7 @@ public sealed class HardMainQuestAutomation
         GameWindow window, TemplateProbeResult next, CancellationToken cancellationToken)
     {
         await ClickMatchAsync(window, next, "下一步", cancellationToken);
-        await Task.Delay(700, cancellationToken);
+        await Task.Delay(1000, cancellationToken);
         window = _screen.Refresh(window);
         IReadOnlyDictionary<string, TemplateProbeResult> probes =
             await ProbeClientAsync(window, [("next", _next)], cancellationToken);
@@ -390,7 +431,7 @@ public sealed class HardMainQuestAutomation
 
         _log("下一步仍在，再点一次。");
         await ClickMatchAsync(window, stillNext, "下一步(2)", cancellationToken);
-        await Task.Delay(700, cancellationToken);
+        await Task.Delay(1000, cancellationToken);
         window = _screen.Refresh(window);
         probes = await ProbeClientAsync(window, [("next", _next)], cancellationToken);
         if (!TryHit(probes, "next", out _))
