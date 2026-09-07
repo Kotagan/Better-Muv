@@ -7,7 +7,6 @@ namespace BetterMuv.Core;
 /// </summary>
 public sealed class QuestFromHomeEntry
 {
-    private const int AfterHomeDelayMs = 500;
     /// <summary>任务页切换较慢，点完任务后多等一会再点目标。</summary>
     private const int AfterQuestDelayMs = 1500;
     private const int AfterTargetDelayMs = 800;
@@ -33,8 +32,8 @@ public sealed class QuestFromHomeEntry
         string targetName,
         CancellationToken cancellationToken)
     {
+        // 有主页钮则点一次并已在内部等 500ms。
         await new HudHomeReturn(_config, _screen, _log).TryAsync(window, cancellationToken);
-        await Task.Delay(AfterHomeDelayMs, cancellationToken);
 
         _log($"进关：任务 → {targetName}（双击，不识别任务页）。");
         window = await DoubleClickAsync(window, _config.FirstClick, "任务", cancellationToken);

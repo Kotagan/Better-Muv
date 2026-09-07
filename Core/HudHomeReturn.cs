@@ -3,12 +3,11 @@ using BetterMuv.Services;
 namespace BetterMuv.Core;
 
 /// <summary>
-/// 若左上角出现主界面房子按钮则点击返回主页。已在主页时通常没有该图标，会直接跳过。
+/// 若出现主界面房子按钮则点一次返回主页，再等页面切换。已在主页时通常没有该图标，会直接跳过。
 /// </summary>
 public sealed class HudHomeReturn
 {
-    private const int MaxClicks = 3;
-    private const int AfterClickDelayMs = 400;
+    private const int AfterClickDelayMs = 500;
     private const double HomeButtonThreshold = 0.78;
     // 浏览器客户区宽高可变；右上角锚点使用较宽的参考区域兜底搜索。
     private static readonly ConfigPoint TopRightAnchorTopLeft = new(1420, 0);
@@ -29,47 +28,39 @@ public sealed class HudHomeReturn
 
     public async Task<bool> TryAsync(GameWindow window, CancellationToken cancellationToken)
     {
-        int clicked = 0;
-        for (int i = 0; i < MaxClicks; i++)
+        cancellationToken.ThrowIfCancellationRequested();
+        window = _screen.Refresh(window);
+        TemplateProbeResult probe = await _screen.ProbeAsync(
+            window,
+            _matcher,
+            _config.HudHomeTopLeft,
+            _config.HudHomeSize,
+            cancellationToken,
+            HomeButtonThreshold);
+        if (!probe.IsMatch &&
+            (_config.HudHomeTopLeft != TopRightAnchorTopLeft ||
+             _config.HudHomeSize != TopRightAnchorSize))
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            window = _screen.Refresh(window);
-            TemplateProbeResult probe = await _screen.ProbeAsync(
+            TemplateProbeResult anchorProbe = await _screen.ProbeAsync(
                 window,
                 _matcher,
-                _config.HudHomeTopLeft,
-                _config.HudHomeSize,
+                TopRightAnchorTopLeft,
+                TopRightAnchorSize,
                 cancellationToken,
                 HomeButtonThreshold);
-            if (!probe.IsMatch &&
-                (_config.HudHomeTopLeft != TopRightAnchorTopLeft ||
-                 _config.HudHomeSize != TopRightAnchorSize))
-            {
-                TemplateProbeResult anchorProbe = await _screen.ProbeAsync(
-                    window,
-                    _matcher,
-                    TopRightAnchorTopLeft,
-                    TopRightAnchorSize,
-                    cancellationToken,
-                    HomeButtonThreshold);
-                if (anchorProbe.Score > probe.Score)
-                    probe = anchorProbe;
-            }
-            if (!probe.IsMatch)
-            {
-                if (clicked == 0)
-                    _log($"未发现主界面按钮（{probe.Score:F2}），跳过返回。");
-                else
-                    _log("主界面按钮已消失，返回操作结束；页面状态由后续识别确认。");
-                return clicked > 0;
-            }
-
-            clicked++;
-            _log($"发现主界面按钮 {probe.Score:F3}，点击返回主页（{clicked}/{MaxClicks}）。");
-            // 点模板命中中心，避免写死坐标在未校准时点偏。
-            await _screen.ClickScreenAsync(window, probe.Center, cancellationToken);
-            await Task.Delay(AfterClickDelayMs, cancellationToken);
+            if (anchorProbe.Score > probe.Score)
+                probe = anchorProbe;
         }
-        return clicked > 0;
+
+        if (!probe.IsMatch)
+        {
+            _log($"未发现主界面按钮（{probe.Score:F2}），跳过返回。");
+            return false;
+        }
+
+        _log($"发现主界面按钮 {probe.Score:F3}，点击返回主页。");
+        await _screen.ClickScreenAsync(window, probe.Center, cancellationToken);
+        await Task.Delay(AfterClickDelayMs, cancellationToken);
+        return true;
     }
 }
