@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>BetterMuv.BmCli</RootNamespace>
+    <AssemblyName>BmCli</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+  <ItemGroup>
+    <Using Include="System.IO" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- 独立输出，避免占用正在运行的 Better-Muv.exe；工具不需要 apphost。 -->
+    <ProjectReference Include="..\..\Better-Muv.csproj"
+                      AdditionalProperties="UseAppHost=false;OutputPath=$(MSBuildThisFileDirectory)artifacts\Better-Muv\;AppendTargetFrameworkToOutputPath=false" />
+  </ItemGroup>
+</Project>

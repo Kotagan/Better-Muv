@@ -57,7 +57,8 @@ public partial class MainWindow
                     StopButton_Click(this, new RoutedEventArgs());
                 else if (MazePipelineToggle.IsChecked == true ||
                          MainQuestPipelineToggle.IsChecked == true ||
-                         HardMainQuestPipelineToggle.IsChecked == true)
+                         HardMainQuestPipelineToggle.IsChecked == true ||
+                         DailyShopPipelineToggle.IsChecked == true)
                     RunPipelineButton_Click(this, new RoutedEventArgs());
                 else
                     RunMazeButton_Click(this, new RoutedEventArgs());

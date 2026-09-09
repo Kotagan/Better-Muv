@@ -120,8 +120,9 @@ public class AutomationConfigTests
         Assert.Equal("F10", config.PauseHotkey);
         Assert.Equal("F11", config.StopHotkey);
         Assert.Equal(90, config.GameLaunchTimeoutSeconds);
-        Assert.Equal(["maze", "mainQuest", "hardMainQuest"], AutomationConfig.NormalizePipelineTaskOrder(null));
-        Assert.Equal(["mainQuest", "maze", "hardMainQuest"], AutomationConfig.NormalizePipelineTaskOrder(["mainQuest", "maze", "unknown"]));
+        Assert.Equal(["maze", "mainQuest", "hardMainQuest", "dailyShop"], AutomationConfig.NormalizePipelineTaskOrder(null));
+        Assert.Equal(["mainQuest", "maze", "hardMainQuest", "dailyShop"], AutomationConfig.NormalizePipelineTaskOrder(["mainQuest", "maze", "unknown"]));
+        Assert.Equal(new ConfigPoint(1747, 947), new AutomationConfig().DailyShopEntryClick);
         Assert.Equal("muv_luv_girlsgardenx_cl.exe", GamePathLocator.ExecutableName);
         Assert.False(GamePathLocator.IsValid(null));
         Assert.False(GamePathLocator.IsValid(@"C:\missing\muv_luv_girlsgardenx_cl.exe"));

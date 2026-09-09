@@ -140,8 +140,20 @@ public sealed class AutomationConfig
     public int MainQuestRunLimit { get; set; } = 10;
     public bool MainQuestTaskEnabled { get; set; } = true;
     public bool HardMainQuestTaskEnabled { get; set; }
-    /// <summary>一条龙任务顺序，项为 maze / mainQuest / hardMainQuest。</summary>
-    public List<string> PipelineTaskOrder { get; set; } = ["maze", "mainQuest", "hardMainQuest"];
+    public bool DailyShopTaskEnabled { get; set; }
+    /// <summary>一条龙任务顺序，项为 maze / mainQuest / hardMainQuest / dailyShop。</summary>
+    public List<string> PipelineTaskOrder { get; set; } = ["maze", "mainQuest", "hardMainQuest", "dailyShop"];
+    // 每日商店连点（1080p）；注释为 4K 客户区坐标（÷2）。
+    // 4K (3494,1894)
+    public ConfigPoint DailyShopEntryClick { get; set; } = new(1747, 947);
+    // 4K (2822,1416)
+    public ConfigPoint DailyShopTabClick { get; set; } = new(1411, 708);
+    // 4K (924,1362)
+    public ConfigPoint DailyShopItemClick { get; set; } = new(462, 681);
+    // 4K (2258,1870)
+    public ConfigPoint DailyShopConfirmClick { get; set; } = new(1129, 935);
+    // 4K (1944,1874)
+    public ConfigPoint DailyShopDoneClick { get; set; } = new(972, 937);
     // 主线 ROI（1080p）；模板匹配后点中心。
     public ConfigPoint MainQuestHomeTopLeft { get; set; } = new(1000, 880);
     public ConfigSize MainQuestHomeSize { get; set; } = new(340, 160);
@@ -292,7 +304,7 @@ public sealed class AutomationConfig
 
     public static IReadOnlyList<string> NormalizePipelineTaskOrder(IEnumerable<string>? order)
     {
-        string[] known = ["maze", "mainQuest", "hardMainQuest"];
+        string[] known = ["maze", "mainQuest", "hardMainQuest", "dailyShop"];
         var result = new List<string>();
         if (order is not null)
         {

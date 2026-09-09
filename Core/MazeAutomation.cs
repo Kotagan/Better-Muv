@@ -18,6 +18,8 @@ public sealed class MazeAutomation
     private const string RouteSelectionTaskName = "识别路线选择界面";
     /// <summary>迷宫内界面存在判定阈值（略低于点击用 MatchThreshold，避免开局入环后空转）。</summary>
     private const double MazePresenceThreshold = 0.68;
+    /// <summary>迷宫开始/难度页（探索準備）：2K 上常见 0.66~0.72，勿用 0.78 点击阈值。</summary>
+    private const double ThirdPresenceThreshold = 0.62;
     /// <summary>下一步（战斗结算 / SEARCH RESULTS）略放宽，避免结算页粉钮因背景裁切漏检。</summary>
     private const double NextPresenceThreshold = 0.58;
     /// <summary>路线选择标题判定阈值（需更高，避免主界面等误匹配）。</summary>
@@ -120,7 +122,7 @@ public sealed class MazeAutomation
         // 难度选择/探索准备页也有房子按钮；已在这些页则不要点回去。
         TemplateProbeResult alreadyOnDifficulty = await _screen.ProbeAsync(
             window, _thirdMatcher, _config.ThirdSearchTopLeft, _config.ThirdSearchSize,
-            cancellationToken, _config.MatchThreshold);
+            cancellationToken, ThirdPresenceThreshold);
         TemplateProbeResult alreadyOnExplorePrep = await _screen.ProbeAsync(
             window, _fourthMatcher, _config.FourthSearchTopLeft, _config.FourthSearchSize,
             cancellationToken, FourthPresenceThreshold);
@@ -193,7 +195,7 @@ public sealed class MazeAutomation
             cancellationToken, FourthPresenceThreshold);
         TemplateProbeResult onStart = await _screen.ProbeAsync(
             window, _thirdMatcher, _config.ThirdSearchTopLeft, _config.ThirdSearchSize,
-            cancellationToken, _config.MatchThreshold);
+            cancellationToken, ThirdPresenceThreshold);
 
         if (onPrep.IsMatch && (!onStart.IsMatch || onPrep.Score >= onStart.Score))
         {
@@ -234,7 +236,7 @@ public sealed class MazeAutomation
             cancellationToken, FourthPresenceThreshold);
         TemplateProbeResult onStart = await _screen.ProbeAsync(
             window, _thirdMatcher, _config.ThirdSearchTopLeft, _config.ThirdSearchSize,
-            cancellationToken, _config.MatchThreshold);
+            cancellationToken, ThirdPresenceThreshold);
 
         if (onPrep.IsMatch && (!onStart.IsMatch || onPrep.Score >= onStart.Score))
         {
@@ -325,8 +327,11 @@ public sealed class MazeAutomation
         if (await RunFromThirdTaskAsync(window, cancellationToken, waitTimeoutMs: 8000))
             return true;
 
-        _log("连点后仍未进入迷宫开始页，按探索准备兜底。");
-        return await ContinueFromExplorePrepAsync(window, cancellationToken);
+        // 已连点进メイズ后，标题常已是「メイズ探索」，仅 third 分数略低于旧阈值；勿再回全场景死循环。
+        _log("连点后未稳定认出迷宫开始页，强制点探索準備→探索兜底。");
+        await _screen.ClickAsync(window, _config.ThirdClick, "探索準備(兜底)", cancellationToken);
+        await Task.Delay(400, cancellationToken);
+        return await RunFromFourthTaskAsync(window, cancellationToken);
     }
 
     private async Task<bool> TryCalibrateViewportAsync(
@@ -382,10 +387,10 @@ public sealed class MazeAutomation
         // 先确认在迷宫准备界面，再调难度，最后点探索準備。
         TemplateProbeResult probe = await _screen.WaitForProbeAsync(
             window, _thirdMatcher, _config.ThirdSearchTopLeft, _config.ThirdSearchSize,
-            cancellationToken, timeoutMs: waitTimeoutMs, _config.MatchThreshold);
+            cancellationToken, timeoutMs: waitTimeoutMs, ThirdPresenceThreshold);
         if (!probe.IsMatch)
         {
-            _log($"{ThirdTaskName}轮询 {waitTimeoutMs / 1000} 秒仍未命中（最高 {probe.Score:F4}），交回全场景匹配。");
+            _log($"{ThirdTaskName}轮询 {waitTimeoutMs / 1000} 秒仍未命中（最高 {probe.Score:F4}，阈值 {ThirdPresenceThreshold:F2}），交回兜底。");
             return false;
         }
 
@@ -467,8 +472,8 @@ public sealed class MazeAutomation
     {
         // 开局只认迷宫内界面；主页/任务页不识别，靠 HudHome + FirstClick + SecondClick 连点进入。
         var list = BuildMazeExplorationProbes();
-        double entryThreshold = _config.MatchThreshold;
-        list.Add(new("third", _thirdMatcher, _config.ThirdSearchTopLeft, _config.ThirdSearchSize, entryThreshold));
+        list.Add(new("third", _thirdMatcher, _config.ThirdSearchTopLeft, _config.ThirdSearchSize,
+            ThirdPresenceThreshold));
         list.Add(new("fourth", _fourthMatcher, _config.FourthSearchTopLeft, _config.FourthSearchSize,
             FourthPresenceThreshold));
         return list;

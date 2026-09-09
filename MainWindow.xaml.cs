@@ -34,7 +34,7 @@ public partial class MainWindow : Window
     private const string FluentPlay = "\uE768";
     private const string FluentPause = "\uE769";
     private const string FluentStop = "\uE71A";
-    private enum ActiveTask { None, Maze, MainQuest, HardMainQuest, Pipeline }
+    private enum ActiveTask { None, Maze, MainQuest, HardMainQuest, DailyShop, Pipeline }
     private ActiveTask _activeTask = ActiveTask.None;
     private readonly List<string> _pipelineQueue = [];
     private int _pipelineIndex;
@@ -392,6 +392,8 @@ public partial class MainWindow : Window
             MainQuestStatusText.Text = "正在启动截图器…";
         else if (statusTarget == "hardMainQuest")
             HardMainQuestStatusText.Text = "正在启动截图器…";
+        else if (statusTarget == "dailyShop")
+            DailyShopStatusText.Text = "正在启动截图器…";
         try
         {
             await _captureSession.StartAsync(ConfigStore.Load(), CancellationToken.None);
@@ -408,6 +410,8 @@ public partial class MainWindow : Window
                 MainQuestStatusText.Text = message;
             else if (statusTarget == "hardMainQuest")
                 HardMainQuestStatusText.Text = message;
+            else if (statusTarget == "dailyShop")
+                DailyShopStatusText.Text = message;
             AppendLog("无法执行任务：" + message);
             UpdateRunUi();
             return false;
@@ -457,6 +461,21 @@ public partial class MainWindow : Window
         if (!await EnsureCaptureForRunAsync("hardMainQuest"))
             return;
         await StartHardMainQuestAsync();
+    }
+
+    private async void RunDailyShopButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_activeTask == ActiveTask.DailyShop && (_runCancellation is not null || _isPaused))
+        {
+            PauseResumeButton_Click(sender, e);
+            return;
+        }
+        if (_runCancellation is not null || _isPaused)
+            return;
+        OpenLogDrawer();
+        if (!await EnsureCaptureForRunAsync("dailyShop"))
+            return;
+        await StartDailyShopAsync();
     }
 
     private async void RunPipelineButton_Click(object sender, RoutedEventArgs e)
@@ -565,6 +584,36 @@ public partial class MainWindow : Window
         }
     }
 
+    private async Task StartDailyShopAsync()
+    {
+        if (_runCancellation is not null) return;
+        _resumeDiagnosticTask = _isPaused;
+        BeginDiagnosticRun(_resumeDiagnosticTask);
+        _isPaused = false;
+        _pauseRequested = false;
+        _activeTask = ActiveTask.DailyShop;
+        _runCancellation = new CancellationTokenSource();
+        UpdateRunUi();
+        try
+        {
+            WindowState = WindowState.Minimized;
+            await Task.Delay(250, _runCancellation.Token);
+            await RunDailyShopCoreAsync(_runCancellation.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            AppendLog(_pauseRequested ? "每日商店已暂停。" : "每日商店已停止。");
+        }
+        catch (Exception exception)
+        {
+            AppendLog("每日商店错误：" + exception.Message);
+        }
+        finally
+        {
+            FinishRunSession();
+        }
+    }
+
     private async Task StartPipelineAsync()
     {
         if (_runCancellation is not null) return;
@@ -585,6 +634,8 @@ public partial class MainWindow : Window
                 else if (id == "mainQuest" && config.MainQuestTaskEnabled)
                     _pipelineQueue.Add(id);
                 else if (id == "hardMainQuest" && config.HardMainQuestTaskEnabled)
+                    _pipelineQueue.Add(id);
+                else if (id == "dailyShop" && config.DailyShopTaskEnabled)
                     _pipelineQueue.Add(id);
             }
 
@@ -615,6 +666,8 @@ public partial class MainWindow : Window
                     await RunMazeCoreAsync(_runCancellation.Token);
                 else if (id == "hardMainQuest")
                     await RunHardMainQuestCoreAsync(_runCancellation.Token);
+                else if (id == "dailyShop")
+                    await RunDailyShopCoreAsync(_runCancellation.Token);
                 else
                     await RunMainQuestCoreAsync(_runCancellation.Token);
                 _pipelineIndex++;
@@ -651,6 +704,12 @@ public partial class MainWindow : Window
     private Task RunHardMainQuestCoreAsync(CancellationToken cancellationToken)
     {
         var automation = new HardMainQuestAutomation(PrepareDiagnosticTask("hardMainQuest"), AppendLog);
+        return automation.RunOnceAsync(cancellationToken);
+    }
+
+    private Task RunDailyShopCoreAsync(CancellationToken cancellationToken)
+    {
+        var automation = new DailyShopAutomation(PrepareDiagnosticTask("dailyShop"), AppendLog);
         return automation.RunOnceAsync(cancellationToken);
     }
 
@@ -712,6 +771,7 @@ public partial class MainWindow : Window
     {
         "maze" => "迷宫探索",
         "hardMainQuest" => "自动困难主线",
+        "dailyShop" => "每日商店",
         _ => "自动主线任务"
     };
 
@@ -725,6 +785,8 @@ public partial class MainWindow : Window
                 _ = StartMainQuestAsync();
             else if (_activeTask == ActiveTask.HardMainQuest)
                 _ = StartHardMainQuestAsync();
+            else if (_activeTask == ActiveTask.DailyShop)
+                _ = StartDailyShopAsync();
             else
                 _ = StartMazeAsync();
             return;
@@ -736,6 +798,7 @@ public partial class MainWindow : Window
             RunMazeButton.IsEnabled = false;
             RunMainQuestButton.IsEnabled = false;
             RunHardMainQuestButton.IsEnabled = false;
+            RunDailyShopButton.IsEnabled = false;
             RunPipelineButton.IsEnabled = false;
             _runCancellation.Cancel();
         }
@@ -751,6 +814,7 @@ public partial class MainWindow : Window
         StopButton.IsEnabled = false;
         StopMainQuestButton.IsEnabled = false;
         StopHardMainQuestButton.IsEnabled = false;
+        StopDailyShopButton.IsEnabled = false;
         StopPipelineButton.IsEnabled = false;
         _runCancellation?.Cancel();
         if (_runCancellation is null) UpdateRunUi();
@@ -763,26 +827,31 @@ public partial class MainWindow : Window
         bool mazeUi = _activeTask == ActiveTask.Maze;
         bool mainQuestUi = _activeTask == ActiveTask.MainQuest;
         bool hardMainQuestUi = _activeTask == ActiveTask.HardMainQuest;
+        bool dailyShopUi = _activeTask == ActiveTask.DailyShop;
         bool pipelineUi = _activeTask == ActiveTask.Pipeline;
         bool idle = !running && !_isPaused;
 
         RunMazeButton.IsEnabled = idle || mazeUi;
         RunMainQuestButton.IsEnabled = idle || mainQuestUi;
         RunHardMainQuestButton.IsEnabled = idle || hardMainQuestUi;
+        RunDailyShopButton.IsEnabled = idle || dailyShopUi;
         RunPipelineButton.IsEnabled = idle || pipelineUi;
         MazePipelineToggle.IsEnabled = idle;
         MainQuestPipelineToggle.IsEnabled = idle;
         HardMainQuestPipelineToggle.IsEnabled = idle;
+        DailyShopPipelineToggle.IsEnabled = idle;
 
         // 独立暂停键隐藏；运行键兼任暂停/继续，旁边保留停止键。
         PauseResumeButton.Visibility = Visibility.Collapsed;
         PauseMainQuestButton.Visibility = Visibility.Collapsed;
         PauseHardMainQuestButton.Visibility = Visibility.Collapsed;
+        PauseDailyShopButton.Visibility = Visibility.Collapsed;
         PausePipelineButton.Visibility = Visibility.Collapsed;
 
         StopButton.Visibility = showControls && mazeUi ? Visibility.Visible : Visibility.Collapsed;
         StopMainQuestButton.Visibility = showControls && mainQuestUi ? Visibility.Visible : Visibility.Collapsed;
         StopHardMainQuestButton.Visibility = showControls && hardMainQuestUi ? Visibility.Visible : Visibility.Collapsed;
+        StopDailyShopButton.Visibility = showControls && dailyShopUi ? Visibility.Visible : Visibility.Collapsed;
         StopPipelineButton.Visibility = showControls && pipelineUi ? Visibility.Visible : Visibility.Collapsed;
         RunPipelineButton.Visibility = Visibility.Visible;
 
@@ -791,9 +860,11 @@ public partial class MainWindow : Window
         RunMazeButton.Content = mazeUi && showControls ? runGlyph : FluentPlay;
         RunMainQuestButton.Content = mainQuestUi && showControls ? runGlyph : FluentPlay;
         RunHardMainQuestButton.Content = hardMainQuestUi && showControls ? runGlyph : FluentPlay;
+        RunDailyShopButton.Content = dailyShopUi && showControls ? runGlyph : FluentPlay;
         RunMazeButton.ToolTip = mazeUi && running ? "暂停" : mazeUi && _isPaused ? "继续" : "运行";
         RunMainQuestButton.ToolTip = mainQuestUi && running ? "暂停" : mainQuestUi && _isPaused ? "继续" : "运行";
         RunHardMainQuestButton.ToolTip = hardMainQuestUi && running ? "暂停" : hardMainQuestUi && _isPaused ? "继续" : "运行";
+        RunDailyShopButton.ToolTip = dailyShopUi && running ? "暂停" : dailyShopUi && _isPaused ? "继续" : "运行";
         RunPipelineButton.Content = pipelineUi && running ? "暂停"
             : pipelineUi && _isPaused ? "继续"
             : "运行";
@@ -801,14 +872,17 @@ public partial class MainWindow : Window
         StopButton.Content = FluentStop;
         StopMainQuestButton.Content = FluentStop;
         StopHardMainQuestButton.Content = FluentStop;
+        StopDailyShopButton.Content = FluentStop;
         StopPipelineButton.Content = FluentStop;
         StopButton.ToolTip = "停止";
         StopMainQuestButton.ToolTip = "停止";
         StopHardMainQuestButton.ToolTip = "停止";
+        StopDailyShopButton.ToolTip = "停止";
         StopPipelineButton.ToolTip = "停止";
         StopButton.IsEnabled = true;
         StopMainQuestButton.IsEnabled = true;
         StopHardMainQuestButton.IsEnabled = true;
+        StopDailyShopButton.IsEnabled = true;
         StopPipelineButton.IsEnabled = true;
 
         MazeStatusText.Text = mazeUi && running ? "迷宫探索运行中。"
@@ -819,6 +893,9 @@ public partial class MainWindow : Window
             : "";
         HardMainQuestStatusText.Text = hardMainQuestUi && running ? "困难主线运行中。"
             : hardMainQuestUi && _isPaused ? "困难主线已暂停。"
+            : "";
+        DailyShopStatusText.Text = dailyShopUi && running ? "每日商店运行中。"
+            : dailyShopUi && _isPaused ? "每日商店已暂停。"
             : "";
     }
 
@@ -843,6 +920,7 @@ public partial class MainWindow : Window
         MazePipelineToggle.IsChecked = config.MazeTaskEnabled;
         MainQuestPipelineToggle.IsChecked = config.MainQuestTaskEnabled;
         HardMainQuestPipelineToggle.IsChecked = config.HardMainQuestTaskEnabled;
+        DailyShopPipelineToggle.IsChecked = config.DailyShopTaskEnabled;
         _suppressPipelineToggle = false;
         ApplyTaskListOrder(config.PipelineTaskOrder);
         UpdateCaptureUi();
@@ -856,6 +934,7 @@ public partial class MainWindow : Window
         config.MazeTaskEnabled = MazePipelineToggle.IsChecked == true;
         config.MainQuestTaskEnabled = MainQuestPipelineToggle.IsChecked == true;
         config.HardMainQuestTaskEnabled = HardMainQuestPipelineToggle.IsChecked == true;
+        config.DailyShopTaskEnabled = DailyShopPipelineToggle.IsChecked == true;
         ConfigStore.Save(config);
     }
 
@@ -1034,7 +1113,8 @@ public partial class MainWindow : Window
         {
             ["maze"] = MazeTaskCard,
             ["mainQuest"] = MainQuestTaskCard,
-            ["hardMainQuest"] = HardMainQuestTaskCard
+            ["hardMainQuest"] = HardMainQuestTaskCard,
+            ["dailyShop"] = DailyShopTaskCard
         };
         TaskListPanel.Children.Clear();
         foreach (string id in AutomationConfig.NormalizePipelineTaskOrder(order))
