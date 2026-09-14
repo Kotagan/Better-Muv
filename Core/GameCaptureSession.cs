@@ -35,8 +35,7 @@ public sealed class GameCaptureSession
         GameWindow window = existingWindow ?? screen.FindWindow(config.WindowTitleKeyword);
         if (!await screen.FocusAsync(window.Handle, cancellationToken))
             throw new InvalidOperationException("无法将游戏置于前台。请先手动恢复游戏窗口。");
-        window = screen.Refresh(window);
-        screen.EnsureUsableViewport(window);
+        window = await screen.EnsurePreferredClientAsync(window, cancellationToken);
         Window = window;
         IsRunning = true;
         ScreenRect viewport = screen.Viewport(window);

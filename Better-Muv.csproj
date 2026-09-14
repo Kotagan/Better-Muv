@@ -9,14 +9,14 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>1.0.3</Version>
-    <AssemblyVersion>1.0.3.0</AssemblyVersion>
-    <FileVersion>1.0.3.0</FileVersion>
+    <Version>1.0.4</Version>
+    <AssemblyVersion>1.0.4.0</AssemblyVersion>
+    <FileVersion>1.0.4.0</FileVersion>
     <Product>Better-Muv</Product>
     <Company>Kotagan</Company>
     <Authors>Kotagan</Authors>
     <Description>MuvLuvGirlsGarden maze automation</Description>
-    <DefaultItemExcludes>$(DefaultItemExcludes);tools\**;tests\**</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);tools\**;tests\**;_logtmp\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>
@@ -25,8 +25,16 @@
     <Content Include="Assets\Templates\quest.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\quest-badge.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\maze-search.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\quest-battle-simulate.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\quest-exercises.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\quest-activity.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\nav-back.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\exploration-ready.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\exploration-action.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\difficulty-arrow-left.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\difficulty-arrow-right.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\area-select-ok.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\digits\*.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\maze-next.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\partner-leave.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\battle-skip.png" CopyToOutputDirectory="PreserveNewest" />
@@ -36,8 +44,42 @@
     <Content Include="Assets\Templates\lv-max.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\buy-disabled.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\shop-daily-dark.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\shop-daily-limit-tip.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\shop-orange-limit.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\shop-green-done.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\daily-shop-100off.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\daily-shop-exchange.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\daily-shop-exchange-hall.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\daily-shop-ok.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\daily-shop-ticket-2500.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\shop-cat-daily-on.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\shop-cat-daily.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\shop-cat-equipment-on.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\shop-cat-equipment.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\shop-cat-excavation-on.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\shop-cat-excavation.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\shop-cat-artifactor-on.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\shop-cat-artifactor.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\shop-sub-daily-skillBook1-on.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\shop-sub-daily-skillBook1.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\shop-sub-daily-skillBook2-on.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\shop-sub-daily-skillBook2.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\shop-sub-daily-disk-on.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\shop-sub-daily-disk.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\shop-sub-daily-unit-on.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\shop-sub-daily-unit.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\shop-sub-equipment-physics-on.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\shop-sub-equipment-physics.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\shop-sub-equipment-en-on.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\shop-sub-equipment-en.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\shop-sub-equipment-agility-on.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\shop-sub-equipment-agility.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\shop-sub-artifactor-physics-on.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\shop-sub-artifactor-physics.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\shop-sub-artifactor-en-on.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\shop-sub-artifactor-en.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\shop-sub-artifactor-agility-on.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\shop-sub-artifactor-agility.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\settlement-confirm.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\multiplier-x1.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\multiplier-x10.png" CopyToOutputDirectory="PreserveNewest" />
@@ -88,6 +130,10 @@
     <EmbeddedResource Remove="tools\**\*" />
     <None Remove="tools\**\*" />
     <Content Remove="tools\**\*" />
+    <Compile Remove="_logtmp\**\*.cs" />
+    <EmbeddedResource Remove="_logtmp\**\*" />
+    <None Remove="_logtmp\**\*" />
+    <Content Remove="_logtmp\**\*" />
   </ItemGroup>
 
   <!-- 仅首次复制默认配置，避免重建覆盖运行目录中已改过的 config.json；正式读写在 %LocalAppData%\Better-Muv\ -->

@@ -160,7 +160,7 @@ internal sealed class CliContext
     private static AutomationConfig LoadConfig(string repoRoot)
     {
         if (File.Exists(ConfigStore.UserConfigPath))
-            return AutomationConfig.Load(ConfigStore.UserConfigPath);
+            return ConfigStore.Load();
         string repoConfig = Path.Combine(repoRoot, "config.json");
         if (File.Exists(repoConfig))
             return AutomationConfig.Load(repoConfig);

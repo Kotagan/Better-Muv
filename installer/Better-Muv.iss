@@ -3,11 +3,11 @@
 ; registry entries, and a proper uninstaller.
 
 #ifndef AppVersion
-  #define AppVersion "1.0.3"
+  #define AppVersion "1.0.4"
 #endif
 
 #ifndef AppNumericVersion
-  #define AppNumericVersion "1.0.3.0"
+  #define AppNumericVersion "1.0.4.0"
 #endif
 
 #ifndef PublishDir

@@ -30,6 +30,7 @@ public sealed class HardMainQuestAutomation
     private readonly TemplateMatcher _difficulty;
     private readonly TemplateMatcher _hardMark;
     private readonly TemplateMatcher _scenarioOk;
+    private readonly TemplateMatcher _banner;
     private readonly PromoPopupDismisser _promoPopup;
 
     public HardMainQuestAutomation(AutomationConfig config, Action<string> log)
@@ -47,6 +48,7 @@ public sealed class HardMainQuestAutomation
         _difficulty = TemplateAssets.Load("hard-quest-difficulty.png");
         _hardMark = TemplateAssets.Load("hard-quest-battle.png");
         _scenarioOk = TemplateAssets.Load("main-quest-scenario-ok.png");
+        _banner = TemplateAssets.Load("main-quest-banner.png");
         _promoPopup = new PromoPopupDismisser(config, _screen, log);
     }
 
@@ -62,8 +64,7 @@ public sealed class HardMainQuestAutomation
         }
 
         await Task.Delay(200, cancellationToken);
-        window = _screen.Refresh(window);
-        _screen.EnsureUsableViewport(window);
+        window = await _screen.EnsurePreferredClientAsync(window, cancellationToken);
         _log($"困难主线：客户区 {window.ClientRect.Width}×{window.ClientRect.Height}，显示器 {window.DisplayRect.Width}×{window.DisplayRect.Height}");
         await new HudHomeReturn(_config, _screen, _log).TryAsync(window, cancellationToken);
         window = _screen.Refresh(window);
@@ -330,8 +331,9 @@ public sealed class HardMainQuestAutomation
         await new QuestFromHomeEntry(_config, _screen, _log).RunAsync(
             window,
             QuestFromHomeEntry.MainQuestBannerClick(_config),
-            "主线任务",
-            cancellationToken);
+            "メインクエスト",
+            cancellationToken,
+            _banner);
         return (Phase.Start, false);
     }
 

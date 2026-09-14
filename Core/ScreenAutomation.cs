@@ -30,18 +30,17 @@ public sealed class ScreenAutomation
 
     public ScreenRect Viewport(GameWindow window)
     {
-        // 游戏始终以参考宽高比铺满窗口（cover），非 16:9 客户区会居中裁掉一部分。
-        // 因此映射基准可能略大于客户区，原点也可能位于客户区之外。
+        // X 轴保留居中 cover 映射；Y 轴以所在显示器的完整高度为基准，
+        // 不再受标题栏、任务栏或客户区纵向裁切影响。
         double scale = Math.Max(
             window.ClientRect.Width / (double)_config.ReferenceWidth,
             window.ClientRect.Height / (double)_config.ReferenceHeight);
         int width = Math.Max(1, (int)Math.Round(_config.ReferenceWidth * scale));
-        int height = Math.Max(1, (int)Math.Round(_config.ReferenceHeight * scale));
         return new ScreenRect(
             window.ClientRect.Left + (window.ClientRect.Width - width) / 2 + _calibrationOffsetX,
-            window.ClientRect.Top + (window.ClientRect.Height - height) / 2 + _calibrationOffsetY,
+            window.DisplayRect.Top + _calibrationOffsetY,
             width,
-            height);
+            window.DisplayRect.Height);
     }
 
     public void CalibrateOffset(int deltaX, int deltaY)
@@ -74,12 +73,74 @@ public sealed class ScreenAutomation
     public void EnsureUsableViewport(GameWindow window)
     {
         ScreenRect viewport = Viewport(window);
-        if (viewport.Width <= 0 || viewport.Height <= 0)
+        if (window.ClientRect.Width <= 0 || window.ClientRect.Height <= 0 ||
+            viewport.Width <= 0 || viewport.Height <= 0)
             throw new InvalidOperationException("游戏窗口已最小化或映射区域尺寸无效。");
         if (!_config.WindowSelectionMode.Equals("selected", StringComparison.OrdinalIgnoreCase) &&
-            !CaptureGeometry.CheckSixteenByNine(viewport.Width, viewport.Height))
+            !CaptureGeometry.CheckSixteenByNine(window.DisplayRect.Width, window.DisplayRect.Height))
             throw new InvalidOperationException(
-                $"游戏所在显示器必须为 16:9，当前为 {viewport.Width}×{viewport.Height}。");
+                $"游戏所在显示器必须为 16:9，当前为 {window.DisplayRect.Width}×{window.DisplayRect.Height}。");
+    }
+
+    /// <summary>
+    /// 只有客户区已铺满所在显示器时才视为全屏；否则发送 Alt+Enter 放大后再校验。
+    /// </summary>
+    public async Task<GameWindow> EnsurePreferredClientAsync(
+        GameWindow window, CancellationToken cancellationToken)
+    {
+        window = Refresh(window);
+        if (IsFullscreenSized(window.ClientRect, window.DisplayRect))
+        {
+            EnsureUsableViewport(window);
+            return window;
+        }
+
+        _log($"客户区 {window.ClientRect.Width}×{window.ClientRect.Height} 未铺满显示器 " +
+             $"{window.DisplayRect.Width}×{window.DisplayRect.Height}，发送 Alt+Enter 尝试全屏。");
+        await _mouse.SendAltEnterAsync(window.Handle, cancellationToken);
+        await Task.Delay(900, cancellationToken);
+        window = Refresh(window);
+        _log($"全屏切换后客户区 {window.ClientRect.Width}×{window.ClientRect.Height}，" +
+             $"显示器 {window.DisplayRect.Width}×{window.DisplayRect.Height}。");
+
+        if (!IsFullscreenSized(window.ClientRect, window.DisplayRect))
+            throw new InvalidOperationException(
+                $"Alt+Enter 全屏切换失败：客户区 {window.ClientRect.Width}×{window.ClientRect.Height}，" +
+                $"显示器 {window.DisplayRect.Width}×{window.DisplayRect.Height}。任务已停止。");
+
+        EnsureUsableViewport(window);
+        return window;
+    }
+
+    public static bool IsFullscreenSized(ScreenRect client, ScreenRect display) =>
+        client.Width == display.Width && client.Height == display.Height;
+
+    /// <summary>是否为常见 16:9「1080p 及其倍数/阶梯」客户区尺寸。</summary>
+    public static bool IsPreferred1080Ladder(int width, int height)
+    {
+        (int W, int H)[] known =
+        [
+            (1280, 720),
+            (1920, 1080),
+            (2560, 1440),
+            (3840, 2160)
+        ];
+        foreach ((int w, int h) in known)
+        {
+            if (width == w && height == h)
+                return true;
+        }
+
+        if (width > 0 && height > 0 &&
+            width % CaptureGeometry.LogicalWidth == 0 &&
+            height % CaptureGeometry.LogicalHeight == 0)
+        {
+            int sx = width / CaptureGeometry.LogicalWidth;
+            int sy = height / CaptureGeometry.LogicalHeight;
+            return sx == sy && sx >= 1;
+        }
+
+        return false;
     }
 
     // ---- 截图 ----
@@ -278,7 +339,7 @@ public sealed class ScreenAutomation
 
     // ---- 点击 ----
 
-    /// <summary>点击配置点（1080p）：screen = Display原点 + point × Scale。</summary>
+    /// <summary>点击配置点（1080p）：X 按客户区 cover，Y 按完整显示器，经 Geometry 统一换算。</summary>
     public async Task<GameWindow> ClickAsync(
         GameWindow window, ConfigPoint referencePoint, string reason, CancellationToken cancellationToken)
     {
@@ -308,6 +369,22 @@ public sealed class ScreenAutomation
         await ClickScreenAsync(window, probe.Center, cancellationToken);
         if (settleDelayMs > 0)
             await Task.Delay(settleDelayMs, cancellationToken);
+    }
+
+    /// <summary>在 1080p 逻辑点处滚轮（负值为向下）。</summary>
+    public async Task WheelAsync(
+        GameWindow window,
+        ConfigPoint referencePoint,
+        int wheelNotches,
+        string reason,
+        CancellationToken cancellationToken)
+    {
+        window = Refresh(window);
+        EnsureUsableViewport(window);
+        CaptureGeometry geometry = Geometry(window);
+        Point point = geometry.ToScreen(referencePoint);
+        _log($"{reason}：1080p({referencePoint.X},{referencePoint.Y}) 滚轮 {wheelNotches} → screen({point.X:F0},{point.Y:F0})");
+        await _mouse.WheelAsync(window.Handle, point, wheelNotches, cancellationToken);
     }
 }
 

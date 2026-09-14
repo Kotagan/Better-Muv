@@ -20,8 +20,16 @@ internal static class ProbeCatalog
                 P(ctx, "hudHome", "hud-home.png", c.HudHomeTopLeft, c.HudHomeSize, 0.70),
                 P(ctx, "questIcon", "quest.png", c.SearchTopLeft, c.FirstSearchSize, 0.58),
                 P(ctx, "maze", "maze-search.png", c.SecondSearchTopLeft, c.SecondSearchSize, 0.78),
-                P(ctx, "mainBanner", "main-quest-start.png",
-                    c.MainQuestBannerTopLeft, c.MainQuestBannerSize, 0.55),
+                P(ctx, "mainBanner", "main-quest-banner.png",
+                    c.MainQuestBannerTopLeft, c.MainQuestBannerSize, 0.70),
+                P(ctx, "battleSimulate", "quest-battle-simulate.png",
+                    c.QuestBattleSimulateTopLeft, c.QuestBattleSimulateSize, 0.78),
+                P(ctx, "exercises", "quest-exercises.png",
+                    c.QuestExercisesTopLeft, c.QuestExercisesSize, 0.78),
+                P(ctx, "activity", "quest-activity.png",
+                    c.QuestActivityTopLeft, c.QuestActivitySize, 0.78),
+                P(ctx, "navBack", "nav-back.png",
+                    c.NavBackTopLeft, c.NavBackSize, 0.78),
             ],
             "mainquest" or "mq" =>
             [
@@ -48,7 +56,7 @@ internal static class ProbeCatalog
             ],
             "maze" =>
             [
-                P(ctx, "third", "exploration-ready.png", c.ThirdSearchTopLeft, c.ThirdSearchSize, c.MatchThreshold),
+                P(ctx, "third", "exploration-ready.png", c.ThirdSearchTopLeft, c.ThirdSearchSize, 0.62),
                 P(ctx, "fourth", "exploration-action.png", c.FourthSearchTopLeft, c.FourthSearchSize, 0.68),
                 P(ctx, "battle", "battle-skip.png", c.BattleSkipTopLeft, c.BattleSkipSize, 0.68),
                 P(ctx, "event", "event-choice.png", c.EventChoiceTopLeft, c.EventChoiceSize, 0.68),
@@ -73,7 +81,7 @@ internal static class ProbeCatalog
                     new ConfigSize(
                         Math.Max(c.FifthSearchSize.Width + 80, 360),
                         Math.Max(c.FifthSearchSize.Height + 80, 180)),
-                    0.58),
+                    0.70),
                 P(ctx, "mazeCard", "maze-search.png", c.SecondSearchTopLeft, c.SecondSearchSize, 0.78),
             ],
             "hard" =>

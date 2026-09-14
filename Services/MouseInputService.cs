@@ -12,10 +12,12 @@ public sealed class MouseInputService
     private const uint LeftDown = 0x0002;
     private const uint LeftUp = 0x0004;
     private const uint Wheel = 0x0800;
+    private const uint KeyDown = 0x0000;
     private const uint KeyUp = 0x0002;
     private const uint VirtualDesk = 0x4000;
     private const uint Absolute = 0x8000;
     private const ushort VkMenu = 0x12;
+    private const ushort VkReturn = 0x0D;
 
     public async Task ClickAsync(nint windowHandle, Point screenPoint, CancellationToken cancellationToken)
     {
@@ -65,6 +67,24 @@ public sealed class MouseInputService
         }
 
         return GetForegroundWindow() == windowHandle;
+    }
+
+    /// <summary>向已聚焦的游戏窗口发送 Alt+Enter 切换全屏。</summary>
+    public async Task SendAltEnterAsync(nint windowHandle, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!IsWindow(windowHandle))
+            throw new InvalidOperationException("发送快捷键前发现游戏窗口已经关闭。");
+
+        EnsureForeground(windowHandle);
+        await Task.Delay(80, cancellationToken);
+        SendKey(VkMenu, KeyDown);
+        await Task.Delay(30, cancellationToken);
+        SendKey(VkReturn, KeyDown);
+        await Task.Delay(40, cancellationToken);
+        SendKey(VkReturn, KeyUp);
+        await Task.Delay(30, cancellationToken);
+        SendKey(VkMenu, KeyUp);
     }
 
     public async Task WheelAsync(

@@ -42,7 +42,7 @@ public static class SettlementShopCatalog
     {
         "daily" => subcategory switch
         {
-            "skillBook1" or "skillBook2" => ["攻", "智", "羞", "萌", "谐", "巧"],
+            "skillBook1" or "skillBook2" => ["火", "水", "木", "土", "光", "暗"],
             "disk" => ["更新磁盘", "", "", "", "", ""],
             "unit" => ["更新单元", "", "", "", "", ""],
             _ => ["", "", "", "", "", ""]

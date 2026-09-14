@@ -50,9 +50,9 @@ internal static class FlowCatalog
             ]),
             Flow("dailyShop", "每日商店", "Core/DailyShopAutomation.cs", null,
             [
-                "HudHomeReturn（已在主页则跳过）",
-                "连点：入口 → 每日页签 → 商品 → 购买/确认 → 完成",
-                "结束后再 HudHomeReturn 回主页"
+                "HudHomeReturn → 商店 → 交換所",
+                "100%OFF（10s 未识别则跳过）→ 交換 → OK → 滚轮下拉",
+                "左下角 2500 → 交換 → OK（×2；首次 10s 未识别则回主页结束）"
             ])
         },
         ["helperModules"] = new[]

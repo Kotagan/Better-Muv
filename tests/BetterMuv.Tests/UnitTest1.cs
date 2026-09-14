@@ -73,6 +73,20 @@ public class CaptureGeometryTests
         Assert.Equal(expected, CaptureGeometry.CheckSixteenByNine(width, height));
     }
 
+    [Theory]
+    [InlineData(1280, 720, true)]
+    [InlineData(1920, 1080, true)]
+    [InlineData(2560, 1440, true)]
+    [InlineData(3840, 2160, true)]
+    [InlineData(5760, 3240, true)]
+    [InlineData(2560, 1417, false)]
+    [InlineData(1920, 1040, false)]
+    [InlineData(1600, 900, false)]
+    public void Preferred1080LadderRecognizesCommonClients(int width, int height, bool expected)
+    {
+        Assert.Equal(expected, ScreenAutomation.IsPreferred1080Ladder(width, height));
+    }
+
     [Fact]
     public void RegionFromCenterUsesGlobalScale()
     {
@@ -122,7 +136,20 @@ public class AutomationConfigTests
         Assert.Equal(90, config.GameLaunchTimeoutSeconds);
         Assert.Equal(["maze", "mainQuest", "hardMainQuest", "dailyShop"], AutomationConfig.NormalizePipelineTaskOrder(null));
         Assert.Equal(["mainQuest", "maze", "hardMainQuest", "dailyShop"], AutomationConfig.NormalizePipelineTaskOrder(["mainQuest", "maze", "unknown"]));
-        Assert.Equal(new ConfigPoint(1747, 947), new AutomationConfig().DailyShopEntryClick);
+        Assert.Equal(new ConfigPoint(1780, 965), new AutomationConfig().DailyShopEntryClick);
+        Assert.Equal(new ConfigPoint(1611, 453), new AutomationConfig().SecondClick);
+        Assert.Equal(new ConfigPoint(1000, 910), new AutomationConfig().SearchTopLeft);
+        Assert.Equal(new ConfigSize(260, 150), new AutomationConfig().FirstSearchSize);
+        Assert.Equal(new ConfigPoint(1470, 410), new AutomationConfig().SecondSearchTopLeft);
+        Assert.Equal(new ConfigSize(340, 120), new AutomationConfig().SecondSearchSize);
+        Assert.Equal(new ConfigPoint(1040, 590), new AutomationConfig().QuestBattleSimulateTopLeft);
+        Assert.Equal(new ConfigSize(360, 160), new AutomationConfig().QuestBattleSimulateSize);
+        Assert.Equal(new ConfigPoint(1380, 650), new AutomationConfig().QuestExercisesTopLeft);
+        Assert.Equal(new ConfigSize(340, 130), new AutomationConfig().QuestExercisesSize);
+        Assert.Equal(new ConfigPoint(1410, 820), new AutomationConfig().QuestActivityTopLeft);
+        Assert.Equal(new ConfigSize(340, 130), new AutomationConfig().QuestActivitySize);
+        Assert.Equal(new ConfigPoint(0, 0), new AutomationConfig().NavBackTopLeft);
+        Assert.Equal(new ConfigSize(160, 130), new AutomationConfig().NavBackSize);
         Assert.Equal("muv_luv_girlsgardenx_cl.exe", GamePathLocator.ExecutableName);
         Assert.False(GamePathLocator.IsValid(null));
         Assert.False(GamePathLocator.IsValid(@"C:\missing\muv_luv_girlsgardenx_cl.exe"));
@@ -145,14 +172,14 @@ public class AutomationConfigTests
         Assert.Equal("F10", config.ToggleHotkey);
         Assert.Equal("keep", config.MazeDifficultyMode);
         Assert.Equal(1, config.MazeDifficultyTarget);
-        Assert.Equal(new ConfigPoint(1329, 326), config.DifficultyDigitTopLeft);
-        Assert.Equal(new ConfigSize(374, 125), config.DifficultyDigitSize);
-        Assert.Equal(new ConfigPoint(896, 377), config.DifficultyDecreaseClick);
-        Assert.Equal(new ConfigPoint(1826, 377), config.DifficultyIncreaseClick);
+        Assert.Equal(new ConfigPoint(1320, 310), config.DifficultyDigitTopLeft);
+        Assert.Equal(new ConfigSize(420, 150), config.DifficultyDigitSize);
+        Assert.Equal(new ConfigPoint(992, 383), config.DifficultyDecreaseClick);
+        Assert.Equal(new ConfigPoint(1880, 381), config.DifficultyIncreaseClick);
         Assert.Equal(new ConfigPoint(1633, 261), config.DifficultyOpenSliderClick);
         Assert.Equal(new ConfigPoint(579, 292), config.DifficultyListTopLeft);
         Assert.Equal(new ConfigSize(182, 561), config.DifficultyListSize);
-        Assert.Equal(new ConfigPoint(1125, 930), config.DifficultyConfirmClick);
+        Assert.Equal(new ConfigPoint(1140, 974), config.DifficultyConfirmClick);
     }
 
     [Fact]
@@ -163,9 +190,9 @@ public class AutomationConfigTests
         Assert.Equal(new ConfigPoint(1674, 948), config.SettlementTopLeft);
         Assert.Equal(new ConfigPoint(1500, 880), config.SettlementSearchTopLeft);
         Assert.Equal(new ConfigSize(360, 180), config.SettlementSearchSize);
-        Assert.Equal(new ConfigPoint(1610, 200), config.SettlementMultiplierToggle);
-        Assert.Equal(new ConfigPoint(1640, 165), config.SettlementMultiplierTopLeft);
-        Assert.Equal(new ConfigSize(140, 70), config.SettlementMultiplierSize);
+        Assert.Equal(new ConfigPoint(1780, 195), config.SettlementMultiplierToggle);
+        Assert.Equal(new ConfigPoint(1710, 155), config.SettlementMultiplierTopLeft);
+        Assert.Equal(new ConfigSize(180, 90), config.SettlementMultiplierSize);
         Assert.Equal(6, config.SettlementBuyButtons.Count);
         Assert.Equal(4, config.SettlementSubcategoryTabs.Count);
         Assert.False(config.SettlementPurchases.HasAnyPurchase());
@@ -211,13 +238,33 @@ public class AutomationConfigTests
     }
 
     [Fact]
-    public void TreasureOptionDefaultsUseTightIconStrip()
+    public void TreasureOptionDefaultsUseVerticalCardRegion()
     {
         var config = new AutomationConfig();
-        Assert.Equal(new ConfigPoint(478, 316), config.TreasureOptionsTopLeft);
-        Assert.Equal(new ConfigSize(1081, 90), config.TreasureOptionsSize);
-        Assert.Equal(0.58, config.TreasureMatchThreshold);
-        Assert.Equal(new ConfigPoint(-40, 55), config.TreasureClickOffset);
+        Assert.Equal(new ConfigPoint(766, 20), config.TreasureStateTopLeft);
+        Assert.Equal(new ConfigSize(390, 56), config.TreasureStateSize);
+        Assert.Equal(new ConfigPoint(180, 280), config.TreasureOptionsTopLeft);
+        Assert.Equal(new ConfigSize(1560, 360), config.TreasureOptionsSize);
+        Assert.Equal(0.70, config.TreasureMatchThreshold);
+        Assert.Equal(new ConfigPoint(0, 80), config.TreasureClickOffset);
+    }
+
+    [Fact]
+    public void PickPriorityTreasureIgnoresWeakDiamondAgainstStrongerIcons()
+    {
+        var scored = new List<MazeAutomation.TreasureCandidate>
+        {
+            new("diamond", new TemplateMatchResult(0.6590, 800, 50, 40, 33)),
+            new("shield", new TemplateMatchResult(0.8880, 1200, 40, 70, 70)),
+            new("heart", new TemplateMatchResult(0.9399, 500, 56, 58, 55))
+        };
+        string[] priority = ["diamond", "shield", "sword", "heart", "skull", "shoe", "sparkle"];
+
+        MazeAutomation.TreasureCandidate? winner =
+            MazeAutomation.PickPriorityTreasure(scored, priority, threshold: 0.70);
+
+        Assert.NotNull(winner);
+        Assert.Equal("shield", winner.Key);
     }
 
     [Fact]
@@ -247,6 +294,37 @@ public class AutomationConfigTests
             if (File.Exists(path))
                 File.Delete(path);
         }
+    }
+
+    [Fact]
+    public void DisableSettlementSlotReportsChangeBeforeSharedArrayIsCleared()
+    {
+        var purchases = new SettlementPurchases();
+        int[] quantities = purchases.Equipment.Physics;
+        quantities[0] = -1;
+
+        bool changed = SettlementShopCatalog.DisableSlot(
+            purchases, "equipment", "physics", 0);
+
+        Assert.True(changed);
+        Assert.Equal(0, quantities[0]);
+        Assert.False(SettlementShopCatalog.DisableSlot(
+            purchases, "equipment", "physics", 0));
+    }
+
+    [Fact]
+    public void DisablingLimitedSlotAlsoTurnsOffPageAndCategoryBuyAll()
+    {
+        var purchases = new SettlementPurchases();
+        SettlementShopCatalog.SetCategoryBuyAll(purchases, "equipment", true);
+        Assert.True(SettlementShopCatalog.IsPageBuyAll(purchases, "equipment", "physics"));
+        Assert.True(SettlementShopCatalog.IsCategoryBuyAll(purchases, "equipment"));
+
+        Assert.True(SettlementShopCatalog.DisableSlot(
+            purchases, "equipment", "physics", 0));
+
+        Assert.False(SettlementShopCatalog.IsPageBuyAll(purchases, "equipment", "physics"));
+        Assert.False(SettlementShopCatalog.IsCategoryBuyAll(purchases, "equipment"));
     }
 
     [Fact]

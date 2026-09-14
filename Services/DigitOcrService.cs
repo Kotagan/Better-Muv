@@ -11,10 +11,13 @@ using WinBitmapDecoder = Windows.Graphics.Imaging.BitmapDecoder;
 
 namespace BetterMuv.Services;
 
-/// <summary>用系统 OCR 从截图 ROI 中读取整数（迷宫难度数字）。</summary>
+/// <summary>用系统 OCR / 字形模板从截图 ROI 中读取整数（迷宫难度数字）。</summary>
 public static class DigitOcrService
 {
     public sealed record LocatedNumber(int Value, double CenterX, double CenterY);
+
+    private static readonly Lazy<DigitTemplateReader> TemplateReader =
+        new(() => new DigitTemplateReader());
 
     public static async Task<IReadOnlyList<LocatedNumber>> LocateNumbersAsync(
         BitmapSource image, CancellationToken cancellationToken)
@@ -43,53 +46,79 @@ public static class DigitOcrService
         return numbers;
     }
 
-    public static async Task<int?> TryReadIntAsync(BitmapSource image, CancellationToken cancellationToken)
+    /// <summary>读取 ROI 内原始 OCR 文本（日/英），用于商店购买次数等带斜杠文案。</summary>
+    public static async Task<string?> TryReadTextAsync(BitmapSource image, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-
-        // 开口 4 / 斜杠 0：系统 OCR 常把 140 读成 100；形态学能分清时优先采用。
-        int? morphFirst = TryReadStylizedDigits(image);
-        if (morphFirst is int mf && HasNonZeroOneDigit(mf) && mf is >= 10 and <= 999)
-            return mf;
-
         OcrEngine?[] engines =
         [
+            OcrEngine.TryCreateFromLanguage(new Windows.Globalization.Language("ja")),
             OcrEngine.TryCreateFromLanguage(new Windows.Globalization.Language("en-US")),
-            OcrEngine.TryCreateFromUserProfileLanguages(),
-            OcrEngine.TryCreateFromLanguage(new Windows.Globalization.Language("ja"))
+            OcrEngine.TryCreateFromUserProfileLanguages()
         ];
 
-        // 多路：原图 → 中心裁切 → 放大；避免旁路「100」和高对比把 4 吃成 0。
         BitmapSource[] variants =
         [
             image,
-            CenterCrop(image, 0.62),
             Upscale(image, 2.0),
-            Upscale(CenterCrop(image, 0.62), 2.0)
+            InvertLuma(image),
+            Upscale(InvertLuma(image), 2.0)
         ];
 
-        var candidates = new List<int>();
         foreach (BitmapSource variant in variants)
         {
-            IReadOnlyList<int> found = await CollectLineDigitsAsync(variant, engines, cancellationToken);
-            candidates.AddRange(found);
-            int? preferred = PreferDifficultyReading(found);
-            // 已有含 2–9 的可信三位数则早停（如 140）。
-            if (preferred is int p && HasNonZeroOneDigit(p) && p is >= 100 and <= 999)
-                return p;
+            using SoftwareBitmap bitmap = await ToSoftwareBitmapAsync(variant, cancellationToken);
+            foreach (OcrEngine? engine in engines)
+            {
+                if (engine is null) continue;
+                OcrResult result = await engine.RecognizeAsync(bitmap).AsTask(cancellationToken);
+                string text = string.Join(" ", result.Lines.Select(line => line.Text)).Trim();
+                if (!string.IsNullOrWhiteSpace(text))
+                    return text;
+            }
         }
 
-        int? best = PreferDifficultyReading(candidates);
-        if (best is not null)
-            return best;
-
-        // 形态学兜底（含仅 100/110 等宽字符组合）。
-        if (morphFirst is int m && !IsSuspiciousDifficultyOcr(m))
-            return m;
-        int? morph = TryReadStylizedDigits(image);
-        if (morph is int m2 && !IsSuspiciousDifficultyOcr(m2))
-            return m2;
         return null;
+    }
+
+    /// <summary>从「0 / 4」「0/4」一类文案取左侧次数；失败则返回 null。</summary>
+    public static int? TryParseRatioLeft(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return null;
+        // 全角数字/斜杠归一
+        string normalized = text
+            .Replace('\uFF0F', '/')
+            .Replace('\uFF1A', ':')
+            .Replace(",", "")
+            .Replace("\uFF0C", "");
+        var match = System.Text.RegularExpressions.Regex.Match(normalized, @"(\d+)\s*/\s*\d+");
+        if (match.Success && int.TryParse(match.Groups[1].Value, out int left))
+            return left;
+        return null;
+    }
+
+    /// <summary>读取带千分位的非负整数（允许 0）。</summary>
+    public static int? TryParseNonNegativeInt(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return null;
+        string digits = new(text.Where(ch => char.IsDigit(ch)).ToArray());
+        if (digits.Length == 0)
+            return null;
+        return int.TryParse(digits, out int value) ? value : null;
+    }
+
+    /// <summary>大号难度数字：仅 0–9 三槽模板，不做 OCR/形态学兜底。</summary>
+    public static Task<int?> TryReadIntAsync(BitmapSource image, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        int? templated = TemplateReader.Value.TryRead(image);
+        if (templated is int td && td is >= 1 and <= 999)
+            return Task.FromResult<int?>(td);
+
+        return Task.FromResult<int?>(null);
     }
 
     /// <summary>按行把 word 拼成一行，再抽出数字。</summary>
@@ -170,6 +199,22 @@ public static class DigitOcrService
         return scaled;
     }
 
+    /// <summary>深色数字/浅底 → 浅色数字/深底，便于系统 OCR。</summary>
+    private static BitmapSource InvertLuma(BitmapSource source)
+    {
+        var gray = new FormatConvertedBitmap(source, PixelFormats.Gray8, null, 0);
+        int width = gray.PixelWidth, height = gray.PixelHeight, stride = width;
+        byte[] pixels = new byte[stride * height];
+        gray.CopyPixels(pixels, stride, 0);
+        for (int i = 0; i < pixels.Length; i++)
+            pixels[i] = (byte)(255 - pixels[i]);
+
+        var inverted = BitmapSource.Create(
+            width, height, 96, 96, PixelFormats.Gray8, null, pixels, stride);
+        inverted.Freeze();
+        return inverted;
+    }
+
     private static BitmapSource CenterCrop(BitmapSource source, double keepRatio)
     {
         keepRatio = Math.Clamp(keepRatio, 0.3, 1.0);
@@ -202,7 +247,7 @@ public static class DigitOcrService
         for (int y = 0; y < height; y++)
             if (pixels[y * stride + x] < 105) ink[x]++;
 
-        int minimumInk = Math.Max(3, height / 18);
+        int minimumInk = Math.Max(2, height / 24);
         var spans = new List<(int Left, int Right)>();
         int start = -1;
         for (int x = 0; x <= width; x++)
@@ -290,11 +335,26 @@ public static class DigitOcrService
         // 斜杠 0：主对角线墨水明显高于反对角线；开口 4 两条接近。
         bool slashZero = diagFill > 0.55 && diagFill > antiFill + 0.18;
 
+        // 底部横杠：2/5/3 常见；与斜杠 0 / 开口 4 区分。
+        int bottomBand = Math.Max(2, h / 6);
+        int bottomInk = 0, bottomTotal = 0;
+        for (int y = bottom - bottomBand + 1; y <= bottom; y++)
+        for (int x = left; x <= right; x++)
+        {
+            bottomTotal++;
+            if (pixels[y * stride + x] < 105) bottomInk++;
+        }
+        double bottomFill = bottomTotal == 0 ? 0 : bottomInk / (double)bottomTotal;
+        bool hasBottomBar = bottomFill > 0.40;
+
         if (slashZero) return 0;
         if (openTop && hasMidBar) return 4;
-        if (!openTop && aspect >= 0.68) return 0;
+        if (!openTop && aspect >= 0.68 && !hasBottomBar) return 0;
+        // 宽字 + 底杠、非斜杠：迷宫数字里多为 2（必要时再靠系统 OCR 纠正）。
+        if (hasBottomBar && !slashZero && aspect >= 0.62 && aspect <= 1.15)
+            return 2;
 
-        // 其余宽字符：仍可能是 2/3/5…，此处不强行猜，交给 OCR。
+        // 其余宽字符：仍可能是 3/5…，此处不强行猜，交给 OCR。
         return null;
     }
 

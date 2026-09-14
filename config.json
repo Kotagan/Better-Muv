@@ -10,28 +10,28 @@
     "referenceWidth":  1920,
     "referenceHeight":  1080,
     "searchTopLeft":  {
-                          "x":  1113,
-                          "y":  919
+                          "x":  1122,
+                          "y":  961
                       },
     "firstSearchSize":  {
-                            "width":  65,
-                            "height":  50
+                            "width":  120,
+                            "height":  90
                         },
     "secondSearchTopLeft":  {
-                                "x":  1470,
-                                "y":  420
+                                  "x":  1470,
+                                  "y":  410
                             },
     "secondSearchSize":  {
-                             "width":  300,
-                             "height":  100
+                             "width":  340,
+                             "height":  120
                          },
     "thirdSearchTopLeft":  {
-                               "x":  1568,
-                               "y":  796
+                               "x":  1560,
+                               "y":  840
                            },
     "thirdSearchSize":  {
-                            "width":  208,
-                            "height":  98
+                            "width":  280,
+                            "height":  120
                         },
     "fourthSearchTopLeft":  {
                                 "x":  1602,
@@ -154,16 +154,16 @@
                                  }
                              ],
     "settlementMultiplierToggle":  {
-                                       "x":  1610,
-                                       "y":  200
+                                       "x":  1780,
+                                       "y":  195
                                    },
     "settlementMultiplierTopLeft":  {
-                                        "x":  1673,
-                                        "y":  181
+                                        "x":  1710,
+                                        "y":  155
                                     },
     "settlementMultiplierSize":  {
-                                     "width":  81,
-                                     "height":  49
+                                     "width":  180,
+                                     "height":  90
                                  },
     "settlementBuyButtonSearchInset":  {
                                            "x":  12,
@@ -320,7 +320,7 @@
                    },
     "secondClick":  {
                         "x":  1611,
-                        "y":  473
+                        "y":  453
                     },
     "thirdClick":  {
                        "x":  1667,
@@ -357,13 +357,29 @@
                                 "height":  125
                             },
     "difficultyDecreaseClick":  {
-                                    "x":  896,
-                                    "y":  377
+                                    "x":  992,
+                                    "y":  383
                                 },
     "difficultyIncreaseClick":  {
-                                    "x":  1826,
-                                    "y":  377
+                                    "x":  1880,
+                                    "y":  381
                                 },
+    "difficultyDecreaseTopLeft":  {
+                                      "x":  969,
+                                      "y":  350
+                                  },
+    "difficultyDecreaseSize":  {
+                                   "width":  140,
+                                   "height":  150
+                               },
+    "difficultyIncreaseTopLeft":  {
+                                      "x":  1862,
+                                      "y":  350
+                                  },
+    "difficultyIncreaseSize":  {
+                                   "width":  140,
+                                   "height":  150
+                               },
     "difficultyOpenSliderClick":  {
                                       "x":  1633,
                                       "y":  261
@@ -377,8 +393,8 @@
                                "height":  561
                            },
     "difficultyConfirmClick":  {
-                                   "x":  1125,
-                                   "y":  930
+                                   "x":  1140,
+                                   "y":  974
                                },
     "doubleClickIntervalMs":  100,
     "detectionPollIntervalMs":  250,

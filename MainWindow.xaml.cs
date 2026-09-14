@@ -764,6 +764,7 @@ public partial class MainWindow : Window
             _pipelineIndex = 0;
         }
 
+        ReloadShopPurchases();
         UpdateRunUi();
     }
 

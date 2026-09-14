@@ -132,6 +132,14 @@ public static class ConfigStore
             changed = true;
         }
 
+        // 区域选择「選択」：旧 (1125,930) 落在粉钮上方空白，等于没点确定随后被取消。
+        if (config.DifficultyConfirmClick.Y < 950 ||
+            config.DifficultyConfirmClick is { X: 1125, Y: 930 })
+        {
+            config.DifficultyConfirmClick = new ConfigPoint(1140, 975);
+            changed = true;
+        }
+
         // 提速：旧轮询 250ms / 双击间隔 100ms 偏慢。
         if (config.DetectionPollIntervalMs > 120)
         {
@@ -190,12 +198,14 @@ public static class ConfigStore
             changed = true;
         }
 
-        // 主页 ROI：4K (2226,1838)→(2356,1938) → 1080p (1113,919) 65×50。
-        if (config.SearchTopLeft is not { X: 1113, Y: 919 } ||
-            config.FirstSearchSize is not { Width: 65, Height: 50 })
+        // 主页底栏「クエスト」：旧 65×50 小于模板(~103×72)且起点偏右会裁切枪图标。
+        if (config.FirstSearchSize.Width < 180 ||
+            config.FirstSearchSize.Height < 100 ||
+            config.SearchTopLeft.X > 1080 ||
+            config.SearchTopLeft.Y > 940)
         {
-            config.SearchTopLeft = new ConfigPoint(1113, 919);
-            config.FirstSearchSize = new ConfigSize(65, 50);
+            config.SearchTopLeft = new ConfigPoint(1000, 910);
+            config.FirstSearchSize = new ConfigSize(260, 150);
             changed = true;
         }
 
@@ -236,6 +246,71 @@ public static class ConfigStore
             changed = true;
         }
 
+        // 结算大类左栏：旧点击点偏上/偏边；2026-09 再标定为选中蓝心。
+        if (config.SettlementCategoryDaily is { X: 70, Y: 338 } or { X: 77, Y: 304 } ||
+            config.SettlementCategoryEquipment is { X: 58, Y: 456 } or { X: 78, Y: 458 } ||
+            config.SettlementCategoryExcavation is { X: 96, Y: 572 } or { X: 80, Y: 586 } ||
+            config.SettlementCategoryArtifactor is { X: 67, Y: 674 } or { X: 80, Y: 722 } ||
+            config.SettlementCategoryProbeHalfSize.Width < 16 ||
+            config.SettlementCategoryProbeHalfSize.Height < 16)
+        {
+            config.SettlementCategoryDaily = new ConfigPoint(101, 323);
+            config.SettlementCategoryEquipment = new ConfigPoint(108, 470);
+            config.SettlementCategoryExcavation = new ConfigPoint(100, 594);
+            config.SettlementCategoryArtifactor = new ConfigPoint(99, 731);
+            config.SettlementCategoryProbeHalfSize = new ConfigSize(24, 22);
+            changed = true;
+        }
+
+        // 大类模板已收紧，搜索区随之缩小（仅迁移旧 200×160）。
+        if (config.SettlementCategorySearchSize is { Width: 200, Height: 160 })
+        {
+            config.SettlementCategorySearchSize = new ConfigSize(180, 80);
+            changed = true;
+        }
+
+        // 结算小类顶栏：旧 (416/625/840/1050,200) 偏离实机蓝心。
+        if (config.SettlementSubcategoryTabs is [{ X: 416, Y: 200 }, _, _, _] or
+            [{ X: 416, Y: 200 }, { X: 625, Y: 200 }, { X: 840, Y: 200 }, { X: 1050, Y: 200 }])
+        {
+            config.SettlementSubcategoryTabs =
+            [
+                new(370, 186),
+                new(600, 186),
+                new(830, 186),
+                new(1060, 186)
+            ];
+            changed = true;
+        }
+
+        // LvMAX / 素材不足：对齐实机模板中心（891/1673 列；tip 中心约 962,411）。
+        var defaults = new AutomationConfig();
+        if (config.SettlementBuyButtons is
+            [{ X: 890, Y: 355 }, { X: 1630, Y: 355 }, { X: 890, Y: 545 }, { X: 1630, Y: 545 }, { X: 890, Y: 720 }, { X: 1630, Y: 720 }] or
+            [{ X: 893, Y: 354 }, { X: 1672, Y: 354 }, { X: 893, Y: 552 }, { X: 1672, Y: 552 }, { X: 893, Y: 750 }, { X: 1672, Y: 750 }])
+        {
+            config.SettlementBuyButtons = [.. defaults.SettlementBuyButtons];
+            changed = true;
+        }
+
+        if (config.SettlementBuyButtonSearchInset is { X: 40, Y: 20 } or { X: 160, Y: 60 } ||
+            config.SettlementBuyButtonSearchSize is { Width: 380, Height: 140 })
+        {
+            config.SettlementBuyButtonSearchInset = defaults.SettlementBuyButtonSearchInset;
+            config.SettlementBuyButtonSearchSize = defaults.SettlementBuyButtonSearchSize;
+            changed = true;
+        }
+
+        if (config.SettlementShopTipTopLeft is { X: 720, Y: 300 } or { X: 780, Y: 340 } ||
+            config.SettlementShopTipSize is { Width: 520, Height: 200 } ||
+            config.SettlementShopTipSize.Width > 480 ||
+            config.SettlementShopTipSize.Height > 160)
+        {
+            config.SettlementShopTipTopLeft = defaults.SettlementShopTipTopLeft;
+            config.SettlementShopTipSize = defaults.SettlementShopTipSize;
+            changed = true;
+        }
+
         return changed;
     }
 
@@ -273,13 +348,21 @@ public static class ConfigStore
         config.SettlementCategoryEquipment = defaults.SettlementCategoryEquipment;
         config.SettlementCategoryExcavation = defaults.SettlementCategoryExcavation;
         config.SettlementCategoryArtifactor = defaults.SettlementCategoryArtifactor;
+        config.SettlementCategoryProbeHalfSize = defaults.SettlementCategoryProbeHalfSize;
+        config.SettlementCategorySearchSize = defaults.SettlementCategorySearchSize;
         config.SettlementSubcategoryTabs = [.. defaults.SettlementSubcategoryTabs];
+        config.SettlementPurchaseCountTopLeft = defaults.SettlementPurchaseCountTopLeft;
+        config.SettlementPurchaseCountSize = defaults.SettlementPurchaseCountSize;
+        config.SettlementCurrencyTopLeft = defaults.SettlementCurrencyTopLeft;
+        config.SettlementCurrencySize = defaults.SettlementCurrencySize;
         config.SettlementBuyButtons = [.. defaults.SettlementBuyButtons];
         config.SettlementMultiplierToggle = defaults.SettlementMultiplierToggle;
         config.SettlementMultiplierTopLeft = defaults.SettlementMultiplierTopLeft;
         config.SettlementMultiplierSize = defaults.SettlementMultiplierSize;
         config.SettlementBuyButtonSearchInset = defaults.SettlementBuyButtonSearchInset;
         config.SettlementBuyButtonSearchSize = defaults.SettlementBuyButtonSearchSize;
+        config.SettlementShopTipTopLeft = defaults.SettlementShopTipTopLeft;
+        config.SettlementShopTipSize = defaults.SettlementShopTipSize;
         config.SettlementConfirmTopLeft = defaults.SettlementConfirmTopLeft;
         config.SettlementConfirmSize = defaults.SettlementConfirmSize;
         config.SettlementConfirmCancel = defaults.SettlementConfirmCancel;

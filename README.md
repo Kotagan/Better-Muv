@@ -57,7 +57,7 @@ English | **中文** | 繁體中文 | 日本語
 ### 坐标与缩放
 
 - 搜索 ROI、写死点击点均按 **1080p** 配置（`TopLeft` + 固定 `Size`，不再用模板尺寸 + padding 推算）
-- 映射公式：`screen = Display原点 + 点 × (Display尺寸 / Reference尺寸)`（例如 4K 显示器约为 ×2）
+- X 轴保留客户区居中 cover 映射；Y 轴统一使用完整显示器：`screenY = Display.Top + Y × Display.Height / ReferenceHeight + 校准偏移Y`。点击点、搜索区域及相对偏移共用该映射（4K 的 Y 倍率为 ×2）。
 - 模板图可为高分辨率素材，匹配前会缩到逻辑 1080p；模板大于搜索区时会报错或自动放大搜索区
 
 ### 注意事项
@@ -144,10 +144,10 @@ dotnet publish Better-Muv.csproj -c Release -r win-x64 --self-contained true -o 
 打包可安装程序（需先安装 [Inno Setup 6](https://jrsoftware.org/isinfo.php)；写入「程序和功能」卸载项与 HKLM 产品注册表）：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\pack-installer.ps1 -Version 1.0.3
+powershell -ExecutionPolicy Bypass -File scripts\pack-installer.ps1 -Version 1.0.4
 ```
 
-生成物：`dist\Better-Muv-Setup-1.0.3.exe`。
+生成物：`dist\Better-Muv-Setup-1.0.4.exe`。
 
 ---
 

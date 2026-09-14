@@ -37,6 +37,7 @@ public sealed class MainQuestAutomation
     private readonly TemplateMatcher _next;
     private readonly TemplateMatcher _rematch;
     private readonly TemplateMatcher _toHome;
+    private readonly TemplateMatcher _banner;
     private readonly PromoPopupDismisser _promoPopup;
 
     public MainQuestAutomation(AutomationConfig config, Action<string> log)
@@ -56,6 +57,7 @@ public sealed class MainQuestAutomation
         _next = TemplateAssets.Load("main-quest-next.png");
         _rematch = TemplateAssets.Load("main-quest-rematch.png");
         _toHome = TemplateAssets.Load("main-quest-to-home.png");
+        _banner = TemplateAssets.Load("main-quest-banner.png");
         _promoPopup = new PromoPopupDismisser(config, _screen, log);
     }
 
@@ -76,8 +78,7 @@ public sealed class MainQuestAutomation
         }
 
         await Task.Delay(200, cancellationToken);
-        window = _screen.Refresh(window);
-        _screen.EnsureUsableViewport(window);
+        window = await _screen.EnsurePreferredClientAsync(window, cancellationToken);
         _log($"自动主线：客户区 {window.ClientRect.Width}×{window.ClientRect.Height}，显示器 {window.DisplayRect.Width}×{window.DisplayRect.Height}");
         await new HudHomeReturn(_config, _screen, _log).TryAsync(window, cancellationToken);
         window = _screen.Refresh(window);
@@ -566,8 +567,9 @@ public sealed class MainQuestAutomation
         await new QuestFromHomeEntry(_config, _screen, _log).RunAsync(
             window,
             QuestFromHomeEntry.MainQuestBannerClick(_config),
-            "主线任务",
-            cancellationToken);
+            "メインクエスト",
+            cancellationToken,
+            _banner);
         return (Phase.Start, false);
     }
 

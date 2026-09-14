@@ -406,6 +406,10 @@ BmCli — Better-Muv 调试 CLI（不进安装包，给 AI/人工联调用）
             Add("entry", "FirstSearch/quest", c.SearchTopLeft, c.FirstSearchSize);
             Add("entry", "SecondSearch/maze", c.SecondSearchTopLeft, c.SecondSearchSize);
             Add("entry", "MainQuestBanner", c.MainQuestBannerTopLeft, c.MainQuestBannerSize);
+            Add("entry", "BattleSimulate", c.QuestBattleSimulateTopLeft, c.QuestBattleSimulateSize);
+            Add("entry", "Exercises", c.QuestExercisesTopLeft, c.QuestExercisesSize);
+            Add("entry", "Activity", c.QuestActivityTopLeft, c.QuestActivitySize);
+            Add("entry", "NavBack", c.NavBackTopLeft, c.NavBackSize);
         }
 
         if (scope is "all" or "maze")
@@ -472,6 +476,10 @@ BmCli — Better-Muv 调试 CLI（不进安装包，给 AI/人工联调用）
             ["DailyShopConfirmClick"] = Pt(c.DailyShopConfirmClick),
             ["DailyShopDoneClick"] = Pt(c.DailyShopDoneClick),
             ["MainQuestBannerCenter"] = Pt(QuestFromHomeEntry.MainQuestBannerClick(c)),
+            ["BattleSimulateCenter"] = Pt(QuestFromHomeEntry.BattleSimulateClick(c)),
+            ["ExercisesCenter"] = Pt(QuestFromHomeEntry.ExercisesClick(c)),
+            ["ActivityCenter"] = Pt(QuestFromHomeEntry.ActivityClick(c)),
+            ["NavBackCenter"] = Pt(QuestFromHomeEntry.NavBackClick(c)),
             ["BeginStageClick"] = Pt(new ConfigPoint(
                 c.MainQuestStartTopLeft.X + c.MainQuestStartSize.Width / 2,
                 c.MainQuestStartTopLeft.Y + c.MainQuestStartSize.Height / 2))

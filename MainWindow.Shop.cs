@@ -24,6 +24,13 @@ public partial class MainWindow
         SelectShopCategory("daily");
     }
 
+    /// <summary>自动购买可能关闭达到上限的栏位；任务结束后同步单格及两级全买开关。</summary>
+    private void ReloadShopPurchases()
+    {
+        _shopPurchases = ConfigStore.Load().SettlementPurchases;
+        LoadShopItemValues();
+    }
+
     private void BuildShopCategoryButtons()
     {
         ShopCategoryPanel.Children.Clear();

@@ -8,7 +8,7 @@ namespace BetterMuv.Core;
 public sealed class MazeAutomation
 {
     private const string ThirdTaskName = "识别迷宫开始界面";
-    private const string FourthTaskName = "识别探索准备界面";
+    private const string FourthTaskName = "识别クエスト準備「探索」";
     private const string FifthTaskName = "识别下一步";
     private const string PartnerSelectionTaskName = "识别选择伙伴/商店界面";
     private const string BattleSkipTaskName = "识别战斗界面";
@@ -21,21 +21,19 @@ public sealed class MazeAutomation
     /// <summary>迷宫开始/难度页（探索準備）：2K 上常见 0.66~0.72，勿用 0.78 点击阈值。</summary>
     private const double ThirdPresenceThreshold = 0.62;
     /// <summary>下一步（战斗结算 / SEARCH RESULTS）略放宽，避免结算页粉钮因背景裁切漏检。</summary>
-    private const double NextPresenceThreshold = 0.58;
+    private const double NextPresenceThreshold = 0.70;
     /// <summary>路线选择标题判定阈值（需更高，避免主界面等误匹配）。</summary>
     private const double RoutePresenceThreshold = 0.72;
-    /// <summary>探索按钮（クエスト準備右下「探索」）略放宽。</summary>
-    private const double FourthPresenceThreshold = 0.68;
-    /// <summary>自动校准命中阈值（可低于点击阈值，用偏移上限防止拉飞）。</summary>
-    private const double ViewportCalibrateThreshold = 0.60;
-    /// <summary>单次校准偏移上限（像素）；超出视为误匹配，拒绝应用。</summary>
-    private const int MaxCalibrationAbsOffset = 120;
+    /// <summary>右下粉钮「探索」：须明显高于任务页「一括受取」等同色误检（约 0.80）。</summary>
+    private const double FourthPresenceThreshold = 0.86;
     /// <summary>迷宫探索：持续全未命中超过此时长则停止（对齐 1.0.0 的 10s 容忍）。</summary>
     private const int MazeMissTimeoutMs = 10000;
+    private const double MazeEntryRecoverThreshold = 0.90;
 
     private readonly AutomationConfig _config;
     private readonly ScreenAutomation _screen;
     private readonly TemplateMatcher _firstMatcher;
+    private readonly TemplateMatcher _secondMatcher;
     private readonly TemplateMatcher _thirdMatcher;
     private readonly TemplateMatcher _fourthMatcher;
     private readonly TemplateMatcher _fifthMatcher;
@@ -58,6 +56,7 @@ public sealed class MazeAutomation
         _screen = new ScreenAutomation(config, log);
         string templateDirectory = TemplateAssets.DirectoryPath;
         _firstMatcher = TemplateAssets.Load("quest.png");
+        _secondMatcher = TemplateAssets.Load("maze-search.png");
         _thirdMatcher = TemplateAssets.Load("exploration-ready.png");
         _fourthMatcher = TemplateAssets.Load("exploration-action.png");
         _fifthMatcher = TemplateAssets.Load("maze-next.png");
@@ -110,14 +109,13 @@ public sealed class MazeAutomation
         }
         _log("游戏已置于前台，等待界面稳定后再截图识别。");
         await Task.Delay(600, cancellationToken);
-        window = _screen.Refresh(window);
+        window = await _screen.EnsurePreferredClientAsync(window, cancellationToken);
         _log("开始截图识别。");
 
-        _screen.EnsureUsableViewport(window);
         _log($"客户区：screen({window.ClientRect.Left},{window.ClientRect.Top}) " +
              $"{window.ClientRect.Width}×{window.ClientRect.Height}");
         ScreenRect viewport = _screen.Viewport(window);
-        _log($"坐标基准：{(_config.WindowSelectionMode == "selected" ? "选择窗口/居中16:9画布" : "游戏窗口/居中16:9画布")} " +
+        _log($"坐标基准：X 客户区居中 cover / Y 完整显示器 " +
              $"screen({viewport.Left},{viewport.Top}) {viewport.Width}×{viewport.Height}");
         // 难度选择/探索准备页也有房子按钮；已在这些页则不要点回去。
         TemplateProbeResult alreadyOnDifficulty = await _screen.ProbeAsync(
@@ -129,7 +127,7 @@ public sealed class MazeAutomation
         if (alreadyOnDifficulty.IsMatch)
             _log($"已在迷宫开始/难度选择界面（{alreadyOnDifficulty.Score:F2}），跳过返回主页。");
         else if (alreadyOnExplorePrep.IsMatch)
-            _log($"已在探索准备界面（{alreadyOnExplorePrep.Score:F2}），跳过返回主页。");
+            _log($"已在クエスト準備「探索」界面（{alreadyOnExplorePrep.Score:F2}），跳过返回主页。");
         else
             await new HudHomeReturn(_config, _screen, _log).TryAsync(window, cancellationToken);
         window = _screen.Refresh(window);
@@ -200,8 +198,7 @@ public sealed class MazeAutomation
         if (onPrep.IsMatch && (!onStart.IsMatch || onPrep.Score >= onStart.Score))
         {
             _log($"结算后在探索准备界面（{onPrep.Score:F3}），点击探索。");
-            await _screen.ClickAsync(window, _config.FourthClick, FourthTaskName, cancellationToken);
-            await Task.Delay(600, cancellationToken);
+            await _screen.ClickProbeAsync(window, onPrep, FourthTaskName, cancellationToken, settleDelayMs: 600);
             _ = await _promoPopup.TryAsync(window, cancellationToken);
             return await RunMazeLoopAsync(window, 0, cancellationToken);
         }
@@ -209,10 +206,8 @@ public sealed class MazeAutomation
         if (onStart.IsMatch)
         {
             _log($"结算后在迷宫开始/难度界面（{onStart.Score:F3}），点探索準備再进探索。");
-            if (!await _difficulty.ApplyAsync(window, cancellationToken))
-                _log("难度调整失败，跳过难度仍点击探索準備。");
-            await _screen.ClickAsync(window, _config.ThirdClick, "探索準備", cancellationToken);
-            await Task.Delay(400, cancellationToken);
+            if (!await TryClickExplorePrepAsync(window, cancellationToken))
+                return false;
             return await RunFromFourthTaskAsync(window, cancellationToken);
         }
 
@@ -226,6 +221,7 @@ public sealed class MazeAutomation
 
     /// <summary>
     /// 迷宫循环全未命中时：若其实停在难度页/探索准备，点进去续跑，而不是空转到超时停死。
+    /// 阈值高于进关识别，避免遗物/路线等局内画面误命中「探索」ROI。
     /// </summary>
     private async Task<bool> TryRecoverEntryFromMazeMissAsync(
         GameWindow window, CancellationToken cancellationToken)
@@ -233,16 +229,15 @@ public sealed class MazeAutomation
         window = _screen.Refresh(window);
         TemplateProbeResult onPrep = await _screen.ProbeAsync(
             window, _fourthMatcher, _config.FourthSearchTopLeft, _config.FourthSearchSize,
-            cancellationToken, FourthPresenceThreshold);
+            cancellationToken, MazeEntryRecoverThreshold);
         TemplateProbeResult onStart = await _screen.ProbeAsync(
             window, _thirdMatcher, _config.ThirdSearchTopLeft, _config.ThirdSearchSize,
-            cancellationToken, ThirdPresenceThreshold);
+            cancellationToken, MazeEntryRecoverThreshold);
 
         if (onPrep.IsMatch && (!onStart.IsMatch || onPrep.Score >= onStart.Score))
         {
             _log($"迷宫未命中但在探索准备（{onPrep.Score:F3}），补点探索。");
-            await _screen.ClickAsync(window, _config.FourthClick, FourthTaskName, cancellationToken);
-            await Task.Delay(600, cancellationToken);
+            await _screen.ClickProbeAsync(window, onPrep, FourthTaskName, cancellationToken, settleDelayMs: 600);
             _ = await TryDismissPromoPopupAsync(window, cancellationToken);
             return true;
         }
@@ -250,9 +245,7 @@ public sealed class MazeAutomation
         if (onStart.IsMatch)
         {
             _log($"迷宫未命中但在迷宫开始/难度（{onStart.Score:F3}），补点探索準備。");
-            await _screen.ClickAsync(window, _config.ThirdClick, "探索準備", cancellationToken);
-            await Task.Delay(500, cancellationToken);
-            return true;
+            return await TryClickExplorePrepAsync(window, cancellationToken);
         }
 
         return false;
@@ -261,10 +254,8 @@ public sealed class MazeAutomation
     private async Task<bool> IdentifyAndEnterMazeAsync(GameWindow window, CancellationToken cancellationToken)
     {
         _log("定位迷宫内界面；若不在迷宫内则回主页连点 任务→メイズ（不识别任务页）。");
+        // 不再做开局画布校准：错误偏移会拖偏难度三槽模板 ROI。
         _screen.ResetCalibration();
-        // 仅用无徽章 quest 模板做一次校准；徽章中心偏右上，反复校准会把坐标拉飞。
-        if (await TryCalibrateViewportAsync(window, cancellationToken))
-            _log("开局已完成画布校准。");
 
         // 先快速扫一轮迷宫内界面；未命中则立刻连点进关。
         for (int attempt = 0; attempt < 1; attempt++)
@@ -309,73 +300,76 @@ public sealed class MazeAutomation
                     return await RunMazeLoopAsync(window, 0, cancellationToken, preferredScreen: "battle");
                 case "fourth":
                     _log($"{FourthTaskName}识别成功（{matched.Score:F4}），点击并进入迷宫循环。");
-                    await _screen.ClickAsync(window, _config.FourthClick, FourthTaskName, cancellationToken);
+                    await _screen.ClickProbeAsync(window, matched, FourthTaskName, cancellationToken);
                     return await RunMazeLoopAsync(window, 0, cancellationToken);
                 case "third":
                     _log($"{ThirdTaskName}识别成功（{matched.Score:F4}）。");
-                    if (!await _difficulty.ApplyAsync(window, cancellationToken))
-                        _log("难度调整失败，跳过难度仍点击探索準備。");
-                    await _screen.ClickAsync(window, _config.ThirdClick, "探索準備", cancellationToken);
-                    await Task.Delay(250, cancellationToken);
+                    if (!await TryClickExplorePrepAsync(window, cancellationToken))
+                        return false;
                     return await RunFromFourthTaskAsync(window, cancellationToken);
             }
         }
 
         _log("不在迷宫内：回主页后连点进メイズ探索。");
-        window = await new QuestFromHomeEntry(_config, _screen, _log).RunAsync(
-            window, _config.SecondClick, "メイズ探索", cancellationToken);
+        try
+        {
+            window = await new QuestFromHomeEntry(_config, _screen, _log).RunAsync(
+                window, _config.SecondClick, "メイズ探索", cancellationToken, _secondMatcher);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _log($"{ex.Message}（仍尝试用当前界面续跑）。");
+            // 可能仍在迷宫内（路线/战斗过渡）；再扫一轮探索探针。
+            IReadOnlyDictionary<string, TemplateProbeResult> again =
+                await ProbeManyConcurrentAsync(window, BuildMazeExplorationProbes(), cancellationToken);
+            string? hit = PickFirstMatchedScreen(again, StartupScreenPriority);
+            if (hit is not null)
+                return await RunMazeLoopAsync(window, 0, cancellationToken, preferredScreen: hit);
+            return false;
+        }
         if (await RunFromThirdTaskAsync(window, cancellationToken, waitTimeoutMs: 8000))
             return true;
 
-        // 已连点进メイズ后，标题常已是「メイズ探索」，仅 third 分数略低于旧阈值；勿再回全场景死循环。
-        _log("连点后未稳定认出迷宫开始页，强制点探索準備→探索兜底。");
-        await _screen.ClickAsync(window, _config.ThirdClick, "探索準備(兜底)", cancellationToken);
-        await Task.Delay(400, cancellationToken);
-        return await RunFromFourthTaskAsync(window, cancellationToken);
+        _log("连点后未认出迷宫开始页或层数，停止本轮进关（不盲点探索準備）。");
+        return false;
     }
 
-    private async Task<bool> TryCalibrateViewportAsync(
+    /// <summary>识别到层数并完成难度调整后，按「探索準備」模板中心点击。</summary>
+    private async Task<bool> TryClickExplorePrepAsync(
         GameWindow window, CancellationToken cancellationToken)
     {
-        const int margin = 220;
-        ConfigPoint baseTopLeft = _config.SearchTopLeft;
-        ConfigSize baseSize = _config.FirstSearchSize;
-        int leftMargin = Math.Min(margin, baseTopLeft.X);
-        int topMargin = Math.Min(margin, baseTopLeft.Y);
-        ConfigPoint expandedTopLeft = new(
-            baseTopLeft.X - leftMargin,
-            baseTopLeft.Y - topMargin);
-        ConfigSize expandedSize = new(
-            baseSize.Width + leftMargin + margin,
-            baseSize.Height + topMargin + margin);
-        // 开局校准只用无徽章 quest.png，避免粉色徽章中心把偏移算偏。
-        RegionCapture region = _screen.CaptureRegion(
-            window, expandedTopLeft, expandedSize, _firstMatcher);
-        TemplateMatchResult match = await Task.Run(
-            () => _screen.Match(_firstMatcher, region.Image, region.LogicalWidth, region.LogicalHeight),
-            cancellationToken);
-        if (match.Score < ViewportCalibrateThreshold)
-            return false;
-
-        CaptureGeometry geometry = _screen.Geometry(window);
-        Point actualCenter = _screen.MatchCenterToScreen(region, match);
-        Point expectedCenter = geometry.ToScreen(new ConfigPoint(
-            baseTopLeft.X + _firstMatcher.LogicalWidth / 2,
-            baseTopLeft.Y + _firstMatcher.LogicalHeight / 2));
-        int deltaX = (int)Math.Round(actualCenter.X - expectedCenter.X);
-        int deltaY = (int)Math.Round(actualCenter.Y - expectedCenter.Y);
-        if (Math.Abs(deltaX) < 2 && Math.Abs(deltaY) < 2)
-            return true;
-        if (Math.Abs(deltaX) > MaxCalibrationAbsOffset || Math.Abs(deltaY) > MaxCalibrationAbsOffset)
+        // “保持不变”不会操作难度控件，因此层数本身不是点击探索准备的安全前提。
+        // 开始页和按钮仍分别由模板确认；只有自选难度需要先读出当前层数，
+        // 以免在读数未知时调整区域。
+        _ = await TryDismissPromoPopupAsync(window, cancellationToken);
+        if (MazeDifficultyRunner.RequiresRecognizedFloor(_config.MazeDifficultyMode) &&
+            !await _difficulty.EnsureFloorRecognizedAsync(window, cancellationToken))
         {
-            _log($"自动校准放弃：扩大区主页 {match.Score:F4} 但偏移过大 ({deltaX:+#;-#;0},{deltaY:+#;-#;0})，" +
-                 $"超过 ±{MaxCalibrationAbsOffset}。");
+            // 读层失败时再清一次弹窗后重试，避免奖励确认挡住数字。
+            if (await TryDismissPromoPopupAsync(window, cancellationToken) &&
+                await _difficulty.EnsureFloorRecognizedAsync(window, cancellationToken))
+            {
+                // 重试成功，继续。
+            }
+            else
+                return false;
+        }
+        if (!await _difficulty.ApplyAsync(window, cancellationToken))
+        {
+            _log("难度调整失败，禁止点击探索準備。");
             return false;
         }
 
-        _screen.CalibrateOffset(deltaX, deltaY);
-        _log($"自动校准画布：通过 first 在扩大区域命中 {match.Score:F4}，" +
-             $"修正偏移 ({deltaX:+#;-#;0},{deltaY:+#;-#;0})。");
+        TemplateProbeResult button = await _screen.ProbeAsync(
+            window, _thirdMatcher, _config.ThirdSearchTopLeft, _config.ThirdSearchSize,
+            cancellationToken, ThirdPresenceThreshold);
+        if (!button.IsMatch)
+        {
+            _log($"未识别到探索準備按钮（{button.Score:F4} < {ThirdPresenceThreshold:F2}），禁止盲点。");
+            return false;
+        }
+
+        await _screen.ClickProbeAsync(window, button, "探索準備", cancellationToken);
         return true;
     }
 
@@ -383,53 +377,76 @@ public sealed class MazeAutomation
         GameWindow window, CancellationToken cancellationToken, int waitTimeoutMs = 3000)
     {
         _log($"开始任务：{ThirdTaskName}。");
-        _log($"等待迷宫开始界面，最多静默轮询 {waitTimeoutMs / 1000} 秒。");
-        // 先确认在迷宫准备界面，再调难度，最后点探索準備。
-        TemplateProbeResult probe = await _screen.WaitForProbeAsync(
-            window, _thirdMatcher, _config.ThirdSearchTopLeft, _config.ThirdSearchSize,
-            cancellationToken, timeoutMs: waitTimeoutMs, ThirdPresenceThreshold);
-        if (!probe.IsMatch)
+        _log($"等待迷宫开始界面（模板或层数），最多静默轮询 {waitTimeoutMs / 1000} 秒。");
+        // 模板命中，或层数可读，都视为已到迷宫开始页；自选难度时会在点击前复核层数。
+        DateTime deadline = DateTime.UtcNow.AddMilliseconds(waitTimeoutMs);
+        double bestScore = 0;
+        bool pageReady = false;
+        while (DateTime.UtcNow < deadline)
         {
-            _log($"{ThirdTaskName}轮询 {waitTimeoutMs / 1000} 秒仍未命中（最高 {probe.Score:F4}，阈值 {ThirdPresenceThreshold:F2}），交回兜底。");
+            cancellationToken.ThrowIfCancellationRequested();
+            // 进关前奖励确认弹窗会挡住层数 ROI，优先点掉。
+            _ = await TryDismissPromoPopupAsync(window, cancellationToken);
+
+            TemplateProbeResult probe = await _screen.ProbeAsync(
+                window, _thirdMatcher, _config.ThirdSearchTopLeft, _config.ThirdSearchSize,
+                cancellationToken, ThirdPresenceThreshold);
+            if (probe.Score > bestScore)
+                bestScore = probe.Score;
+            if (probe.IsMatch)
+            {
+                _log($"{ThirdTaskName}识别成功（{probe.Score:F4}）。");
+                pageReady = true;
+                break;
+            }
+
+            if (await _difficulty.TryReadTrustedFloorAsync(window, cancellationToken) is int floor)
+            {
+                _log($"{ThirdTaskName}模板未满阈值（最高 {bestScore:F4}），但已读到层数 {floor}，视为开始页。");
+                pageReady = true;
+                break;
+            }
+
+            await Task.Delay(200, cancellationToken);
+        }
+
+        if (!pageReady)
+        {
+            _log($"{ThirdTaskName}轮询 {waitTimeoutMs / 1000} 秒仍未认出开始页（模板最高 {bestScore:F4}，阈值 {ThirdPresenceThreshold:F2}），停止进关。");
             return false;
         }
 
-        _log($"{ThirdTaskName}识别成功（{probe.Score:F4}）。");
-        if (!await _difficulty.ApplyAsync(window, cancellationToken))
-            _log("难度调整失败，跳过难度仍点击探索準備。");
-        // ThirdClick = 探索準備 入口；随后再确认探索准备界面。
-        await _screen.ClickAsync(window, _config.ThirdClick, "探索準備", cancellationToken);
-        await Task.Delay(250, cancellationToken);
+        if (!await TryClickExplorePrepAsync(window, cancellationToken))
+            return false;
         return await RunFromFourthTaskAsync(window, cancellationToken);
     }
 
     private async Task<bool> RunFromFourthTaskAsync(GameWindow window, CancellationToken cancellationToken)
     {
         _log($"开始任务：{FourthTaskName}。");
-        // 到了クエスト準備就点右下「探索」：阈值不够也点写死坐标，不停本轮。
-        (bool matched, TemplateMatchResult match, _) = await _screen.MatchRegionAsync(
+        TemplateProbeResult probe = await _screen.WaitForProbeAsync(
             window, _fourthMatcher, _config.FourthSearchTopLeft, _config.FourthSearchSize,
-            cancellationToken, timeoutMs: 1500, matchThreshold: FourthPresenceThreshold);
-        if (matched)
-            _log($"{FourthTaskName}识别成功（{match.Score:F4}），点击探索。");
-        else
-            _log($"{FourthTaskName}分数 {match.Score:F4} < {FourthPresenceThreshold:F2}，仍点击写死点。");
-        await _screen.ClickAsync(window, _config.FourthClick, FourthTaskName, cancellationToken);
-        await Task.Delay(250, cancellationToken);
+            cancellationToken, timeoutMs: 4000, FourthPresenceThreshold);
+        if (!probe.IsMatch)
+        {
+            _log($"{FourthTaskName}未认出探索按钮（最高 {probe.Score:F4} < {FourthPresenceThreshold:F2}），停止进关。");
+            return false;
+        }
+
+        await _screen.ClickProbeAsync(window, probe, FourthTaskName, cancellationToken);
         return await RunMazeLoopAsync(window, 0, cancellationToken);
     }
 
     private static readonly string[] StartupScreenPriority =
     [
         // 不再识别主页/任务选择页；入口靠回主页后固定连点。
-        "third", "fourth",
-        "treasure", "route", "settlement", "partner", "next", "event", "battle"
+    "treasure", "route", "settlement", "partner", "next", "third", "fourth", "event", "battle"
     ];
 
     private static readonly string[] MazeExplorationScreenPriority =
     [
-        // 先点「次へ」，消失后再判战斗/事件/伙伴/商店/宝物/分支。
-        "next", "battle", "event", "partner", "settlement", "treasure", "route"
+        // 先点「次へ」；结算须优于伙伴（结算店面常弱匹配伙伴模板 ~0.70，会抢走完了流程）。
+        "next", "battle", "event", "settlement", "partner", "treasure", "route"
     ];
 
     private List<TemplateProbe> BuildMazeExplorationProbes() =>
@@ -506,9 +523,11 @@ public sealed class MazeAutomation
         bool nextHandled = false;
         bool battleSkipHandled = false;
         bool eventChoiceHandled = false;
+        int settlementLeaveFailStreak = 0;
         bool preferOnce = preferredScreen is not null;
         Stopwatch? missClock = null;
         Stopwatch? noProgressClock = null;
+        _settlementShop.ResetVisit();
 
         while (true)
         {
@@ -526,15 +545,16 @@ public sealed class MazeAutomation
                     MazeHandleResult handledPreferred = await HandleMazeProbesAsync(
                         window, preferredProbes, preferredScreen, mazeLoopCount,
                         treasureHandled, routeHandled, nextHandled, battleSkipHandled, eventChoiceHandled,
-                        cancellationToken);
+                        settlementLeaveFailStreak, cancellationToken);
                     mazeLoopCount = handledPreferred.MazeLoopCount;
                     treasureHandled = handledPreferred.TreasureHandled;
                     routeHandled = handledPreferred.RouteHandled;
                     nextHandled = handledPreferred.NextHandled;
                     battleSkipHandled = handledPreferred.BattleSkipHandled;
                     eventChoiceHandled = handledPreferred.EventChoiceHandled;
+                    settlementLeaveFailStreak = handledPreferred.SettlementLeaveFailStreak;
                     if (handledPreferred.ExitLoop)
-                        return true;
+                        return !handledPreferred.AbortLoop;
                     if (handledPreferred.Handled)
                     {
                         missClock = null;
@@ -588,6 +608,18 @@ public sealed class MazeAutomation
                 _log($"迷宫探索场景均未命中（已未命中 {missClock.Elapsed.TotalSeconds:F1}s / {MazeMissTimeoutMs / 1000.0:0.#}s）。" +
                      $"（战斗 {battle.Score:F2} / 宝物 {treasure.Score:F2} / 路线 {route.Score:F2} / " +
                      $"下一步 {next.Score:F2} / 伙伴 {partner.Score:F2}）");
+
+                // 路线图过渡期粉钮有时略低于阈值；用写死点推进一步，避免空耗 10s。
+                if (route.Score >= 0.55 && route.Score >= next.Score && route.Score >= battle.Score)
+                {
+                    _log($"未命中但路线分偏高（{route.Score:F2}），点路线写死点兜底。");
+                    await _screen.ClickAsync(window, _config.RouteClick, "路线(未命中兜底)", cancellationToken);
+                    missClock = null;
+                    noProgressClock = null;
+                    await Task.Delay(900, cancellationToken);
+                    continue;
+                }
+
                 if (missClock.ElapsedMilliseconds >= MazeMissTimeoutMs)
                 {
                     _log($"迷宫探索持续 {MazeMissTimeoutMs / 1000.0:0.#} 秒未命中，停止。");
@@ -602,35 +634,31 @@ public sealed class MazeAutomation
             MazeHandleResult result = await HandleMazeProbesAsync(
                 window, probes, screen, mazeLoopCount,
                 treasureHandled, routeHandled, nextHandled, battleSkipHandled, eventChoiceHandled,
-                cancellationToken);
+                settlementLeaveFailStreak, cancellationToken);
             mazeLoopCount = result.MazeLoopCount;
             treasureHandled = result.TreasureHandled;
             routeHandled = result.RouteHandled;
             nextHandled = result.NextHandled;
             battleSkipHandled = result.BattleSkipHandled;
             eventChoiceHandled = result.EventChoiceHandled;
+            settlementLeaveFailStreak = result.SettlementLeaveFailStreak;
             if (result.ExitLoop)
-                return true;
+                return !result.AbortLoop;
             if (result.Handled)
             {
                 noProgressClock = null;
             }
             else
             {
-                // 有弱匹配但本轮没点成：先清 handled 再试，不要像硬停那样 5s 就结束。
                 noProgressClock ??= Stopwatch.StartNew();
                 if (noProgressClock.ElapsedMilliseconds >= MazeMissTimeoutMs)
                 {
                     TemplateProbeResult t = GetProbe(probes, "treasure");
                     TemplateProbeResult r = GetProbe(probes, "route");
-                    _log($"迷宫探索 {MazeMissTimeoutMs / 1000.0:0.#} 秒无有效操作（当前屏={screen ?? "?"} " +
-                         $"宝物 {t.Score:F2} / 路线 {r.Score:F2}），清空标记后继续。");
-                    treasureHandled = false;
-                    routeHandled = false;
-                    nextHandled = false;
-                    battleSkipHandled = false;
-                    eventChoiceHandled = false;
-                    noProgressClock = null;
+                    TemplateProbeResult n = GetProbe(probes, "next");
+                    _log($"迷宫探索 {MazeMissTimeoutMs / 1000.0:0.#} 秒无有效推进（当前屏={screen ?? "?"} " +
+                         $"宝物 {t.Score:F2} / 路线 {r.Score:F2} / 下一步 {n.Score:F2}），停止。");
+                    return false;
                 }
             }
             // 有匹配后稍候再探，避免点完立刻连点。
@@ -641,12 +669,14 @@ public sealed class MazeAutomation
     private readonly record struct MazeHandleResult(
         bool Handled,
         bool ExitLoop,
+        bool AbortLoop,
         int MazeLoopCount,
         bool TreasureHandled,
         bool RouteHandled,
         bool NextHandled,
         bool BattleSkipHandled,
-        bool EventChoiceHandled);
+        bool EventChoiceHandled,
+        int SettlementLeaveFailStreak);
 
     private async Task<MazeHandleResult> HandleMazeProbesAsync(
         GameWindow window,
@@ -658,29 +688,40 @@ public sealed class MazeAutomation
         bool nextHandled,
         bool battleSkipHandled,
         bool eventChoiceHandled,
+        int settlementLeaveFailStreak,
         CancellationToken cancellationToken)
     {
-        MazeHandleResult State(bool handled, bool exit = false) =>
-            new(handled, exit, mazeLoopCount, treasureHandled, routeHandled, nextHandled,
-                battleSkipHandled, eventChoiceHandled);
+        MazeHandleResult State(bool handled, bool exit = false, bool abort = false) =>
+            new(handled, exit, abort, mazeLoopCount, treasureHandled, routeHandled, nextHandled,
+                battleSkipHandled, eventChoiceHandled, settlementLeaveFailStreak);
 
         bool Is(string name) =>
             screen is null || screen.Equals(name, StringComparison.OrdinalIgnoreCase);
 
         TemplateProbeResult Probe(string key) => GetProbe(probes, key);
 
-        // 有「次へ」只点下一步并结束本轮；消失后再判分支/商店等。
-        // 识别只确认界面；点击一律用配置写死点（对齐 1.0.0，避免模板中心偏出按钮）。
+        // 有「次へ」只点模板匹配中心；点不掉则计无进度，满 10s 停。
         TemplateProbeResult nextProbe = Probe("next");
         if (nextProbe.IsMatch)
         {
             if (!nextHandled)
             {
-                _log($"{FifthTaskName}识别成功（{nextProbe.Score:F4}），点击写死点。");
-                await _screen.ClickAsync(window, _config.FifthClick, FifthTaskName, cancellationToken);
+                _log($"{FifthTaskName}识别成功（{nextProbe.Score:F4}），点击匹配中心。");
+                try
+                {
+                    RegionCapture nextRoi = _screen.CaptureRegion(
+                        window,
+                        new ConfigPoint(Math.Max(0, _config.FifthSearchTopLeft.X - 20),
+                            Math.Max(0, _config.FifthSearchTopLeft.Y - 20)),
+                        new ConfigSize(_config.FifthSearchSize.Width + 40, _config.FifthSearchSize.Height + 40));
+                    nextRoi.Image.Freeze();
+                    MazeAssetHarvest.SaveTemplateCandidate("maze-next", nextRoi.Image, _log);
+                }
+                catch { /* 采集失败不影响点击 */ }
+                await _screen.ClickProbeAsync(window, nextProbe, FifthTaskName, cancellationToken, settleDelayMs: 200);
                 mazeLoopCount++;
                 _log($"{FifthTaskName}已执行 {mazeLoopCount} 次。");
-                await Task.Delay(900, cancellationToken);
+                await Task.Delay(700, cancellationToken);
 
                 TemplateProbeResult stillNext = await _screen.ProbeAsync(
                     window, _fifthMatcher,
@@ -689,11 +730,10 @@ public sealed class MazeAutomation
                     new ConfigSize(Math.Max(_config.FifthSearchSize.Width + 80, 360),
                         Math.Max(_config.FifthSearchSize.Height + 80, 180)),
                     cancellationToken, NextPresenceThreshold);
-                // 只有达到存在阈值才算「仍在」；弱分不当残留、也不再二次乱点。
                 if (stillNext.IsMatch)
                 {
-                    _log($"下一步仍在（{stillNext.Score:F3}），再点一次写死点。");
-                    await _screen.ClickAsync(window, _config.FifthClick, "下一步(再点)", cancellationToken);
+                    _log($"下一步仍在（{stillNext.Score:F3}），再点匹配中心。");
+                    await _screen.ClickProbeAsync(window, stillNext, "下一步(再点)", cancellationToken, settleDelayMs: 200);
                     await Task.Delay(600, cancellationToken);
                     stillNext = await _screen.ProbeAsync(
                         window, _fifthMatcher,
@@ -706,16 +746,17 @@ public sealed class MazeAutomation
 
                 nextHandled = !stillNext.IsMatch;
                 if (stillNext.IsMatch)
-                    _log("下一步仍在，稍后继续点。");
-                else
-                    _log("下一步已消失（或弱于阈值），下轮再判分支/商店等。");
-            }
-            else
-            {
-                nextHandled = false;
+                {
+                    _log("下一步仍在，本轮计无进度。");
+                    return State(false);
+                }
+
+                _log("下一步已消失（或弱于阈值），下轮再判分支/商店等。");
+                return State(true);
             }
 
-            return State(true);
+            nextHandled = false;
+            return State(false);
         }
 
         nextHandled = false;
@@ -727,7 +768,7 @@ public sealed class MazeAutomation
             {
                 if (!battleSkipHandled)
                     _log($"{BattleSkipTaskName}识别成功（{battleSkipProbe.Score:F4}），点击 SKIP。");
-                await _screen.ClickAsync(window, _config.BattleSkipClick, "战斗 SKIP", cancellationToken);
+                await _screen.ClickProbeAsync(window, battleSkipProbe, "战斗 SKIP", cancellationToken, settleDelayMs: 150);
                 battleSkipHandled = true;
                 return State(true);
             }
@@ -777,7 +818,7 @@ public sealed class MazeAutomation
                 await SelectTreasureAsync(window, cancellationToken);
                 treasureHandled = true;
                 _log("宝物选择完成，继续检测后续界面。");
-                await Task.Delay(500, cancellationToken);
+                await Task.Delay(1000, cancellationToken);
                 TemplateProbeResult treasureAfter = await _screen.ProbeAsync(
                     window, _treasureStateMatcher, _config.TreasureStateTopLeft,
                     _config.TreasureStateSize, cancellationToken, MazePresenceThreshold);
@@ -789,6 +830,7 @@ public sealed class MazeAutomation
 
                 _log("宝物状态仍残留，判定可能未点中，再选一次。");
                 await SelectTreasureAsync(window, cancellationToken);
+                await Task.Delay(800, cancellationToken);
                 treasureAfter = await _screen.ProbeAsync(
                     window, _treasureStateMatcher, _config.TreasureStateTopLeft,
                     _config.TreasureStateSize, cancellationToken, MazePresenceThreshold);
@@ -813,15 +855,23 @@ public sealed class MazeAutomation
             if (routeProbe.IsMatch && !routeHandled)
             {
                 _log($"{RouteSelectionTaskName}识别成功，开始按优先级选择路线宝物。");
+                try
+                {
+                    RegionCapture routeRoi = _screen.CaptureRegion(
+                        window, _config.RouteSelectionTopLeft, _config.RouteSelectionSize);
+                    routeRoi.Image.Freeze();
+                    MazeAssetHarvest.SaveTemplateCandidate("route-selection", routeRoi.Image, _log);
+                }
+                catch { }
                 string? selected = await SelectRouteTreasureAsync(window, cancellationToken);
                 if (selected is null)
                     _log("路线区域未找到已提供的宝物模板，直接选择路线。");
                 else
                     _log($"已选中路线宝物：{selected}，随后选择路线。");
-                // 识别只确认界面；点击一律用配置写死点（对齐 1.0.0）。
-                await _screen.ClickAsync(window, _config.RouteClick, "选择路线", cancellationToken);
+                // 点粉色「ルート選択」模板中心，不用写死点（写死点易偏到左侧「探索中断」）。
+                await _screen.ClickProbeAsync(window, routeProbe, "选择路线", cancellationToken, settleDelayMs: 200);
                 routeHandled = true;
-                _log("已点击路线写死点，等待界面响应。");
+                _log("已点击路线选择按钮，等待界面响应。");
                 await Task.Delay(600, cancellationToken);
                 TemplateProbeResult routeAfter = await _screen.ProbeAsync(
                     window, _routeSelectionMatcher, _config.RouteSelectionTopLeft,
@@ -829,8 +879,8 @@ public sealed class MazeAutomation
                 routeHandled = false;
                 if (routeAfter.IsMatch)
                 {
-                    _log($"路线按钮仍在（{routeAfter.Score:F3}），再点一次写死点。");
-                    await _screen.ClickAsync(window, _config.RouteClick, "路线(再点)", cancellationToken);
+                    _log($"路线按钮仍在（{routeAfter.Score:F3}），再点匹配中心。");
+                    await _screen.ClickProbeAsync(window, routeAfter, "路线(再点)", cancellationToken, settleDelayMs: 200);
                     await Task.Delay(500, cancellationToken);
                 }
                 else
@@ -853,11 +903,19 @@ public sealed class MazeAutomation
                 bool left = await _settlementShop.RunAsync(window, cancellationToken);
                 if (left)
                 {
+                    settlementLeaveFailStreak = 0;
                     _log("本轮结算完成（商店完了后固定探索准备），结束本轮迷宫循环。");
                     return State(true, exit: true);
                 }
 
-                _log("结算界面仍在，稍后重试完了。");
+                settlementLeaveFailStreak++;
+                if (settlementLeaveFailStreak >= 3)
+                {
+                    _log($"结算离开连续失败 {settlementLeaveFailStreak} 次，停止迷宫任务（避免卡死空转）。");
+                    return State(true, exit: true, abort: true);
+                }
+
+                _log($"结算界面仍在（离开失败 {settlementLeaveFailStreak}/3），稍后只重试完了。");
                 return State(true);
             }
             if (screen is not null)
@@ -880,11 +938,11 @@ public sealed class MazeAutomation
         CancellationToken cancellationToken)
     {
         window = _screen.Refresh(window);
-        // 默认游戏使用显示器标定；用户选择的浏览器窗口使用其客户区标定。
+        // X 按客户区 cover、Y 按完整显示器，统一使用 Geometry 标定。
         CaptureGeometry geometry = _screen.Geometry(window);
         _screen.EnsureUsableViewport(window);
 
-        // 非 16:9 客户区采用居中 cover 映射，虚拟画布可能超出客户区，
+        // X 的 cover 画布和 Y 的完整显示器范围可能超出客户区，
         // 所以各 ROI 直接按换算后的屏幕坐标截取，不能再从客户区整图按比例裁剪。
 
         var jobs = new (string Key, TemplateMatcher Matcher, BitmapSource Image, ScreenRect Rect, int Lw, int Lh, double Threshold)[probeList.Count];
@@ -965,44 +1023,21 @@ public sealed class MazeAutomation
         return dict;
     }
 
-    /// <summary>迷宫未命中时保存各探索 ROI 诊断图，便于核对截图位置。</summary>
+    /// <summary>迷宫未命中时只存整图，不再刷各 ROI 碎图。</summary>
     private async Task SaveMazeMissDiagnosticsAsync(
         GameWindow window,
         IReadOnlyDictionary<string, TemplateProbeResult> probes,
         CancellationToken cancellationToken)
     {
+        _ = probes;
         window = _screen.Refresh(window);
-        CaptureGeometry geometry = _screen.Geometry(window);
         BitmapSource fullClient = _screen.CaptureClient(window);
         fullClient.Freeze();
         _ = Task.Run(() =>
         {
             try { SaveDiagnostic(fullClient, "maze-miss-full", "迷宫未命中整图"); }
             catch { }
-        });
-
-        foreach (TemplateProbe probe in BuildMazeExplorationProbes())
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            ConfigPoint topLeft = probe.TopLeft;
-            ConfigSize size = probe.Size;
-            ScreenRect rect = geometry.RegionFromTopLeftToScreen(topLeft, size);
-            RegionCapture region = _screen.CaptureRegion(window, topLeft, size);
-            BitmapSource image = region.Image;
-            image.Freeze();
-            double score = probes.TryGetValue(probe.Key, out TemplateProbeResult? p) ? p.Score : 0;
-            string diagName = $"maze-miss-{probe.Key}";
-            BitmapSource diag = image;
-            string key = probe.Key;
-            _ = Task.Run(() =>
-            {
-                try { SaveDiagnostic(diag, diagName, $"迷宫未命中-{key}"); }
-                catch { }
-            });
-            _log($"迷宫未命中诊断 {probe.Key}：1080p({topLeft.X},{topLeft.Y}) {size.Width}×{size.Height} → " +
-                 $"screen({rect.Left},{rect.Top}) {rect.Width}×{rect.Height}，分数 {score:F2}");
-        }
-
+        }, cancellationToken);
         await Task.CompletedTask;
     }
 
@@ -1176,6 +1211,17 @@ public sealed class MazeAutomation
         _log($"{taskName ?? "宝物匹配"}搜索区域：1080p {optionsSize.Width}×{optionsSize.Height} ×({geometry.ScaleX:F3},{geometry.ScaleY:F3}) → " +
              $"screen({rect.Left},{rect.Top}) {rect.Width}×{rect.Height}，阈值 {threshold:F2}");
 
+        // 每次见到三选一都整卡入库（内容哈希去重），供后续大图分类。
+        try
+        {
+            image.Freeze();
+            MazeAssetHarvest.SaveRelicCards(image, _log);
+        }
+        catch (Exception ex)
+        {
+            _log($"遗物整卡采集失败：{ex.Message}");
+        }
+
         int logicalWidth = region.LogicalWidth;
         int logicalHeight = region.LogicalHeight;
 
@@ -1251,20 +1297,25 @@ public sealed class MazeAutomation
     }
 
     /// <summary>
-    /// 先按位置做非极大值抑制（同位置只留最高分），再在合格候选中按优先级选取。
-    /// 避免说明区弱匹配压过图标条上的真实选项。
+    /// 先按位置做非极大值抑制（同位置只留最高分），再在「接近最高分」的候选中按优先级选取。
+    /// 避免弱假阳性（如 diamond 0.66）压过真实高分图标（heart 0.94）。
     /// </summary>
     public static TreasureCandidate? PickPriorityTreasure(
         IReadOnlyList<TreasureCandidate> scored,
         IReadOnlyList<string> priority,
         double threshold,
-        double nmsDistanceLogical = 80)
+        double nmsDistanceLogical = 80,
+        double competitiveMargin = 0.12)
     {
         var above = scored.Where(c => c.Match.Score >= threshold)
             .OrderByDescending(c => c.Match.Score)
             .ToList();
         if (above.Count == 0)
             return null;
+
+        double bestScore = above[0].Match.Score;
+        double competitiveFloor = Math.Max(threshold, bestScore - competitiveMargin);
+        above = above.Where(c => c.Match.Score >= competitiveFloor).ToList();
 
         var distinct = new List<TreasureCandidate>();
         foreach (TreasureCandidate candidate in above)

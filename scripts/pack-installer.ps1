@@ -4,7 +4,7 @@
   Publish Better-Muv (self-contained win-x64) and build an Inno Setup installer.
 #>
 param(
-    [string]$Version = "1.0.3",
+    [string]$Version = "1.0.4",
     [string]$Configuration = "Release",
     [string]$Runtime = "win-x64"
 )
