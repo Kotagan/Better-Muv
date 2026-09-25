@@ -9,8 +9,12 @@ namespace BetterMuv.Core;
 public sealed class QuestFromHomeEntry
 {
     /// <summary>任务页切换较慢，点完任务后多等一会再点目标。</summary>
-    private const int AfterQuestDelayMs = 2200;
-    private const int AfterTargetDelayMs = 800;
+    private const int AfterQuestDelayMs = 2800;
+    private const int AfterTargetDelayMs = 1100;
+    private const int QuestEnterAttempts = 3;
+    private const int QuestEnterWaitMs = 6000;
+    /// <summary>紧裁文字模板在 4K/1080p 均应稳定超过 0.80。</summary>
+    private const double QuestPresenceThreshold = 0.80;
 
     private readonly AutomationConfig _config;
     private readonly ScreenAutomation _screen;
@@ -54,7 +58,9 @@ public sealed class QuestFromHomeEntry
         ConfigPoint targetClick,
         string targetName,
         CancellationToken cancellationToken,
-        TemplateMatcher? targetReadyMatcher = null)
+        TemplateMatcher? targetReadyMatcher = null,
+        ConfigPoint? readyTopLeft = null,
+        ConfigSize? readySize = null)
     {
         // 有主页钮则点一次并已在内部等 500ms。
         await new HudHomeReturn(_config, _screen, _log).TryAsync(window, cancellationToken);
@@ -81,36 +87,65 @@ public sealed class QuestFromHomeEntry
                 $"主界面加载超时：未识别到“クエスト”（最高 {quest.Score:F4}）。" +
                 "请确认游戏全屏在最前、Better-Muv 已最小化。任务已停止。");
 
-        _log($"已识别“クエスト”（{quest.Score:F4}），点击模板中心进入任务页。");
-        window = await DoubleClickScreenAsync(window, quest.Center, "任务", cancellationToken);
+        // 默认 SecondSearch=メイズ；主线须显式传入 MainQuestBanner ROI。
+        ConfigPoint readyTl = readyTopLeft ?? _config.SecondSearchTopLeft;
+        ConfigSize readySz = readySize ?? _config.SecondSearchSize;
 
         if (targetReadyMatcher is null)
         {
+            _log($"已识别“クエスト”（{quest.Score:F4}），点击进入任务页。");
+            window = await ClickQuestNavAsync(window, quest, cancellationToken);
             await Task.Delay(AfterQuestDelayMs, cancellationToken);
         }
         else
         {
-            _log($"等待任务选择页的“{targetName}”文字出现，最多 10 秒。");
-            TemplateProbeResult ready = await _screen.WaitForProbeAsync(
-                window, targetReadyMatcher,
-                _config.SecondSearchTopLeft, _config.SecondSearchSize,
-                cancellationToken, timeoutMs: 10000);
+            TemplateProbeResult ready = TemplateProbes.Empty;
+            for (int attempt = 1; attempt <= QuestEnterAttempts; attempt++)
+            {
+                window = _screen.Refresh(window);
+                if (!await _screen.FocusAsync(window.Handle, cancellationToken))
+                    _log("未能将游戏置于前台，クエスト点击可能无效。");
+
+                // 每轮重新认一次底栏，避免界面已变仍点旧坐标。
+                TemplateProbeResult questNow = await WaitForQuestAsync(
+                    window, cancellationToken, widen: attempt > 1, timeoutMs: 4000);
+                if (!questNow.IsMatch)
+                    questNow = quest;
+
+                _log($"已识别“クエスト”（{questNow.Score:F4}），单击进入任务页（{attempt}/{QuestEnterAttempts}）。");
+                window = await ClickQuestNavAsync(window, questNow, cancellationToken);
+
+                _log($"等待任务选择页的“{targetName}”文字出现，最多 {QuestEnterWaitMs / 1000} 秒。");
+                ready = await _screen.WaitForProbeAsync(
+                    window, targetReadyMatcher, readyTl, readySz,
+                    cancellationToken, timeoutMs: QuestEnterWaitMs);
+                if (ready.IsMatch)
+                    break;
+
+                _log($"任务页未出现“{targetName}”（最高 {ready.Score:F4}），可能点击未生效，重试。");
+                quest = questNow;
+            }
+
             if (!ready.IsMatch)
                 throw new InvalidOperationException(
                     $"任务选择页加载超时：未识别到“{targetName}”（最高 {ready.Score:F4}）。任务已停止。");
             _log($"已识别“{targetName}”（{ready.Score:F4}），开始点击。");
-            try
-            {
-                RegionCapture readyRoi = _screen.CaptureRegion(
-                    window, _config.SecondSearchTopLeft, _config.SecondSearchSize);
-                readyRoi.Image.Freeze();
-                MazeAssetHarvest.SaveTemplateCandidate("maze-search", readyRoi.Image, _log);
-            }
-            catch { }
         }
 
         window = await DoubleClickAsync(window, targetClick, targetName, cancellationToken);
         await Task.Delay(AfterTargetDelayMs, cancellationToken);
+        return _screen.Refresh(window);
+    }
+
+    /// <summary>底栏クエスト用单击：双击过快且中途挪开光标时，4K 全屏常点不进。</summary>
+    private async Task<GameWindow> ClickQuestNavAsync(
+        GameWindow window, TemplateProbeResult quest, CancellationToken cancellationToken)
+    {
+        _log($"任务：点击识别中心 ({quest.Center.X:F0},{quest.Center.Y:F0})");
+        // 进页过程不要立刻把光标挪开，否则部分全屏客户端会吞掉点击。
+        await _screen.ClickScreenAsync(window, quest.Center, cancellationToken, parkCursor: false);
+        await Task.Delay(700, cancellationToken);
+        _screen.ParkCursorAway(window);
         return _screen.Refresh(window);
     }
 
@@ -131,7 +166,7 @@ public sealed class QuestFromHomeEntry
                 Math.Max(_config.FirstSearchSize.Height, _config.QuestNavSize.Height))
             : _config.FirstSearchSize;
 
-        // 模板约 103×72 逻辑像素；ROI 过小会导致永远 miss。
+        // 模板约 87×29 逻辑像素；ROI 额外留边以容纳分辨率缩放和少量校准偏移。
         size = ScreenAutomation.EnsureFitsTemplate(size, _questMatcher);
 
         var timer = Stopwatch.StartNew();
@@ -146,7 +181,7 @@ public sealed class QuestFromHomeEntry
             }
 
             TemplateProbeResult probe = await _screen.ProbeAsync(
-                window, _questMatcher, topLeft, size, cancellationToken);
+                window, _questMatcher, topLeft, size, cancellationToken, QuestPresenceThreshold);
             if (probe.Score > best.Score)
                 best = probe;
             if (probe.IsMatch)
@@ -164,21 +199,12 @@ public sealed class QuestFromHomeEntry
     private async Task<GameWindow> DoubleClickAsync(
         GameWindow window, ConfigPoint point, string reason, CancellationToken cancellationToken)
     {
-        int gapMs = Math.Max(_config.DoubleClickIntervalMs, 50);
-        window = await _screen.ClickAsync(window, point, $"{reason} 1/2", cancellationToken);
+        int gapMs = Math.Max(_config.DoubleClickIntervalMs, 200);
+        window = await _screen.ClickAsync(window, point, $"{reason} 1/2", cancellationToken, parkCursor: false);
         await Task.Delay(gapMs, cancellationToken);
-        return await _screen.ClickAsync(window, point, $"{reason} 2/2", cancellationToken);
-    }
-
-    private async Task<GameWindow> DoubleClickScreenAsync(
-        GameWindow window, System.Windows.Point point, string reason, CancellationToken cancellationToken)
-    {
-        int gapMs = Math.Max(_config.DoubleClickIntervalMs, 50);
-        _log($"{reason} 1/2：点击识别中心 ({point.X:F0},{point.Y:F0})");
-        await _screen.ClickScreenAsync(window, point, cancellationToken);
-        await Task.Delay(gapMs, cancellationToken);
-        _log($"{reason} 2/2：点击识别中心 ({point.X:F0},{point.Y:F0})");
-        await _screen.ClickScreenAsync(window, point, cancellationToken);
-        return _screen.Refresh(window);
+        window = await _screen.ClickAsync(window, point, $"{reason} 2/2", cancellationToken, parkCursor: false);
+        await Task.Delay(250, cancellationToken);
+        _screen.ParkCursorAway(window);
+        return window;
     }
 }

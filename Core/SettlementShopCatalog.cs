@@ -13,6 +13,35 @@ public static class SettlementShopCatalog
         _ => key
     };
 
+    public static string SubcategoryDisplayName(string category, string? subcategory)
+    {
+        if (string.IsNullOrWhiteSpace(subcategory))
+            return CategoryDisplayName(category);
+        foreach ((string key, string name) in Subcategories(category))
+        {
+            if (key.Equals(subcategory, StringComparison.OrdinalIgnoreCase))
+                return name;
+        }
+        return subcategory;
+    }
+
+    public static string FormatSlotPlan(string category, string? subcategory, IReadOnlyList<int> quantities)
+    {
+        IReadOnlyList<string> names = ItemNames(category, subcategory);
+        var parts = new List<string>();
+        for (int i = 0; i < quantities.Count; i++)
+        {
+            int q = quantities[i];
+            if (q == 0)
+                continue;
+            string name = i < names.Count && !string.IsNullOrWhiteSpace(names[i])
+                ? names[i]
+                : $"第{i + 1}格";
+            parts.Add(q < 0 ? $"{name}=全买" : $"{name}×{q}");
+        }
+        return parts.Count == 0 ? "（无）" : string.Join("，", parts);
+    }
+
     public static IReadOnlyList<(string Key, string Name)> Subcategories(string category) => category switch
     {
         "daily" =>

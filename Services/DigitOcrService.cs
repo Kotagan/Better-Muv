@@ -81,21 +81,61 @@ public static class DigitOcrService
         return null;
     }
 
-    /// <summary>从「0 / 4」「0/4」一类文案取左侧次数；失败则返回 null。</summary>
+    /// <summary>从「0 / 4」「0/4」「12 / ・」「0 /」一类文案取左侧次数；失败则返回 null。</summary>
     public static int? TryParseRatioLeft(string? text)
     {
         if (string.IsNullOrWhiteSpace(text))
             return null;
-        // 全角数字/斜杠归一
+        // 全角数字/斜杠归一；OCR 常把 0 读成 O/o。
         string normalized = text
             .Replace('\uFF0F', '/')
             .Replace('\uFF1A', ':')
             .Replace(",", "")
             .Replace("\uFF0C", "");
+        normalized = System.Text.RegularExpressions.Regex.Replace(
+            normalized, @"(?<=[\s:：]|^)[Oo](?=\s*/)", "0");
+        normalized = System.Text.RegularExpressions.Regex.Replace(
+            normalized, @"[Oo](?=\s*/)", "0");
+        // 优先完整 N/M；OCR 常把右侧读丢或读成「・」，仍取左侧。
         var match = System.Text.RegularExpressions.Regex.Match(normalized, @"(\d+)\s*/\s*\d+");
+        if (!match.Success)
+            match = System.Text.RegularExpressions.Regex.Match(normalized, @"(\d+)\s*/");
         if (match.Success && int.TryParse(match.Groups[1].Value, out int left))
             return left;
         return null;
+    }
+
+    /// <summary>
+    /// 日常「本日の購入回数：已购/上限」。剩余 = 上限 - 已购；缺右侧或上限&lt;已购（截断误读）则 null。
+    /// </summary>
+    public static int? TryParseDailyPurchaseRemaining(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return null;
+        string normalized = text
+            .Replace('\uFF0F', '/')
+            .Replace('\uFF1A', ':')
+            .Replace(",", "")
+            .Replace("\uFF0C", "");
+        normalized = System.Text.RegularExpressions.Regex.Replace(
+            normalized, @"(?<=[\s:：]|^)[Oo](?=\s*/)", "0");
+        normalized = System.Text.RegularExpressions.Regex.Replace(
+            normalized, @"[Oo](?=\s*/)", "0");
+        // OCR 常把 18 拆成「1 8」、24 拆成「2 4」。
+        normalized = System.Text.RegularExpressions.Regex.Replace(
+            normalized, @"(?<=\d)\s+(?=\d)", "");
+
+        var match = System.Text.RegularExpressions.Regex.Match(normalized, @"(\d+)\s*/\s*(\d+)");
+        if (!match.Success)
+            return null;
+        if (!int.TryParse(match.Groups[1].Value, out int used))
+            return null;
+        if (!int.TryParse(match.Groups[2].Value, out int max))
+            return null;
+        // 截断成「18/2」时上限会小于已购，视为不可信。
+        if (max < used)
+            return null;
+        return max - used;
     }
 
     /// <summary>读取带千分位的非负整数（允许 0）。</summary>
@@ -147,9 +187,12 @@ public static class DigitOcrService
     private static bool HasNonZeroOneDigit(int v) =>
         v.ToString().Any(c => c is >= '2' and <= '9');
 
-    /// <summary>游戏里几乎不会单独显示的数：OCR 常把 140/130/120 误成这些。</summary>
+    /// <summary>
+    /// 模板读数里几乎不会作为真实区域出现的值（旧 OCR 常把残缺图读成这些）。
+    /// 100/101/110/111 是真实区域，模板匹配成功后不得再拦截。
+    /// </summary>
     public static bool IsUnreliableDifficultyReading(int v) =>
-        v is 1 or 11 or 100 or 101 or 110 or 111;
+        v is 1 or 11;
 
     private static bool IsSuspiciousDifficultyOcr(int v) => IsUnreliableDifficultyReading(v);
 

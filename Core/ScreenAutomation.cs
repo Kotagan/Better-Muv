@@ -339,9 +339,13 @@ public sealed class ScreenAutomation
 
     // ---- 点击 ----
 
+    /// <summary>点击后光标停靠点（1080p）：避开右下角开始/出击粉钮，防止挡住识别。</summary>
+    private static readonly ConfigPoint CursorParkPoint = new(80, 200);
+
     /// <summary>点击配置点（1080p）：X 按客户区 cover，Y 按完整显示器，经 Geometry 统一换算。</summary>
     public async Task<GameWindow> ClickAsync(
-        GameWindow window, ConfigPoint referencePoint, string reason, CancellationToken cancellationToken)
+        GameWindow window, ConfigPoint referencePoint, string reason, CancellationToken cancellationToken,
+        bool parkCursor = true)
     {
         window = Refresh(window);
         EnsureUsableViewport(window);
@@ -349,13 +353,20 @@ public sealed class ScreenAutomation
         Point point = geometry.ToScreen(referencePoint);
         _log($"{reason}：1080p({referencePoint.X},{referencePoint.Y}) ×({geometry.ScaleX:F3},{geometry.ScaleY:F3}) → screen({point.X:F0},{point.Y:F0})");
         await _mouse.ClickAsync(window.Handle, point, cancellationToken);
+        if (parkCursor)
+            ParkCursor(window);
         return window;
     }
 
     /// <summary>点击已换算好的屏幕坐标（仅匹配结果中心等场景）。</summary>
-    public Task ClickScreenAsync(
-        GameWindow window, Point screenPoint, CancellationToken cancellationToken) =>
-        _mouse.ClickAsync(window.Handle, screenPoint, cancellationToken);
+    public async Task ClickScreenAsync(
+        GameWindow window, Point screenPoint, CancellationToken cancellationToken,
+        bool parkCursor = true)
+    {
+        await _mouse.ClickAsync(window.Handle, screenPoint, cancellationToken);
+        if (parkCursor)
+            ParkCursor(window);
+    }
 
     /// <summary>点击模板命中的中心，并统一记录置信度和点击后的稳定等待。</summary>
     public async Task ClickProbeAsync(
@@ -363,12 +374,30 @@ public sealed class ScreenAutomation
         TemplateProbeResult probe,
         string reason,
         CancellationToken cancellationToken,
-        int settleDelayMs = 250)
+        int settleDelayMs = 400,
+        bool parkCursor = true)
     {
         _log($"{reason}命中 {probe.Score:F3}，点击 ({probe.Center.X:F0},{probe.Center.Y:F0})");
-        await ClickScreenAsync(window, probe.Center, cancellationToken);
+        await ClickScreenAsync(window, probe.Center, cancellationToken, parkCursor);
         if (settleDelayMs > 0)
             await Task.Delay(settleDelayMs, cancellationToken);
+    }
+
+    public void ParkCursorAway(GameWindow window) => ParkCursor(window);
+
+    private void ParkCursor(GameWindow window)
+    {
+        try
+        {
+            window = Refresh(window);
+            CaptureGeometry geometry = Geometry(window);
+            Point park = geometry.ToScreen(CursorParkPoint);
+            _mouse.MoveTo(window.Handle, park);
+        }
+        catch
+        {
+            // 停靠失败不影响主流程。
+        }
     }
 
     /// <summary>在 1080p 逻辑点处滚轮（负值为向下）。</summary>
@@ -385,6 +414,32 @@ public sealed class ScreenAutomation
         Point point = geometry.ToScreen(referencePoint);
         _log($"{reason}：1080p({referencePoint.X},{referencePoint.Y}) 滚轮 {wheelNotches} → screen({point.X:F0},{point.Y:F0})");
         await _mouse.WheelAsync(window.Handle, point, wheelNotches, cancellationToken);
+    }
+
+    /// <summary>点击输入框后 Ctrl+V 粘贴剪贴板文本（调用方先 Clipboard.SetText）。</summary>
+    public async Task PasteClipboardAsync(
+        GameWindow window, string reason, CancellationToken cancellationToken)
+    {
+        window = Refresh(window);
+        EnsureUsableViewport(window);
+        _log($"{reason}：Ctrl+V 粘贴。");
+        await _mouse.SendCtrlVAsync(window.Handle, cancellationToken);
+    }
+
+    /// <summary>输入框全选 → 删除 → Ctrl+V（下一条兑换码替换旧内容）。</summary>
+    public async Task ClearFieldAndPasteAsync(
+        GameWindow window, string reason, CancellationToken cancellationToken)
+    {
+        window = Refresh(window);
+        EnsureUsableViewport(window);
+        _log($"{reason}：Ctrl+A 全选。");
+        await _mouse.SendCtrlAAsync(window.Handle, cancellationToken);
+        await Task.Delay(80, cancellationToken);
+        _log($"{reason}：Delete 清空。");
+        await _mouse.SendDeleteAsync(window.Handle, cancellationToken);
+        await Task.Delay(80, cancellationToken);
+        _log($"{reason}：Ctrl+V 粘贴。");
+        await _mouse.SendCtrlVAsync(window.Handle, cancellationToken);
     }
 }
 

@@ -84,9 +84,23 @@
                                     </ControlTemplate>
                                 </ToggleButton.Template>
                             </ToggleButton>
-                            <ContentPresenter Margin="10,0,30,0" VerticalAlignment="Center" HorizontalAlignment="Left" IsHitTestVisible="False"
+                            <ContentPresenter x:Name="ContentSite" Margin="10,0,30,0" VerticalAlignment="Center" HorizontalAlignment="Left" IsHitTestVisible="False"
                                               Content="{TemplateBinding SelectionBoxItem}" ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
                                               ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}" ContentStringFormat="{TemplateBinding SelectionBoxItemStringFormat}"/>
+                            <!-- IsEditable 时必须有 PART_EditableTextBox，否则选中后不显示文字 -->
+                            <TextBox x:Name="PART_EditableTextBox"
+                                     Visibility="Collapsed"
+                                     Background="Transparent"
+                                     Foreground="#F5F7FA"
+                                     CaretBrush="#F5F7FA"
+                                     BorderThickness="0"
+                                     Margin="10,0,30,0"
+                                     Padding="0"
+                                     VerticalAlignment="Center"
+                                     VerticalContentAlignment="Center"
+                                     FontSize="{TemplateBinding FontSize}"
+                                     Focusable="True"
+                                     HorizontalAlignment="Stretch"/>
                             <Popup x:Name="Popup" Placement="Bottom" IsOpen="{TemplateBinding IsDropDownOpen}" AllowsTransparency="True" Focusable="False" PopupAnimation="Slide">
                                 <Border x:Name="DropDown" MinWidth="{TemplateBinding ActualWidth}" MaxHeight="{TemplateBinding MaxDropDownHeight}" Background="#1B212A" BorderBrush="#46505E" BorderThickness="1" CornerRadius="8" Margin="0,4,0,0" Padding="4">
                                     <Border.Effect>
@@ -99,6 +113,10 @@
                             </Popup>
                         </Grid>
                         <ControlTemplate.Triggers>
+                            <Trigger Property="IsEditable" Value="True">
+                                <Setter TargetName="PART_EditableTextBox" Property="Visibility" Value="Visible"/>
+                                <Setter TargetName="ContentSite" Property="Visibility" Value="Hidden"/>
+                            </Trigger>
                             <Trigger Property="HasItems" Value="False">
                                 <Setter TargetName="DropDown" Property="MinHeight" Value="40"/>
                             </Trigger>
@@ -137,16 +155,16 @@
                         <Border Width="26" Height="26" CornerRadius="13" ClipToBounds="True">
                             <Image Source="Assets/Branding/app-icon.png" Stretch="UniformToFill"/>
                         </Border>
-                        <TextBlock Margin="10,0,0,0" FontSize="16" VerticalAlignment="Center" Text="Better-Muv · 更好的 MuvLuv Girls Garden"/>
+                        <TextBlock x:Name="TitleBarText" Margin="10,0,0,0" FontSize="16" VerticalAlignment="Center" Text="Better-Muv"/>
                     </StackPanel>
                     <Button Grid.Column="1" Content="—" Background="Transparent" Foreground="White" BorderThickness="0" FontSize="16" Click="MinimizeButton_Click"/>
                     <Button Grid.Column="2" Content="×" Background="Transparent" Foreground="White" BorderThickness="0" FontSize="22" Click="CloseButton_Click"/>
                 </Grid>
-            <Grid Grid.Row="1"><Grid.ColumnDefinitions><ColumnDefinition Width="120"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-            <Border Background="#182029"><Grid><Grid.RowDefinitions><RowDefinition Height="10"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions><StackPanel Grid.Row="1"><Button x:Name="HomeNavButton" Style="{StaticResource NavButton}" Content="⌂  首页" Click="ShowHomeButton_Click"/><Button x:Name="ExecuteNavButton" Style="{StaticResource NavButton}" Content="▷  任务" Click="ShowExecuteButton_Click"/></StackPanel><Button Grid.Row="2" x:Name="SettingsNavButton" Style="{StaticResource NavButton}" Margin="4,0,4,12" Click="ShowSettingsButton_Click"><StackPanel Orientation="Horizontal" VerticalAlignment="Center"><TextBlock FontFamily="Segoe Fluent Icons" FontSize="15" Text="&#xE713;" VerticalAlignment="Center"/><TextBlock Margin="8,0,0,0" Text="设置" VerticalAlignment="Center"/></StackPanel></Button></Grid></Border>
+            <Grid Grid.Row="1"><Grid.ColumnDefinitions><ColumnDefinition Width="148"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+            <Border Background="#182029"><Grid><Grid.RowDefinitions><RowDefinition Height="10"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions><StackPanel Grid.Row="1"><Button x:Name="HomeNavButton" Style="{StaticResource NavButton}" FontSize="15" Content="⌂  首页" Click="ShowHomeButton_Click"/><Button x:Name="ExecuteNavButton" Style="{StaticResource NavButton}" FontSize="15" Content="▷  任务" Click="ShowExecuteButton_Click"/></StackPanel><Button Grid.Row="2" x:Name="SettingsNavButton" Style="{StaticResource NavButton}" Margin="4,0,4,12" Click="ShowSettingsButton_Click"><StackPanel Orientation="Horizontal" VerticalAlignment="Center"><TextBlock FontFamily="Segoe Fluent Icons" FontSize="15" Text="&#xE713;" VerticalAlignment="Center"/><TextBlock Margin="8,0,0,0" Text="设置" VerticalAlignment="Center"/></StackPanel></Button></Grid></Border>
             <ScrollViewer x:Name="HomePanel" Grid.Column="1" VerticalScrollBarVisibility="Auto"><StackPanel Margin="28,22,28,24">
                 <Border Height="210" CornerRadius="12" ClipToBounds="True"><Border.Background><ImageBrush ImageSource="Assets/Branding/home-banner.png" Stretch="UniformToFill" AlignmentX="Center" AlignmentY="Center" RelativeTransform="1.15,0,0,1.15,0,0"/></Border.Background><Border CornerRadius="12"><Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint="1,0"><GradientStop Color="#D9141B24"/><GradientStop Color="#90141B24" Offset=".45"/><GradientStop Color="#20141B24" Offset="1"/></LinearGradientBrush></Border.Background><StackPanel Margin="32,0" VerticalAlignment="Center"><TextBlock Text="Better-Muv" FontSize="30" FontWeight="SemiBold"/><TextBlock Text="更好的 MuvLuv Girls Garden" FontSize="17" FontWeight="SemiBold" Margin="0,4,0,0"/></StackPanel></Border></Border>
-                <Border Style="{StaticResource Card}"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="40"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="▷" FontSize="22" VerticalAlignment="Center"/><StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="Better-Muv 截图器" FontSize="17"/><TextBlock x:Name="CaptureStatusText" Visibility="Collapsed"/></StackPanel><Button x:Name="CaptureStartButton" Grid.Column="2" Style="{StaticResource PrimaryButton}" Content="▷  启动" Click="CaptureStartButton_Click"/></Grid></Border>
+                <Border Style="{StaticResource Card}"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="40"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="▷" FontSize="22" VerticalAlignment="Center"/><StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="启动一条龙" FontSize="17"/><TextBlock Text="按任务页开关与顺序依次执行" Foreground="#AEB8C5" FontSize="12"/></StackPanel><Button x:Name="CaptureStartButton" Grid.Column="2" Style="{StaticResource PrimaryButton}" Content="▷  启动" Click="CaptureStartButton_Click"/></Grid></Border>
                 <Border Style="{StaticResource Card}"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="40"/><ColumnDefinition Width="*"/><ColumnDefinition Width="310"/></Grid.ColumnDefinitions><TextBlock Text="▤" FontSize="21" VerticalAlignment="Center"/><StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="运行窗口" FontSize="17"/><TextBlock Text="默认使用游戏窗口；浏览器选择会自动保存" Foreground="#AEB8C5" FontSize="12"/></StackPanel><ComboBox x:Name="RunWindowComboBox" Grid.Column="2" Style="{StaticResource DarkComboBox}" DropDownOpened="RunWindowComboBox_DropDownOpened" SelectionChanged="RunWindowComboBox_SelectionChanged"/></Grid></Border>
                 <Border Style="{StaticResource Card}"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="40"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="◉" FontSize="21" VerticalAlignment="Center"/><TextBlock Grid.Column="1" Text="同时启动 MuvLuv Girls Garden" FontSize="17" VerticalAlignment="Center"/><Button Grid.Column="2" Style="{StaticResource PrimaryButton}" Click="GameSettingsButton_Click"><StackPanel Orientation="Horizontal" VerticalAlignment="Center"><TextBlock FontFamily="Segoe Fluent Icons" FontSize="14" Text="&#xE713;" VerticalAlignment="Center"/><TextBlock Margin="6,0,0,0" Text="设置" VerticalAlignment="Center"/></StackPanel></Button><CheckBox x:Name="LaunchGameCheckBox" Grid.Column="3" Style="{StaticResource ToggleSwitch}" Margin="14,0,0,0" Checked="LaunchGameCheckBox_Changed" Unchecked="LaunchGameCheckBox_Changed"/></Grid></Border>
                 <Border Style="{StaticResource Card}"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="40"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="▣" FontSize="21" VerticalAlignment="Center"/><TextBlock Grid.Column="1" Text="Better-Muv 桌面分身" FontSize="17" VerticalAlignment="Center"/><Button Grid.Column="2" Style="{StaticResource PrimaryButton}" Content="打开" Click="OpenCloneButton_Click"/></Grid></Border>
@@ -165,26 +183,44 @@
                             <Button x:Name="StopPipelineButton" Style="{StaticResource IconButton}" Content="&#xE71A;" ToolTip="停止" Visibility="Collapsed" Click="StopButton_Click"/>
                         </StackPanel>
                     </Grid>
-                    <StackPanel x:Name="TaskListPanel" AllowDrop="True"
+                    <StackPanel x:Name="TaskListPanel" AllowDrop="True" Grid.IsSharedSizeScope="True"
                                 PreviewDragOver="TaskList_DragOver" PreviewDrop="TaskList_Drop" PreviewDragLeave="TaskList_DragLeave">
                         <Border x:Name="MazeTaskCard" Style="{StaticResource Card}" Tag="maze" Cursor="SizeAll" ToolTip="拖动调整顺序"
                                 PreviewMouseLeftButtonDown="TaskCard_PreviewMouseLeftButtonDown" MouseMove="TaskCard_MouseMove" PreviewMouseLeftButtonUp="TaskCard_PreviewMouseLeftButtonUp">
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="TaskRun"/>
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="TaskPause"/>
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="TaskStop"/>
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="TaskSettings"/>
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="TaskToggle"/>
                                 </Grid.ColumnDefinitions>
-                                <StackPanel VerticalAlignment="Center">
-                                    <TextBlock Text="迷宫探索" FontSize="16"/>
-                                    <TextBlock x:Name="MazeStatusText" Visibility="Collapsed"/>
-                                </StackPanel>
-                                <Button x:Name="RunMazeButton" Grid.Column="1" Style="{StaticResource IconButton}" Content="&#xE768;" ToolTip="运行" Click="RunMazeButton_Click"/>
+                                <Grid VerticalAlignment="Center">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Text="迷宫探索" FontSize="16"/>
+                                        <TextBlock x:Name="MazeStatusText" Visibility="Collapsed"/>
+                                        <TextBlock x:Name="MazePipelineResultText" FontSize="13" FontWeight="SemiBold" Margin="0,3,0,0" Visibility="Collapsed"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0,10,0">
+                                        <TextBlock Text="次数" VerticalAlignment="Center" Foreground="#AEB8C5" FontSize="13" Margin="0,0,8,0"/>
+                                        <ComboBox x:Name="MazeRunLimitCombo" Style="{StaticResource DarkComboBox}"
+                                                  IsEditable="True" IsTextSearchEnabled="False"
+                                                  Width="84" Height="32" Padding="8,2"
+                                                  ToolTip="可下拉选「无限」或直接输入数字"
+                                                  LostKeyboardFocus="MazeRunLimitCombo_LostKeyboardFocus"
+                                                  SelectionChanged="MazeRunLimitCombo_SelectionChanged"
+                                                  Loaded="MazeRunLimitCombo_Loaded"/>
+                                    </StackPanel>
+                                </Grid>
+                                <Button x:Name="RunMazeButton" Grid.Column="1" Style="{StaticResource IconButton}" MinWidth="36" Content="&#xE768;" ToolTip="运行" Click="RunMazeButton_Click"/>
                                 <Button x:Name="PauseResumeButton" Grid.Column="2" Style="{StaticResource IconButton}" Content="&#xE769;" ToolTip="暂停" Visibility="Collapsed" Click="PauseResumeButton_Click"/>
                                 <Button x:Name="StopButton" Grid.Column="3" Style="{StaticResource IconButton}" Content="&#xE71A;" ToolTip="停止" Visibility="Collapsed" Click="StopButton_Click"/>
-                                <Button Grid.Column="4" Style="{StaticResource PrimaryButton}" Padding="8,6" MinWidth="34" ToolTip="迷宫探索设置" Click="MazeSettingsButton_Click">
-                                    <TextBlock FontFamily="Segoe Fluent Icons" FontSize="14" Text="&#xE713;" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                </Button>
+                                <Button Grid.Column="4" Style="{StaticResource IconButton}" MinWidth="36" ToolTip="迷宫探索设置" Click="MazeSettingsButton_Click" Content="&#xE713;"/>
                                 <CheckBox x:Name="MazePipelineToggle" Grid.Column="5" Style="{StaticResource ToggleSwitch}" Margin="10,0,0,0" ToolTip="纳入一条龙" Checked="PipelineTaskToggle_Changed" Unchecked="PipelineTaskToggle_Changed"/>
                             </Grid>
                         </Border>
@@ -193,17 +229,22 @@
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="TaskRun"/>
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="TaskPause"/>
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="TaskStop"/>
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="TaskSettings"/>
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="TaskToggle"/>
                                 </Grid.ColumnDefinitions>
                                 <StackPanel VerticalAlignment="Center">
                                     <TextBlock Text="自动主线任务" FontSize="16"/>
                                     <TextBlock x:Name="MainQuestStatusText" Visibility="Collapsed"/>
+                                    <TextBlock x:Name="MainQuestPipelineResultText" FontSize="13" FontWeight="SemiBold" Margin="0,3,0,0" Visibility="Collapsed"/>
                                 </StackPanel>
-                                <Button x:Name="RunMainQuestButton" Grid.Column="1" Style="{StaticResource IconButton}" Content="&#xE768;" ToolTip="运行" Click="RunMainQuestButton_Click"/>
+                                <Button x:Name="RunMainQuestButton" Grid.Column="1" Style="{StaticResource IconButton}" MinWidth="36" Content="&#xE768;" ToolTip="运行" Click="RunMainQuestButton_Click"/>
                                 <Button x:Name="PauseMainQuestButton" Grid.Column="2" Style="{StaticResource IconButton}" Content="&#xE769;" ToolTip="暂停" Visibility="Collapsed" Click="PauseResumeButton_Click"/>
                                 <Button x:Name="StopMainQuestButton" Grid.Column="3" Style="{StaticResource IconButton}" Content="&#xE71A;" ToolTip="停止" Visibility="Collapsed" Click="StopButton_Click"/>
-                                <CheckBox x:Name="MainQuestPipelineToggle" Grid.Column="4" Style="{StaticResource ToggleSwitch}" Margin="10,0,0,0" ToolTip="纳入一条龙" Checked="PipelineTaskToggle_Changed" Unchecked="PipelineTaskToggle_Changed"/>
+                                <Button Grid.Column="4" Style="{StaticResource IconButton}" MinWidth="36" Visibility="Hidden" IsHitTestVisible="False" Focusable="False" Content="&#xE713;"/>
+                                <CheckBox x:Name="MainQuestPipelineToggle" Grid.Column="5" Style="{StaticResource ToggleSwitch}" Margin="10,0,0,0" ToolTip="纳入一条龙" Checked="PipelineTaskToggle_Changed" Unchecked="PipelineTaskToggle_Changed"/>
                             </Grid>
                         </Border>
                         <Border x:Name="HardMainQuestTaskCard" Style="{StaticResource Card}" Tag="hardMainQuest" Cursor="SizeAll" ToolTip="拖动调整顺序"
@@ -211,17 +252,22 @@
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="TaskRun"/>
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="TaskPause"/>
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="TaskStop"/>
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="TaskSettings"/>
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="TaskToggle"/>
                                 </Grid.ColumnDefinitions>
                                 <StackPanel VerticalAlignment="Center">
                                     <TextBlock Text="自动困难主线" FontSize="16"/>
                                     <TextBlock x:Name="HardMainQuestStatusText" Visibility="Collapsed"/>
+                                    <TextBlock x:Name="HardMainQuestPipelineResultText" FontSize="13" FontWeight="SemiBold" Margin="0,3,0,0" Visibility="Collapsed"/>
                                 </StackPanel>
-                                <Button x:Name="RunHardMainQuestButton" Grid.Column="1" Style="{StaticResource IconButton}" Content="&#xE768;" ToolTip="运行" Click="RunHardMainQuestButton_Click"/>
+                                <Button x:Name="RunHardMainQuestButton" Grid.Column="1" Style="{StaticResource IconButton}" MinWidth="36" Content="&#xE768;" ToolTip="运行" Click="RunHardMainQuestButton_Click"/>
                                 <Button x:Name="PauseHardMainQuestButton" Grid.Column="2" Style="{StaticResource IconButton}" Content="&#xE769;" ToolTip="暂停" Visibility="Collapsed" Click="PauseResumeButton_Click"/>
                                 <Button x:Name="StopHardMainQuestButton" Grid.Column="3" Style="{StaticResource IconButton}" Content="&#xE71A;" ToolTip="停止" Visibility="Collapsed" Click="StopButton_Click"/>
-                                <CheckBox x:Name="HardMainQuestPipelineToggle" Grid.Column="4" Style="{StaticResource ToggleSwitch}" Margin="10,0,0,0" ToolTip="纳入一条龙" Checked="PipelineTaskToggle_Changed" Unchecked="PipelineTaskToggle_Changed"/>
+                                <Button Grid.Column="4" Style="{StaticResource IconButton}" MinWidth="36" Visibility="Hidden" IsHitTestVisible="False" Focusable="False" Content="&#xE713;"/>
+                                <CheckBox x:Name="HardMainQuestPipelineToggle" Grid.Column="5" Style="{StaticResource ToggleSwitch}" Margin="10,0,0,0" ToolTip="纳入一条龙" Checked="PipelineTaskToggle_Changed" Unchecked="PipelineTaskToggle_Changed"/>
                             </Grid>
                         </Border>
                         <Border x:Name="DailyShopTaskCard" Style="{StaticResource Card}" Tag="dailyShop" Cursor="SizeAll" ToolTip="拖动调整顺序"
@@ -229,17 +275,45 @@
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="TaskRun"/>
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="TaskPause"/>
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="TaskStop"/>
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="TaskSettings"/>
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="TaskToggle"/>
                                 </Grid.ColumnDefinitions>
                                 <StackPanel VerticalAlignment="Center">
                                     <TextBlock Text="每日商店" FontSize="16"/>
                                     <TextBlock x:Name="DailyShopStatusText" Visibility="Collapsed"/>
+                                    <TextBlock x:Name="DailyShopPipelineResultText" FontSize="13" FontWeight="SemiBold" Margin="0,3,0,0" Visibility="Collapsed"/>
                                 </StackPanel>
-                                <Button x:Name="RunDailyShopButton" Grid.Column="1" Style="{StaticResource IconButton}" Content="&#xE768;" ToolTip="运行" Click="RunDailyShopButton_Click"/>
+                                <Button x:Name="RunDailyShopButton" Grid.Column="1" Style="{StaticResource IconButton}" MinWidth="36" Content="&#xE768;" ToolTip="运行" Click="RunDailyShopButton_Click"/>
                                 <Button x:Name="PauseDailyShopButton" Grid.Column="2" Style="{StaticResource IconButton}" Content="&#xE769;" ToolTip="暂停" Visibility="Collapsed" Click="PauseResumeButton_Click"/>
                                 <Button x:Name="StopDailyShopButton" Grid.Column="3" Style="{StaticResource IconButton}" Content="&#xE71A;" ToolTip="停止" Visibility="Collapsed" Click="StopButton_Click"/>
-                                <CheckBox x:Name="DailyShopPipelineToggle" Grid.Column="4" Style="{StaticResource ToggleSwitch}" Margin="10,0,0,0" ToolTip="纳入一条龙" Checked="PipelineTaskToggle_Changed" Unchecked="PipelineTaskToggle_Changed"/>
+                                <Button Grid.Column="4" Style="{StaticResource IconButton}" MinWidth="36" Visibility="Hidden" IsHitTestVisible="False" Focusable="False" Content="&#xE713;"/>
+                                <CheckBox x:Name="DailyShopPipelineToggle" Grid.Column="5" Style="{StaticResource ToggleSwitch}" Margin="10,0,0,0" ToolTip="纳入一条龙" Checked="PipelineTaskToggle_Changed" Unchecked="PipelineTaskToggle_Changed"/>
+                            </Grid>
+                        </Border>
+                        <Border x:Name="DailyFreeGiftTaskCard" Style="{StaticResource Card}" Tag="dailyFreeGift" Cursor="SizeAll" ToolTip="拖动调整顺序"
+                                PreviewMouseLeftButtonDown="TaskCard_PreviewMouseLeftButtonDown" MouseMove="TaskCard_MouseMove" PreviewMouseLeftButtonUp="TaskCard_PreviewMouseLeftButtonUp">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="TaskRun"/>
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="TaskPause"/>
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="TaskStop"/>
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="TaskSettings"/>
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="TaskToggle"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Text="每日免费礼包" FontSize="16"/>
+                                    <TextBlock x:Name="DailyFreeGiftStatusText" Visibility="Collapsed"/>
+                                    <TextBlock x:Name="DailyFreeGiftPipelineResultText" FontSize="13" FontWeight="SemiBold" Margin="0,3,0,0" Visibility="Collapsed"/>
+                                </StackPanel>
+                                <Button x:Name="RunDailyFreeGiftButton" Grid.Column="1" Style="{StaticResource IconButton}" MinWidth="36" Content="&#xE768;" ToolTip="运行" Click="RunDailyFreeGiftButton_Click"/>
+                                <Button x:Name="PauseDailyFreeGiftButton" Grid.Column="2" Style="{StaticResource IconButton}" Content="&#xE769;" ToolTip="暂停" Visibility="Collapsed" Click="PauseResumeButton_Click"/>
+                                <Button x:Name="StopDailyFreeGiftButton" Grid.Column="3" Style="{StaticResource IconButton}" Content="&#xE71A;" ToolTip="停止" Visibility="Collapsed" Click="StopButton_Click"/>
+                                <Button Grid.Column="4" Style="{StaticResource IconButton}" MinWidth="36" Visibility="Hidden" IsHitTestVisible="False" Focusable="False" Content="&#xE713;"/>
+                                <CheckBox x:Name="DailyFreeGiftPipelineToggle" Grid.Column="5" Style="{StaticResource ToggleSwitch}" Margin="10,0,0,0" ToolTip="纳入一条龙" Checked="PipelineTaskToggle_Changed" Unchecked="PipelineTaskToggle_Changed"/>
                             </Grid>
                         </Border>
                     </StackPanel>
@@ -256,6 +330,7 @@
                     <StackPanel Orientation="Horizontal">
                         <Button x:Name="SettingsGeneralNavButton" Style="{StaticResource MazeSettingsNavButton}" Margin="0" Content="全局" Click="ShowSettingsGeneralButton_Click"/>
                         <Button x:Name="SettingsHotkeyNavButton" Style="{StaticResource MazeSettingsNavButton}" Margin="4,0,0,0" Content="快捷键" Click="ShowSettingsHotkeyButton_Click"/>
+                        <Button x:Name="SettingsRedeemNavButton" Style="{StaticResource MazeSettingsNavButton}" Margin="4,0,0,0" Content="兑换码" Click="ShowSettingsRedeemButton_Click"/>
                     </StackPanel>
                 </Border>
                 <Grid Grid.Row="2">
@@ -308,6 +383,27 @@
                             </Grid>
                         </StackPanel>
                     </Border>
+                    <ScrollViewer x:Name="SettingsRedeemSection" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
+                        <StackPanel>
+                            <Border Style="{StaticResource Card}" Margin="0">
+                                <StackPanel>
+                                    <TextBlock Text="兑换码" FontSize="16" FontWeight="SemiBold"/>
+                                    <TextBlock x:Name="SettingsRedeemStatusText" Foreground="#AEB8C5" FontSize="12" Margin="0,8,0,0" Text="尚未同步"/>
+                                    <Grid Margin="0,12,0,0">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                        <TextBlock Text="有未用码时询问是否兑换" VerticalAlignment="Center"/>
+                                        <CheckBox x:Name="RedeemPromptCheckBox" Grid.Column="1" Style="{StaticResource ToggleSwitch}" Checked="RedeemPromptCheckBox_Changed" Unchecked="RedeemPromptCheckBox_Changed"/>
+                                    </Grid>
+                                    <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+                                        <Button Style="{StaticResource PrimaryButton}" Content="兑换未用码" Click="RunRedeemUnusedButton_Click"/>
+                                        <Button Style="{StaticResource PrimaryButton}" Content="打开网页" Margin="8,0,0,0" Click="OpenRedemptionWebButton_Click"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                            <StackPanel x:Name="SettingsRedeemListPanel"/>
+                            <TextBlock x:Name="SettingsRedeemEmptyText" Text="暂无兑换码。" Foreground="#AEB8C5" FontSize="13" Margin="8,16,8,8" HorizontalAlignment="Center" Visibility="Collapsed"/>
+                        </StackPanel>
+                    </ScrollViewer>
                 </Grid>
             </Grid>
             <Grid x:Name="MazeSettingsPanel" Grid.Column="1" Visibility="Collapsed" Margin="20,14,20,16">
@@ -334,16 +430,13 @@
                             <TextBlock Text="探索" FontSize="16" FontWeight="SemiBold"/>
                             <Grid Margin="0,12,0,0">
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="88"/></Grid.ColumnDefinitions>
-                                <TextBlock Text="迷宫次数（0 为无限）" VerticalAlignment="Center"/>
-                                <TextBox x:Name="MazeRunLimitBox" Grid.Column="1" LostKeyboardFocus="MazeRunLimitBox_LostKeyboardFocus"/>
-                            </Grid>
-                            <Grid Margin="0,12,0,0">
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="88"/></Grid.ColumnDefinitions>
                                 <StackPanel>
                                     <TextBlock Text="难度选择"/>
                                     <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                                         <RadioButton x:Name="DifficultyKeepRadio" Content="保持不变" GroupName="Difficulty" Checked="DifficultyMode_Changed"/>
                                         <RadioButton x:Name="DifficultyCustomRadio" Content="自选" GroupName="Difficulty" Margin="16,0,0,0" Checked="DifficultyMode_Changed"/>
+                                        <RadioButton x:Name="DifficultyTowerRadio" Content="爬塔" GroupName="Difficulty" Margin="16,0,0,0" Checked="DifficultyMode_Changed"
+                                                     ToolTip="层选界面须无右箭头；保持当前层进入"/>
                                     </StackPanel>
                                 </StackPanel>
                                 <TextBox x:Name="DifficultyTargetBox" Grid.Column="1" VerticalAlignment="Center" LostKeyboardFocus="DifficultyTargetBox_LostKeyboardFocus"/>
@@ -431,7 +524,7 @@
                             <ColumnDefinition Width="48"/>
                         </Grid.ColumnDefinitions>
                         <TextBlock Text="运行日志" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" Margin="16,0,0,0"/>
-                        <Button Grid.Column="1" Style="{StaticResource PrimaryButton}" Padding="10,6" MinHeight="30" Margin="0,0,4,0" Content="导出" ToolTip="打包导出日志和截图（ZIP）" Click="ExportLogButton_Click"/>
+                        <Button x:Name="ExportLogButton" Grid.Column="1" Style="{StaticResource PrimaryButton}" Padding="10,6" MinHeight="30" Margin="0,0,4,0" Content="导出" ToolTip="导出日志和截图到 Better-Muv 文件夹并打开位置" Click="ExportLogButton_Click"/>
                         <Button Grid.Column="2" Content="×" Background="Transparent" Foreground="White" BorderThickness="0" FontSize="22" Click="CloseLogDrawerButton_Click"/>
                     </Grid>
                     <TextBox x:Name="LogBox" Grid.Row="1" Margin="12,8,12,12" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" Background="#171C23" BorderThickness="0" Padding="10" FontFamily="Consolas" FontSize="12" VerticalAlignment="Stretch" VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Hidden"/>

@@ -13,7 +13,10 @@ public sealed class HardMainQuestAutomation
     private const double PresenceThreshold = 0.62;
     private const int MissTimeoutMs = 120000;
     private const int ClickCooldownMs = 100;
-    private const int StartAppearSettleMs = 100;
+    private const int StartAppearSettleMs = 2200;
+    private const int SortieMissFallbackMs = 4000;
+    private const int DifficultyRetryMs = 2800;
+    private const int MaxDifficultyClicks = 2;
 
     private enum Phase { Start, Sortie, Battle, Next }
 
@@ -81,6 +84,8 @@ public sealed class HardMainQuestAutomation
         var lastLog = Stopwatch.StartNew();
         Stopwatch? battleSkipFallback = null;
         Stopwatch? startAppearAt = null;
+        Stopwatch? difficultyWait = null;
+        int difficultyClicks = 0;
         bool hardConfirmed = false;
 
         while (true)
@@ -172,11 +177,15 @@ public sealed class HardMainQuestAutomation
 
             if (phase is Phase.Start &&
                 !hardConfirmed &&
+                difficultyClicks < MaxDifficultyClicks &&
                 TryHit(probes, "difficulty", out TemplateProbeResult difficulty) &&
                 ReadyToClick(lastClick, lastClickAt, "difficulty"))
             {
                 MarkClick(ref lastClick, ref lastClickAt, "difficulty");
                 await ClickMatchAsync(window, difficulty, "难易度变更", cancellationToken);
+                difficultyClicks++;
+                difficultyWait = Stopwatch.StartNew();
+                _log($"已点难易度变更（第 {difficultyClicks}/{MaxDifficultyClicks} 次），等待红底 MAIN QUEST BATTLE。");
                 missTimer.Restart();
                 continue;
             }
@@ -198,25 +207,55 @@ public sealed class HardMainQuestAutomation
                 _log($"困难主线：已通关第 {completed} 轮，继续下一关。");
                 phase = Phase.Start;
                 startAppearAt = null;
+                // 通关后仍应保持困难；红底若闪一下消失会再确认。
                 missTimer.Restart();
                 continue;
             }
 
             if (phase is Phase.Start && !hardConfirmed)
             {
+                double diffScore = probes.TryGetValue("difficulty", out TemplateProbeResult? d) ? d.Score : 0;
+                double hardScore = probes.TryGetValue("hardMark", out TemplateProbeResult? h) ? h.Score : 0;
+                double startScore = probes.TryGetValue("start", out TemplateProbeResult? s) ? s.Score : 0;
+
+                // 点过难易度后稍等；最多再补点到 MaxDifficultyClicks。
+                if (difficultyWait is not null &&
+                    difficultyWait.ElapsedMilliseconds >= DifficultyRetryMs &&
+                    difficultyClicks < MaxDifficultyClicks &&
+                    TryHit(probes, "difficulty", out TemplateProbeResult retryDiff) &&
+                    ReadyToClick(lastClick, lastClickAt, "difficulty"))
+                {
+                    MarkClick(ref lastClick, ref lastClickAt, "difficulty");
+                    await ClickMatchAsync(window, retryDiff, "难易度变更(再点)", cancellationToken);
+                    difficultyClicks++;
+                    difficultyWait.Restart();
+                    _log($"仍未见红底（hard={hardScore:F2}），再点难易度变更（第 {difficultyClicks}/{MaxDifficultyClicks} 次）。");
+                    missTimer.Restart();
+                    continue;
+                }
+
                 if (missTimer.ElapsedMilliseconds >= MissTimeoutMs)
-                    throw new TimeoutException("困难主线未能切到红底 MAIN QUEST BATTLE。");
+                    throw new TimeoutException(
+                        $"困难主线未能切到红底 MAIN QUEST BATTLE（difficulty={diffScore:F2} hard={hardScore:F2} start={startScore:F2}）。");
+
                 await Task.Delay(_config.DetectionPollIntervalMs, cancellationToken);
                 continue;
             }
 
-            if (phase is Phase.Battle or Phase.Next or Phase.Sortie &&
-                (TryHit(probes, "skip", out TemplateProbeResult skip) ||
-                 TryHit(probes, "skipAlt", out skip)) &&
+            // 已确认困难后重置难度点击计数。
+            if (hardConfirmed)
+            {
+                difficultyClicks = 0;
+                difficultyWait = null;
+            }
+
+            if ((phase is Phase.Battle or Phase.Next or Phase.Sortie) &&
+                (TryHit(probes, "skipAlt", out TemplateProbeResult skip) ||
+                 TryHit(probes, "skip", out skip)) &&
                 ReadyToClick(lastClick, lastClickAt, "skip"))
             {
                 MarkClick(ref lastClick, ref lastClickAt, "skip");
-                await ClickMatchAsync(window, skip, "SKIP", cancellationToken);
+                await ClickMazeStyleSkipAsync(window, skip, cancellationToken);
                 phase = Phase.Next;
                 missTimer.Restart();
                 battleSkipFallback = null;
@@ -231,12 +270,15 @@ public sealed class HardMainQuestAutomation
                 double nextScore = probes.TryGetValue("next", out TemplateProbeResult? nx) ? nx.Score : 0;
                 double maxBattle = Math.Max(skipScore, Math.Max(skipAltScore, nextScore));
                 bool readyFallback =
+                    (skipAltScore >= 0.40 && battleSkipFallback.ElapsedMilliseconds >= 1500) ||
                     battleSkipFallback.ElapsedMilliseconds >= 25000 ||
                     (battleSkipFallback.ElapsedMilliseconds >= 12000 && maxBattle >= 0.15);
                 if (readyFallback && ReadyToClick(lastClick, lastClickAt, "skip"))
                 {
                     MarkClick(ref lastClick, ref lastClickAt, "skip");
-                    _log("SKIP 模板未命中，改用固定坐标点击。");
+                    _log(skipAltScore >= 0.40
+                        ? $"战斗 SKIP 分偏高（{skipAltScore:F2}），点 SKIP 写死点兜底。"
+                        : "SKIP 模板未命中，改用固定坐标点击。");
                     await _screen.ClickAsync(window, _config.BattleSkipClick, "SKIP(坐标)", cancellationToken);
                     phase = Phase.Next;
                     missTimer.Restart();
@@ -257,6 +299,17 @@ public sealed class HardMainQuestAutomation
                 MarkClick(ref lastClick, ref lastClickAt, "sortie");
                 await ClickMatchAsync(window, sortie, "出击", cancellationToken);
                 phase = Phase.Battle;
+                missTimer.Restart();
+                battleSkipFallback = null;
+                _log("已出击，等待战斗 SKIP（同迷宫）。");
+                continue;
+            }
+
+            if (phase is Phase.Sortie && missTimer.ElapsedMilliseconds >= SortieMissFallbackMs)
+            {
+                _log($"困难出击页 {SortieMissFallbackMs / 1000}s 未见出撃，退回关卡页等待（可能仍在切关动画）。");
+                phase = Phase.Start;
+                startAppearAt = null;
                 missTimer.Restart();
                 continue;
             }
@@ -333,7 +386,9 @@ public sealed class HardMainQuestAutomation
             QuestFromHomeEntry.MainQuestBannerClick(_config),
             "メインクエスト",
             cancellationToken,
-            _banner);
+            _banner,
+            _config.MainQuestBannerTopLeft,
+            _config.MainQuestBannerSize);
         return (Phase.Start, false);
     }
 
@@ -348,7 +403,8 @@ public sealed class HardMainQuestAutomation
             (ConfigPoint topLeft, ConfigSize size) = RoiFor(key);
             double threshold = key switch
             {
-                "skip" or "skipAlt" or "next" => 0.52,
+                "skipAlt" => 0.62,
+                "skip" or "next" => 0.52,
                 "scenarioOk" => 0.55,
                 "rematch" => 0.72,
                 "hardMark" => 0.58,
@@ -363,7 +419,8 @@ public sealed class HardMainQuestAutomation
     {
         "start" => (_config.MainQuestStartTopLeft, _config.MainQuestStartSize),
         "sortie" => (_config.MainQuestSortieTopLeft, _config.MainQuestSortieSize),
-        "skip" or "skipAlt" => (_config.MainQuestSkipTopLeft, _config.MainQuestSkipSize),
+        "skip" => (_config.MainQuestSkipTopLeft, _config.MainQuestSkipSize),
+        "skipAlt" => (_config.BattleSkipTopLeft, _config.BattleSkipSize),
         "next" => (_config.MainQuestNextTopLeft, _config.MainQuestNextSize),
         "scenarioOk" => (_config.MainQuestScenarioOkTopLeft, _config.MainQuestScenarioOkSize),
         "rematch" => (_config.MainQuestRematchTopLeft, _config.MainQuestRematchSize),
@@ -412,6 +469,21 @@ public sealed class HardMainQuestAutomation
     {
         lastClick = key;
         lastClickAt.Restart();
+    }
+
+    private async Task ClickMazeStyleSkipAsync(
+        GameWindow window, TemplateProbeResult skip, CancellationToken cancellationToken)
+    {
+        await _screen.ClickProbeAsync(window, skip, "战斗 SKIP", cancellationToken, settleDelayMs: 150);
+        TemplateProbeResult still = await _screen.ProbeAsync(
+            window, _skipAlt, _config.BattleSkipTopLeft, _config.BattleSkipSize,
+            cancellationToken, 0.62);
+        if (!still.IsMatch)
+            return;
+
+        _log($"SKIP 仍在（{still.Score:F3}），改用固定坐标再点。");
+        await _screen.ClickAsync(window, _config.BattleSkipClick, "SKIP(坐标补点)", cancellationToken);
+        await Task.Delay(200, cancellationToken);
     }
 
     private async Task ClickMatchAsync(

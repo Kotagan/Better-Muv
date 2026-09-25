@@ -418,6 +418,7 @@ BmCli — Better-Muv 调试 CLI（不进安装包，给 AI/人工联调用）
             Add("maze", "Fourth", c.FourthSearchTopLeft, c.FourthSearchSize);
             Add("maze", "Fifth/next", c.FifthSearchTopLeft, c.FifthSearchSize);
             Add("maze", "BattleSkip", c.BattleSkipTopLeft, c.BattleSkipSize);
+            Add("maze", "Rest", c.EventRestTopLeft, c.EventRestSize);
             Add("maze", "Event", c.EventChoiceTopLeft, c.EventChoiceSize);
             Add("maze", "Partner", c.PartnerSelectionTopLeft, c.PartnerSelectionSize);
             Add("maze", "Settlement", c.SettlementSearchTopLeft, c.SettlementSearchSize);

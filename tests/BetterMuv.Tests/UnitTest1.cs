@@ -134,14 +134,14 @@ public class AutomationConfigTests
         Assert.Equal("F10", config.PauseHotkey);
         Assert.Equal("F11", config.StopHotkey);
         Assert.Equal(90, config.GameLaunchTimeoutSeconds);
-        Assert.Equal(["maze", "mainQuest", "hardMainQuest", "dailyShop"], AutomationConfig.NormalizePipelineTaskOrder(null));
-        Assert.Equal(["mainQuest", "maze", "hardMainQuest", "dailyShop"], AutomationConfig.NormalizePipelineTaskOrder(["mainQuest", "maze", "unknown"]));
+        Assert.Equal(["maze", "mainQuest", "hardMainQuest", "dailyShop", "dailyFreeGift"], AutomationConfig.NormalizePipelineTaskOrder(null));
+        Assert.Equal(["mainQuest", "maze", "hardMainQuest", "dailyShop", "dailyFreeGift"], AutomationConfig.NormalizePipelineTaskOrder(["mainQuest", "maze", "unknown"]));
         Assert.Equal(new ConfigPoint(1780, 965), new AutomationConfig().DailyShopEntryClick);
-        Assert.Equal(new ConfigPoint(1611, 453), new AutomationConfig().SecondClick);
-        Assert.Equal(new ConfigPoint(1000, 910), new AutomationConfig().SearchTopLeft);
-        Assert.Equal(new ConfigSize(260, 150), new AutomationConfig().FirstSearchSize);
-        Assert.Equal(new ConfigPoint(1470, 410), new AutomationConfig().SecondSearchTopLeft);
-        Assert.Equal(new ConfigSize(340, 120), new AutomationConfig().SecondSearchSize);
+        Assert.Equal(new ConfigPoint(1611, 473), new AutomationConfig().SecondClick);
+        Assert.Equal(new ConfigPoint(1080, 950), new AutomationConfig().SearchTopLeft);
+        Assert.Equal(new ConfigSize(150, 110), new AutomationConfig().FirstSearchSize);
+        Assert.Equal(new ConfigPoint(1470, 420), new AutomationConfig().SecondSearchTopLeft);
+        Assert.Equal(new ConfigSize(300, 100), new AutomationConfig().SecondSearchSize);
         Assert.Equal(new ConfigPoint(1040, 590), new AutomationConfig().QuestBattleSimulateTopLeft);
         Assert.Equal(new ConfigSize(360, 160), new AutomationConfig().QuestBattleSimulateSize);
         Assert.Equal(new ConfigPoint(1380, 650), new AutomationConfig().QuestExercisesTopLeft);
@@ -153,6 +153,9 @@ public class AutomationConfigTests
         Assert.Equal("muv_luv_girlsgardenx_cl.exe", GamePathLocator.ExecutableName);
         Assert.False(GamePathLocator.IsValid(null));
         Assert.False(GamePathLocator.IsValid(@"C:\missing\muv_luv_girlsgardenx_cl.exe"));
+        Assert.False(GamePathLocator.IsValid(@"C:\Windows\System32\schtasks.exe"));
+        Assert.Null(GamePathLocator.TryNormalize(@"C:\Windows\System32\schtasks.exe", out string rejectReason));
+        Assert.Contains("不是游戏程序", rejectReason);
     }
 
     [Fact]
@@ -179,7 +182,7 @@ public class AutomationConfigTests
         Assert.Equal(new ConfigPoint(1633, 261), config.DifficultyOpenSliderClick);
         Assert.Equal(new ConfigPoint(579, 292), config.DifficultyListTopLeft);
         Assert.Equal(new ConfigSize(182, 561), config.DifficultyListSize);
-        Assert.Equal(new ConfigPoint(1140, 974), config.DifficultyConfirmClick);
+        Assert.Equal(new ConfigPoint(1140, 975), config.DifficultyConfirmClick);
     }
 
     [Fact]
@@ -190,9 +193,9 @@ public class AutomationConfigTests
         Assert.Equal(new ConfigPoint(1674, 948), config.SettlementTopLeft);
         Assert.Equal(new ConfigPoint(1500, 880), config.SettlementSearchTopLeft);
         Assert.Equal(new ConfigSize(360, 180), config.SettlementSearchSize);
-        Assert.Equal(new ConfigPoint(1780, 195), config.SettlementMultiplierToggle);
-        Assert.Equal(new ConfigPoint(1710, 155), config.SettlementMultiplierTopLeft);
-        Assert.Equal(new ConfigSize(180, 90), config.SettlementMultiplierSize);
+        Assert.Equal(new ConfigPoint(1610, 200), config.SettlementMultiplierToggle);
+        Assert.Equal(new ConfigPoint(1640, 165), config.SettlementMultiplierTopLeft);
+        Assert.Equal(new ConfigSize(140, 70), config.SettlementMultiplierSize);
         Assert.Equal(6, config.SettlementBuyButtons.Count);
         Assert.Equal(4, config.SettlementSubcategoryTabs.Count);
         Assert.False(config.SettlementPurchases.HasAnyPurchase());
@@ -241,12 +244,12 @@ public class AutomationConfigTests
     public void TreasureOptionDefaultsUseVerticalCardRegion()
     {
         var config = new AutomationConfig();
-        Assert.Equal(new ConfigPoint(766, 20), config.TreasureStateTopLeft);
-        Assert.Equal(new ConfigSize(390, 56), config.TreasureStateSize);
-        Assert.Equal(new ConfigPoint(180, 280), config.TreasureOptionsTopLeft);
-        Assert.Equal(new ConfigSize(1560, 360), config.TreasureOptionsSize);
-        Assert.Equal(0.70, config.TreasureMatchThreshold);
-        Assert.Equal(new ConfigPoint(0, 80), config.TreasureClickOffset);
+        Assert.Equal(new ConfigPoint(700, 15), config.TreasureStateTopLeft);
+        Assert.Equal(new ConfigSize(520, 120), config.TreasureStateSize);
+        Assert.Equal(new ConfigPoint(478, 316), config.TreasureOptionsTopLeft);
+        Assert.Equal(new ConfigSize(1081, 90), config.TreasureOptionsSize);
+        Assert.Equal(0.58, config.TreasureMatchThreshold);
+        Assert.Equal(new ConfigPoint(-40, 55), config.TreasureClickOffset);
     }
 
     [Fact]
@@ -426,6 +429,50 @@ public class AutomationConfigTests
             new ConfigPoint(661, 243), new ConfigSize(209, 554));
 
         Assert.Equal(new ScreenRect(661, 243, 209, 554), result);
+    }
+}
+
+public class DigitOcrParseTests
+{
+    [Theory]
+    [InlineData("0 / 4", 0)]
+    [InlineData("12/20", 12)]
+    [InlineData("日 の 購 入 回 数 : 0 /", 0)]
+    [InlineData("日 の 購 入 回 数 : 12 / ・", 12)]
+    [InlineData("日 の 購 入 回 数 : O /", 0)]
+    [InlineData("購入回数：3／5", 3)]
+    public void TryParseRatioLeftAcceptsIncompleteRightSide(string text, int expected)
+    {
+        Assert.Equal(expected, DigitOcrService.TryParseRatioLeft(text));
+    }
+
+    [Theory]
+    [InlineData("本日の購入回数：0/4", 4)]
+    [InlineData("本日の購入回数：18/24", 6)]
+    [InlineData("購入回数：4／4", 0)]
+    [InlineData("18/24", 6)]
+    [InlineData("0 / 4", 4)]
+    [InlineData("回 : 1 8 / 24", 6)]
+    [InlineData("本 日 の 購 入 回 数 : 0 / 4", 4)]
+    public void TryParseDailyPurchaseRemainingUsesMaxMinusUsed(string text, int expected)
+    {
+        Assert.Equal(expected, DigitOcrService.TryParseDailyPurchaseRemaining(text));
+    }
+
+    [Fact]
+    public void TryParseDailyPurchaseRemainingRejectsTruncatedMax()
+    {
+        // ROI 过窄截成「18/2」时不可信。
+        Assert.Null(DigitOcrService.TryParseDailyPurchaseRemaining("本日の購入回数：18/2"));
+        Assert.Null(DigitOcrService.TryParseDailyPurchaseRemaining("18 /"));
+        Assert.Null(DigitOcrService.TryParseDailyPurchaseRemaining("購入回数"));
+    }
+
+    [Fact]
+    public void TryParseRatioLeftReturnsNullWhenNoSlashRatio()
+    {
+        Assert.Null(DigitOcrService.TryParseRatioLeft("購入回数"));
+        Assert.Null(DigitOcrService.TryParseRatioLeft(""));
     }
 }
 

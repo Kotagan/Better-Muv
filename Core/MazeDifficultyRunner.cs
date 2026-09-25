@@ -6,11 +6,11 @@ namespace BetterMuv.Core;
 public sealed class MazeDifficultyRunner
 {
     private const int MaxListSearchAttempts = 80;
-    private const int ListSettleMs = 800;
-    private const int AfterOpenListMs = 800;
-    private const int AfterConfirmMs = 900;
+    private const int ListSettleMs = 1100;
+    private const int AfterOpenListMs = 1000;
+    private const int AfterConfirmMs = 1100;
     private const int ArrowClickIntervalMs = 90;
-    private const int MaxListSelectRetries = 2;
+    private const int MaxListSelectRetries = 4;
     private const double ListConfirmThreshold = 0.78;
 
     private const double ArrowPresenceThreshold = 0.68;
@@ -91,6 +91,13 @@ public sealed class MazeDifficultyRunner
         if (mode == "keep")
         {
             _log("难度选择：保持不变，跳过。");
+            return true;
+        }
+
+        if (mode == "tower")
+        {
+            // 进关前已确认无右箭头；此处只保持当前层。
+            _log("难度选择：爬塔模式，保持当前层（层选无右箭头）。");
             return true;
         }
 
@@ -203,6 +210,12 @@ public sealed class MazeDifficultyRunner
     private async Task<bool> ClickDifficultyArrowAsync(
         GameWindow window, bool increase, string reason, CancellationToken cancellationToken)
     {
+        if (increase && NormalizeMode(_config.MazeDifficultyMode) == "tower")
+        {
+            _log($"{reason}：爬塔模式禁止点右箭头。");
+            return false;
+        }
+
         TemplateMatcher matcher = increase ? _increaseArrowMatcher : _decreaseArrowMatcher;
         ConfigPoint topLeft = increase ? _config.DifficultyIncreaseTopLeft : _config.DifficultyDecreaseTopLeft;
         ConfigSize size = increase ? _config.DifficultyIncreaseSize : _config.DifficultyDecreaseSize;
@@ -216,6 +229,13 @@ public sealed class MazeDifficultyRunner
             return true;
         }
 
+        if (increase)
+        {
+            // 爬塔/无右箭头界面：禁止写死点盲点右箭头区域。
+            _log($"{reason}模板未命中（{probe.Score:F3} < {ArrowPresenceThreshold:F2}），不写死盲点右箭头。");
+            return false;
+        }
+
         _log($"{reason}模板未命中（{probe.Score:F3} < {ArrowPresenceThreshold:F2}），改用写死点。");
         await _screen.ClickAsync(window, fallback, $"{reason}(坐标)", cancellationToken);
         return true;
@@ -224,6 +244,8 @@ public sealed class MazeDifficultyRunner
     private async Task<bool> SelectViaListWithRetryAsync(
         GameWindow window, int target, CancellationToken cancellationToken)
     {
+        // 滑动后行位置会漂：若上次点偏一格，下轮按行距纠偏，不写死屏幕坐标。
+        int rowBias = 0;
         for (int attempt = 1; attempt <= MaxListSelectRetries; attempt++)
         {
             bool listAlreadyOpen = await IsListVisibleAsync(window, cancellationToken);
@@ -236,7 +258,8 @@ public sealed class MazeDifficultyRunner
             }
             else
             {
-                _log($"难度选择：区域列表已打开，继续选 {target}（第 {attempt}/{MaxListSelectRetries} 次）。");
+                _log($"难度选择：区域列表已打开，继续选 {target}（第 {attempt}/{MaxListSelectRetries} 次" +
+                     (rowBias != 0 ? $"，行偏置 {rowBias}" : "") + "）。");
             }
 
             if (!await WaitForListVisibleAsync(window, cancellationToken))
@@ -247,12 +270,12 @@ public sealed class MazeDifficultyRunner
                 return false;
             }
 
-            if (!await SelectFromListAsync(window, target, cancellationToken))
+            if (!await SelectFromListAsync(window, target, cancellationToken, rowBias))
             {
                 // 选失败时点キャンセル，避免弹窗卡住下一轮。
                 await _screen.ClickAsync(
                     window, new ConfigPoint(726, 980), "区域选择取消", cancellationToken);
-                await Task.Delay(400, cancellationToken);
+                await Task.Delay(500, cancellationToken);
                 if (attempt < MaxListSelectRetries)
                 {
                     _log("区域列表未选中目标，将再试一次。");
@@ -289,6 +312,13 @@ public sealed class MazeDifficultyRunner
 
             if (attempt < MaxListSelectRetries)
             {
+                // 选成相邻格：下轮按实测行距上移/下移一格，而不是重用旧屏幕 Y。
+                if (selected == target - 1)
+                    rowBias = -1;
+                else if (selected == target + 1)
+                    rowBias = 1;
+                else
+                    rowBias = 0;
                 _log($"区域选择后复核为 {(selected?.ToString() ?? "失败")}（目标 {target}），将重试。");
                 continue;
             }
@@ -374,18 +404,22 @@ public sealed class MazeDifficultyRunner
     }
 
     private async Task<bool> SelectFromListAsync(
-        GameWindow window, int target, CancellationToken cancellationToken)
+        GameWindow window, int target, CancellationToken cancellationToken, int rowBias = 0)
     {
         int scrollDirection = -1; // 列表初始偏高编号；默认向下寻找较小区域。
         CaptureGeometry geometry = _screen.Geometry(window);
         for (int attempt = 1; attempt <= MaxListSearchAttempts; attempt++)
         {
-            window = _screen.Refresh(window);
-            RegionCapture fullRegion = _screen.CaptureRegion(
-                window, _config.DifficultyListTopLeft, _config.DifficultyListSize);
-            IReadOnlyList<DigitOcrService.LocatedNumber> fullNumbers =
-                await DigitOcrService.LocateNumbersAsync(fullRegion.Image, cancellationToken);
-            IReadOnlyList<DigitOcrService.LocatedNumber> areas = PickAreaNumberCluster(fullNumbers);
+            // 滑动惯性停稳前坐标会漂：连续两次 OCR 编号集合一致才点。
+            var stable = await CaptureStableListAsync(window, cancellationToken);
+            if (stable is null)
+            {
+                _log($"区域列表第 {attempt} 次未能稳定识别，停止。");
+                return false;
+            }
+
+            (RegionCapture fullRegion, IReadOnlyList<DigitOcrService.LocatedNumber> fullNumbers,
+                IReadOnlyList<DigitOcrService.LocatedNumber> areas) = stable.Value;
             _log($"区域列表 OCR（第 {attempt} 次）：原始 [{string.Join(',', fullNumbers.Select(n => n.Value))}]，" +
                  $"有效 [{string.Join(',', areas.Select(n => n.Value))}]。");
 
@@ -393,12 +427,7 @@ public sealed class MazeDifficultyRunner
                 ?? fullNumbers.FirstOrDefault(n => n.Value == target);
             if (hit is not null)
             {
-                double x = fullRegion.ScreenRect.Left + fullRegion.ScreenRect.Width / 2.0;
-                double y = fullRegion.ScreenRect.Top +
-                    hit.CenterY * fullRegion.ScreenRect.Height / fullRegion.Image.PixelHeight;
-                _log($"区域列表找到 {target}，点击目标行。");
-                await _screen.ClickScreenAsync(window, new System.Windows.Point(x, y), cancellationToken);
-                await Task.Delay(ListSettleMs, cancellationToken);
+                await ClickListRowAsync(window, fullRegion, areas, hit, target, rowBias, cancellationToken);
                 return true;
             }
 
@@ -420,12 +449,9 @@ public sealed class MazeDifficultyRunner
                         fullNumbers.Any(n => n.Value == target - 1 && n.CenterY > candidate.CenterY));
                 if (truncatedHundred is not null)
                 {
-                    double x = fullRegion.ScreenRect.Left + fullRegion.ScreenRect.Width / 2.0;
-                    double y = fullRegion.ScreenRect.Top +
-                        truncatedHundred.CenterY * fullRegion.ScreenRect.Height / fullRegion.Image.PixelHeight;
                     _log($"OCR 将 {target} 读成 {truncatedHundred.Value}，已通过上下相邻行确认并点击。");
-                    await _screen.ClickScreenAsync(window, new System.Windows.Point(x, y), cancellationToken);
-                    await Task.Delay(ListSettleMs, cancellationToken);
+                    await ClickListRowAsync(
+                        window, fullRegion, areas, truncatedHundred, target, rowBias, cancellationToken);
                     return true;
                 }
 
@@ -441,12 +467,10 @@ public sealed class MazeDifficultyRunner
                         (double)(nearestAbove.Value - nearestBelow.Value);
                     double logicalY = nearestAbove.CenterY +
                         ratio * (nearestBelow.CenterY - nearestAbove.CenterY);
-                    double x = fullRegion.ScreenRect.Left + fullRegion.ScreenRect.Width / 2.0;
-                    double y = fullRegion.ScreenRect.Top +
-                        logicalY * fullRegion.ScreenRect.Height / fullRegion.Image.PixelHeight;
+                    var synthetic = new DigitOcrService.LocatedNumber(target, nearestAbove.CenterX, logicalY);
                     _log($"整块 OCR 漏读 {target}，按相邻行 {nearestAbove.Value}/{nearestBelow.Value} 插值点击。");
-                    await _screen.ClickScreenAsync(window, new System.Windows.Point(x, y), cancellationToken);
-                    await Task.Delay(ListSettleMs, cancellationToken);
+                    await ClickListRowAsync(
+                        window, fullRegion, areas, synthetic, target, rowBias, cancellationToken);
                     return true;
                 }
 
@@ -469,28 +493,140 @@ public sealed class MazeDifficultyRunner
             ConfigPoint center = new(
                 _config.DifficultyListTopLeft.X + _config.DifficultyListSize.Width / 2,
                 _config.DifficultyListTopLeft.Y + _config.DifficultyListSize.Height / 2);
-            // 实测一次满幅拖动约移动 4～5 行；远距连续拖再识别，近距小步。
-            bool isNear = gap <= 10;
-            int dragRepeats = isNear ? 1 : Math.Clamp((gap - 7) / 4, 1, 5);
-            double dragRatio = isNear ? 0.35 : 0.88;
-            int settleMs = isNear ? ListSettleMs / 2 : 250;
-            int dragDistance = Math.Max(100, (int)Math.Round(_config.DifficultyListSize.Height * dragRatio));
+            // 滑动距离不固定；近距只小拖一次，远距少次中幅拖，拖完必须等 OCR 稳定。
+            bool isNear = gap <= 8;
+            int dragRepeats = isNear ? 1 : Math.Clamp((gap + 3) / 5, 1, 4);
+            double dragRatio = isNear ? 0.22 : 0.55;
+            int dragDistance = Math.Max(70, (int)Math.Round(_config.DifficultyListSize.Height * dragRatio));
             ConfigPoint fromRef = new(center.X, center.Y + (scrollDirection < 0 ? dragDistance / 2 : -dragDistance / 2));
             ConfigPoint toRef = new(center.X, center.Y + (scrollDirection < 0 ? -dragDistance / 2 : dragDistance / 2));
             System.Windows.Point from = geometry.ToScreen(fromRef);
             System.Windows.Point to = geometry.ToScreen(toRef);
-            string pace = isNear ? "小步" : $"大步连续 {dragRepeats} 次";
+            string pace = isNear ? "小步" : $"中幅连续 {dragRepeats} 次";
             _log($"区域列表可见 {min}–{max}，距目标约 {gap}，向{(scrollDirection < 0 ? "下" : "上")}{pace}拖动查找 {target}。");
             for (int drag = 0; drag < dragRepeats; drag++)
             {
-                await _screen.Mouse.DragAsync(window.Handle, from, to, cancellationToken, isNear ? 6 : 4);
+                await _screen.Mouse.DragAsync(window.Handle, from, to, cancellationToken, isNear ? 8 : 5);
                 if (drag + 1 < dragRepeats)
-                    await Task.Delay(80, cancellationToken);
+                    await Task.Delay(120, cancellationToken);
             }
-            await Task.Delay(settleMs, cancellationToken);
+            await Task.Delay(isNear ? ListSettleMs : 700, cancellationToken);
         }
         _log($"滚动查找区域 {target} 超过上限，停止。");
         return false;
+    }
+
+    /// <summary>连续两次 OCR 可见编号一致，认为滑动惯性已停。</summary>
+    private async Task<(
+        RegionCapture Region,
+        IReadOnlyList<DigitOcrService.LocatedNumber> FullNumbers,
+        IReadOnlyList<DigitOcrService.LocatedNumber> Areas)?> CaptureStableListAsync(
+        GameWindow window, CancellationToken cancellationToken)
+    {
+        int[]? previous = null;
+        RegionCapture? lastRegion = null;
+        IReadOnlyList<DigitOcrService.LocatedNumber>? lastFull = null;
+        IReadOnlyList<DigitOcrService.LocatedNumber>? lastAreas = null;
+
+        for (int i = 0; i < 7; i++)
+        {
+            window = _screen.Refresh(window);
+            RegionCapture region = _screen.CaptureRegion(
+                window, _config.DifficultyListTopLeft, _config.DifficultyListSize);
+            IReadOnlyList<DigitOcrService.LocatedNumber> full =
+                await DigitOcrService.LocateNumbersAsync(region.Image, cancellationToken);
+            IReadOnlyList<DigitOcrService.LocatedNumber> areas = PickAreaNumberCluster(full);
+            int[] signature = areas.Select(n => n.Value).OrderBy(v => v).ToArray();
+
+            lastRegion = region;
+            lastFull = full;
+            lastAreas = areas;
+
+            if (previous is not null &&
+                previous.Length > 0 &&
+                previous.SequenceEqual(signature))
+            {
+                return (region, full, areas);
+            }
+
+            previous = signature;
+            await Task.Delay(280, cancellationToken);
+        }
+
+        if (lastRegion is null || lastFull is null || lastAreas is null)
+            return null;
+
+        return (lastRegion.Value, lastFull, lastAreas);
+    }
+
+    private async Task ClickListRowAsync(
+        GameWindow window,
+        RegionCapture fullRegion,
+        IReadOnlyList<DigitOcrService.LocatedNumber> areas,
+        DigitOcrService.LocatedNumber hit,
+        int target,
+        int rowBias,
+        CancellationToken cancellationToken)
+    {
+        double logicalY = ResolveListRowY(target, hit, areas, rowBias);
+        double x = fullRegion.ScreenRect.Left + fullRegion.ScreenRect.Width / 2.0;
+        double y = fullRegion.ScreenRect.Top +
+            logicalY * fullRegion.ScreenRect.Height / fullRegion.Image.PixelHeight;
+        _log($"区域列表找到 {target}，按相邻行推算点击" +
+             (rowBias != 0 ? $"（行偏置 {rowBias}）" : "") + "。");
+        await _screen.ClickScreenAsync(window, new System.Windows.Point(x, y), cancellationToken, parkCursor: false);
+        await Task.Delay(ListSettleMs, cancellationToken);
+        _screen.ParkCursorAway(window);
+    }
+
+    /// <summary>
+    /// 用相邻行中点定行心，避免 OCR 单字框偏下点到下一格；
+    /// rowBias 为复核偏一格后的相对纠正（单位：行）。
+    /// </summary>
+    private static double ResolveListRowY(
+        int target,
+        DigitOcrService.LocatedNumber hit,
+        IReadOnlyList<DigitOcrService.LocatedNumber> areas,
+        int rowBias)
+    {
+        Dictionary<int, DigitOcrService.LocatedNumber> byValue = areas
+            .GroupBy(n => n.Value)
+            .ToDictionary(g => g.Key, g => g.First());
+
+        double? gap = EstimateRowGap(areas);
+        double y;
+        bool hasAbove = byValue.TryGetValue(target + 1, out DigitOcrService.LocatedNumber? above);
+        bool hasBelow = byValue.TryGetValue(target - 1, out DigitOcrService.LocatedNumber? below);
+        if (hasAbove && hasBelow && above is not null && below is not null)
+            y = (above.CenterY + below.CenterY) / 2.0;
+        else if (hasAbove && above is not null)
+            y = above.CenterY + (gap ?? 80);
+        else if (hasBelow && below is not null)
+            y = below.CenterY - (gap ?? 80);
+        else
+            y = hit.CenterY;
+
+        // 数字框常略偏行底；默认略上移，减少点到下一行。
+        double step = gap ?? 80;
+        y -= step * 0.1;
+        y += rowBias * step;
+        return y;
+    }
+
+    private static double? EstimateRowGap(IReadOnlyList<DigitOcrService.LocatedNumber> areas)
+    {
+        DigitOcrService.LocatedNumber[] ordered = areas.OrderBy(n => n.CenterY).ToArray();
+        if (ordered.Length < 2)
+            return null;
+
+        List<double> gaps = [];
+        for (int i = 1; i < ordered.Length; i++)
+        {
+            if (Math.Abs(ordered[i - 1].Value - ordered[i].Value) == 1)
+                gaps.Add(ordered[i].CenterY - ordered[i - 1].CenterY);
+        }
+
+        return gaps.Count > 0 ? gaps.Average() : null;
     }
 
     /// <summary>
@@ -503,7 +639,7 @@ public sealed class MazeDifficultyRunner
         DigitOcrService.LocatedNumber[] candidates = numbers
             .Where(n => n.Value is >= 1 and <= 999)
             .GroupBy(n => n.Value)
-            .Select(group => group.First())
+            .Select(group => group.OrderBy(n => n.CenterX).First())
             .OrderBy(n => n.Value)
             .ToArray();
         if (candidates.Length <= 1) return candidates;
@@ -555,9 +691,54 @@ public sealed class MazeDifficultyRunner
         mode?.Trim().ToLowerInvariant() switch
         {
             "custom" or "自选" => "custom",
+            "tower" or "climb" or "爬塔" => "tower",
             _ => "keep"
         };
 
     public static bool RequiresRecognizedFloor(string? mode) =>
-        NormalizeMode(mode) == "custom";
+        NormalizeMode(mode) is "custom" or "tower";
+
+    /// <summary>爬塔层选：可读层数，且右箭头不存在。</summary>
+    public async Task<bool> EnsureTowerFloorSelectAsync(
+        GameWindow window, CancellationToken cancellationToken, int attempts = 3)
+    {
+        for (int i = 0; i < attempts; i++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            int? floor = await TryReadTrustedFloorAsync(window, cancellationToken);
+            bool hasRight = await HasRightArrowAsync(window, cancellationToken);
+            if (floor is int ok && !hasRight)
+            {
+                _log($"爬塔层选确认：层数 {ok}，右箭头未出现。");
+                return true;
+            }
+
+            if (floor is null)
+                _log($"爬塔层选：层数未读出（{i + 1}/{attempts}）。");
+            else if (hasRight)
+                _log($"爬塔层选：读到层数 {floor}，但仍检测到右箭头（非爬塔层选，{i + 1}/{attempts}）。");
+
+            if (i + 1 < attempts)
+                await Task.Delay(350, cancellationToken);
+        }
+
+        _log("爬塔层选未确认（需可读层数且无右箭头），禁止点击探索準備。");
+        return false;
+    }
+
+    public async Task<bool> HasRightArrowAsync(GameWindow window, CancellationToken cancellationToken)
+    {
+        TemplateProbeResult probe = await _screen.ProbeAsync(
+            window,
+            _increaseArrowMatcher,
+            _config.DifficultyIncreaseTopLeft,
+            _config.DifficultyIncreaseSize,
+            cancellationToken,
+            ArrowPresenceThreshold);
+        if (probe.IsMatch)
+            _log($"右箭头模板命中 {probe.Score:F2}（阈值 {ArrowPresenceThreshold:F2}）。");
+        else
+            _log($"右箭头未命中（最高 {probe.Score:F2} < {ArrowPresenceThreshold:F2}）。");
+        return probe.IsMatch;
+    }
 }

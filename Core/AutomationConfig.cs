@@ -25,15 +25,15 @@ public sealed class AutomationConfig
     public int ReferenceWidth { get; set; } = 1920;
     public int ReferenceHeight { get; set; } = 1080;
 
-    // 搜索区：1080p 写死矩形（左上 + 宽高）。主页 ROI 对应 4K (2226,1838)→(2356,1938)。
-    public ConfigPoint SearchTopLeft { get; set; } = new(1000, 910);
-    public ConfigSize FirstSearchSize { get; set; } = new(260, 150);
+    // 搜索区：1080p 写死矩形（左上 + 宽高）。覆盖「クエスト」文字并留少量缩放/校准余量。
+    public ConfigPoint SearchTopLeft { get; set; } = new(1080, 950);
+    public ConfigSize FirstSearchSize { get; set; } = new(150, 110);
     /// <summary>底栏「ホーム」选中态（粉色底）；用于确认真正在主页，避免任务页误判。</summary>
     public ConfigPoint HomeNavTopLeft { get; set; } = new(590, 910);
     public ConfigSize HomeNavSize { get; set; } = new(220, 140);
-    /// <summary>底栏「クエスト」选中态（红色底）；用于确认已在任务选择页。</summary>
-    public ConfigPoint QuestNavTopLeft { get; set; } = new(1000, 910);
-    public ConfigSize QuestNavSize { get; set; } = new(260, 150);
+    /// <summary>底栏「クエスト」搜索区（与 FirstSearch 对齐的紧 ROI）。</summary>
+    public ConfigPoint QuestNavTopLeft { get; set; } = new(1080, 950);
+    public ConfigSize QuestNavSize { get; set; } = new(150, 110);
     /// <summary>任务页「模擬戦」入口搜索区（1080p）。</summary>
     public ConfigPoint QuestBattleSimulateTopLeft { get; set; } = new(1040, 590);
     public ConfigSize QuestBattleSimulateSize { get; set; } = new(360, 160);
@@ -51,15 +51,16 @@ public sealed class AutomationConfig
     public ConfigSize SecondSearchSize { get; set; } = new(300, 100);
     public ConfigPoint ThirdSearchTopLeft { get; set; } = new(1568, 796);
     public ConfigSize ThirdSearchSize { get; set; } = new(208, 98);
-    public ConfigPoint FourthSearchTopLeft { get; set; } = new(1560, 910);
-    /// <summary>右下角粉钮「探索」完整区域（旧 182×38 只扫到上沿，分数卡在 0.74）。</summary>
-    public ConfigSize FourthSearchSize { get; set; } = new(320, 120);
-    public ConfigPoint FifthSearchTopLeft { get; set; } = new(1500, 880);
-    public ConfigSize FifthSearchSize { get; set; } = new(360, 180);
-    public ConfigPoint PartnerSelectionTopLeft { get; set; } = new(1633, 919);
-    public ConfigSize PartnerSelectionSize { get; set; } = new(183, 75);
-    public ConfigPoint BattleSkipTopLeft { get; set; } = new(1760, 40);
-    public ConfigSize BattleSkipSize { get; set; } = new(112, 51);
+    public ConfigPoint FourthSearchTopLeft { get; set; } = new(1540, 940);
+    /// <summary>右下角粉钮「探索」完整区域（旧 1560,910 320×120 在 1080p 只擦到上沿，分数约 0.25）。</summary>
+    public ConfigSize FourthSearchSize { get; set; } = new(380, 140);
+    public ConfigPoint FifthSearchTopLeft { get; set; } = new(1684, 981);
+    public ConfigSize FifthSearchSize { get; set; } = new(100, 50);
+    /// <summary>「立ち去る」；旧 1633,919 183×75 偏右上，助っ人类型页分数约 0.09。</summary>
+    public ConfigPoint PartnerSelectionTopLeft { get; set; } = new(1540, 930);
+    public ConfigSize PartnerSelectionSize { get; set; } = new(360, 130);
+    public ConfigPoint BattleSkipTopLeft { get; set; } = new(1720, 70);
+    public ConfigSize BattleSkipSize { get; set; } = new(180, 70);
     /// <summary>活动/商店宣传弹窗右上角关闭「X」搜索区（1080p）。</summary>
     public ConfigPoint PopupCloseTopLeft { get; set; } = new(1720, 15);
     public ConfigSize PopupCloseSize { get; set; } = new(180, 100);
@@ -68,6 +69,9 @@ public sealed class AutomationConfig
     public ConfigSize EventChoiceSize { get; set; } = new(814, 367);
     public ConfigPoint EventChoiceFirstOption { get; set; } = new(1300, 700);
     public ConfigPoint EventChoiceSecondOption { get; set; } = new(1300, 825);
+    /// <summary>迷宫「一時の休息」按钮搜索区（1080p；右栏单选项）。</summary>
+    public ConfigPoint EventRestTopLeft { get; set; } = new(900, 640);
+    public ConfigSize EventRestSize { get; set; } = new(980, 160);
     /// <summary>结算「完了」点击坐标（1080p）。</summary>
     public ConfigPoint SettlementTopLeft { get; set; } = new(1674, 948);
     public ConfigPoint SettlementSearchTopLeft { get; set; } = new(1500, 880);
@@ -107,14 +111,19 @@ public sealed class AutomationConfig
     public ConfigPoint SettlementBuyButtonSearchInset { get; set; } = new(170, 65);
     /// <summary>须盖住 LvMAX 文本紧裁模板（约 330×94@4K→165×47 逻辑）与暗色購入钮；过大匹配变慢。</summary>
     public ConfigSize SettlementBuyButtonSearchSize { get; set; } = new(340, 130);
-    public ConfigPoint SettlementConfirmTopLeft { get; set; } = new(685, 520);
-    public ConfigSize SettlementConfirmSize { get; set; } = new(592, 424);
-    public ConfigPoint SettlementConfirmCancel { get; set; } = new(810, 790);
-    public ConfigPoint SettlementConfirmOk { get; set; } = new(1115, 790);
+    public ConfigPoint SettlementConfirmTopLeft { get; set; } = new(650, 500);
+    public ConfigSize SettlementConfirmSize { get; set; } = new(680, 450);
+    public ConfigPoint SettlementConfirmCancel { get; set; } = new(809, 820);
+    public ConfigPoint SettlementConfirmOk { get; set; } = new(1130, 820);
+    /// <summary>余矿弹窗模板中心 → OK 的 1080p 偏移（备用）。</summary>
+    public ConfigPoint SettlementConfirmOkOffset { get; set; } = new(84, 140);
+    /// <summary>余矿弹窗模板中心 → キャンセル 的 1080p 偏移（备用）。</summary>
+    public ConfigPoint SettlementConfirmCancelOffset { get; set; } = new(-117, 140);
     public bool SettlementConfirmLeftover { get; set; } = true;
     public SettlementPurchases SettlementPurchases { get; set; } = new();
-    public ConfigPoint TreasureStateTopLeft { get; set; } = new(775, 34);
-    public ConfigSize TreasureStateSize { get; set; } = new(376, 82);
+    public ConfigPoint TreasureStateTopLeft { get; set; } = new(700, 15);
+    /// <summary>「レリック選択」标题区；旧 775,34 376×82 在 1080p 裁掉左侧，分数约 0.11。</summary>
+    public ConfigSize TreasureStateSize { get; set; } = new(520, 120);
     public ConfigPoint TreasureOptionsTopLeft { get; set; } = new(478, 316);
     public ConfigSize TreasureOptionsSize { get; set; } = new(1081, 90);
     public double TreasureMatchThreshold { get; set; } = 0.58;
@@ -130,18 +139,18 @@ public sealed class AutomationConfig
     public ConfigPoint FirstClick { get; set; } = new(1143, 961);
     public ConfigPoint SecondClick { get; set; } = new(1611, 473);
     public ConfigPoint ThirdClick { get; set; } = new(1667, 836);
-    public ConfigPoint FourthClick { get; set; } = new(1700, 960);
+    public ConfigPoint FourthClick { get; set; } = new(1730, 1015);
     public ConfigPoint FifthClick { get; set; } = new(1672, 959);
-    public ConfigPoint PartnerClick { get; set; } = new(1724, 956);
-    public ConfigPoint BattleSkipClick { get; set; } = new(1816, 65);
+    public ConfigPoint PartnerClick { get; set; } = new(1655, 990);
+    public ConfigPoint BattleSkipClick { get; set; } = new(1805, 100);
     public ConfigPoint RouteClick { get; set; } = new(1680, 940);
     /// <summary>迷宫难度：keep=保持不变，custom=自选数字。</summary>
     public string MazeDifficultyMode { get; set; } = "keep";
     /// <summary>自选难度目标（仅 custom 生效）。</summary>
     public int MazeDifficultyTarget { get; set; } = 1;
-    // 难度大数字在左右箭头之间；ROI 过大易扫到旁路「100」把 140 盖掉。
-    public ConfigPoint DifficultyDigitTopLeft { get; set; } = new(1329, 326);
-    public ConfigSize DifficultyDigitSize { get; set; } = new(374, 125);
+    // 难度大数字在左右箭头之间；ROI 须对齐 DigitTemplateReader 的 840×300 归一化（1080p 为 420×150）。
+    public ConfigPoint DifficultyDigitTopLeft { get; set; } = new(1320, 310);
+    public ConfigSize DifficultyDigitSize { get; set; } = new(420, 150);
     // 4K 左上角 (1938,700)/(3724,700)；模板约 92×132 / 74×126。
     public ConfigPoint DifficultyDecreaseTopLeft { get; set; } = new(969, 350);
     public ConfigSize DifficultyDecreaseSize { get; set; } = new(140, 150);
@@ -156,8 +165,8 @@ public sealed class AutomationConfig
     public ConfigSize DifficultyListSize { get; set; } = new(182, 561);
     // 4K (2250,1860)
     public ConfigPoint DifficultyConfirmClick { get; set; } = new(1140, 975);
-    public int DoubleClickIntervalMs { get; set; } = 50;
-    public int DetectionPollIntervalMs { get; set; } = 120;
+    public int DoubleClickIntervalMs { get; set; } = 180;
+    public int DetectionPollIntervalMs { get; set; } = 50;
     public int DetectionTimeoutMs { get; set; } = 10000;
     /// <summary>迷宫轮次上限；0 表示无限。</summary>
     public int MazeRunLimit { get; set; }
@@ -166,8 +175,10 @@ public sealed class AutomationConfig
     public bool MainQuestTaskEnabled { get; set; } = true;
     public bool HardMainQuestTaskEnabled { get; set; }
     public bool DailyShopTaskEnabled { get; set; }
-    /// <summary>一条龙任务顺序，项为 maze / mainQuest / hardMainQuest / dailyShop。</summary>
-    public List<string> PipelineTaskOrder { get; set; } = ["maze", "mainQuest", "hardMainQuest", "dailyShop"];
+    public bool DailyFreeGiftTaskEnabled { get; set; }
+    /// <summary>一条龙任务顺序，项为 maze / mainQuest / hardMainQuest / dailyShop / dailyFreeGift。</summary>
+    public List<string> PipelineTaskOrder { get; set; } =
+        ["maze", "mainQuest", "hardMainQuest", "dailyShop", "dailyFreeGift"];
     // 每日商店连点（1080p）；注释为 4K 客户区坐标（÷2）。
     // 4K (3560,1930)
     public ConfigPoint DailyShopEntryClick { get; set; } = new(1780, 965);
@@ -196,6 +207,21 @@ public sealed class AutomationConfig
     public ConfigSize DailyShopTicketSize { get; set; } = new(500, 300);
     public ConfigPoint DailyShopScrollPoint { get; set; } = new(960, 700);
     public int DailyShopScrollWheelNotches { get; set; } = -8;
+    /// <summary>商店左栏「お得パック」固定点击（1080p）。</summary>
+    public ConfigPoint DailyFreeGiftOtokuClick { get; set; } = new(130, 380);
+    public ConfigPoint DailyFreeGiftOtokuTopLeft { get; set; } = new(40, 250);
+    public ConfigSize DailyFreeGiftOtokuSize { get; set; } = new(220, 450);
+    /// <summary>「デイリー無料パック」标题搜索区（1080p）。</summary>
+    public ConfigPoint DailyFreeGiftTitleTopLeft { get; set; } = new(1200, 700);
+    public ConfigSize DailyFreeGiftTitleSize { get; set; } = new(700, 350);
+    /// <summary>相对标题匹配中心的点击偏移（屏幕像素，偏下点価格/無料条）。</summary>
+    public ConfigPoint DailyFreeGiftTitleClickOffset { get; set; } = new(0, 90);
+    public ConfigPoint DailyFreeGiftPurchaseTopLeft { get; set; } = new(900, 880);
+    public ConfigSize DailyFreeGiftPurchaseSize { get; set; } = new(500, 160);
+    public ConfigPoint DailyFreeGiftOkTopLeft { get; set; } = new(700, 820);
+    public ConfigSize DailyFreeGiftOkSize { get; set; } = new(520, 200);
+    /// <summary>每日免费礼包上次领完的商店日（每天 5:00 刷新）。</summary>
+    public string? LastDailyFreeGiftDay { get; set; }
     // 主线 ROI（1080p）；模板匹配后点中心。
     public ConfigPoint MainQuestHomeTopLeft { get; set; } = new(1000, 880);
     public ConfigSize MainQuestHomeSize { get; set; } = new(340, 160);
@@ -203,8 +229,8 @@ public sealed class AutomationConfig
     public ConfigSize MainQuestBannerSize { get; set; } = new(520, 240);
     public ConfigPoint MainQuestStartTopLeft { get; set; } = new(1400, 880);
     public ConfigSize MainQuestStartSize { get; set; } = new(480, 160);
-    public ConfigPoint MainQuestSortieTopLeft { get; set; } = new(1400, 860);
-    public ConfigSize MainQuestSortieSize { get; set; } = new(480, 180);
+    public ConfigPoint MainQuestSortieTopLeft { get; set; } = new(1550, 960);
+    public ConfigSize MainQuestSortieSize { get; set; } = new(400, 120);
     /// <summary>剧情界面右上角展开菜单按钮（1080p）。</summary>
     public ConfigPoint MainQuestScenarioMenuTopLeft { get; set; } = new(1780, 0);
     public ConfigSize MainQuestScenarioMenuSize { get; set; } = new(140, 130);
@@ -234,13 +260,43 @@ public sealed class AutomationConfig
     public ConfigSize MainQuestRematchSize { get; set; } = new(360, 120);
     public ConfigPoint MainQuestToHomeTopLeft { get; set; } = new(40, 900);
     public ConfigSize MainQuestToHomeSize { get; set; } = new(400, 120);
-    public ConfigPoint HardQuestDifficultyTopLeft { get; set; } = new(900, 20);
-    public ConfigSize HardQuestDifficultySize { get; set; } = new(900, 220);
-    public ConfigPoint HardQuestBattleTopLeft { get; set; } = new(20, 40);
-    public ConfigSize HardQuestBattleSize { get; set; } = new(1100, 480);
+    public ConfigPoint HardQuestDifficultyTopLeft { get; set; } = new(1600, 780);
+    public ConfigSize HardQuestDifficultySize { get; set; } = new(300, 100);
+    /// <summary>关卡列表左下「MAIN QUEST BATTLE」红底标记（困难已选中）。</summary>
+    public ConfigPoint HardQuestBattleTopLeft { get; set; } = new(40, 700);
+    public ConfigSize HardQuestBattleSize { get; set; } = new(500, 120);
     /// <summary>左上角主界面房子按钮搜索区（1080p）。</summary>
     public ConfigPoint HudHomeTopLeft { get; set; } = new(0, 0);
     public ConfigSize HudHomeSize { get; set; } = new(220, 160);
+    /// <summary>右上角汉堡菜单搜索区（1080p）。</summary>
+    public ConfigPoint HudMenuTopLeft { get; set; } = new(1700, 0);
+    public ConfigSize HudMenuSize { get; set; } = new(220, 140);
+    /// <summary>菜单未命中时的菜单点击兜底（1080p）。</summary>
+    public ConfigPoint RedeemMenuClick { get; set; } = new(1868, 55);
+    /// <summary>菜单内「コード入力」搜索区（1080p，居中菜单）。</summary>
+    public ConfigPoint RedeemCodeEntryTopLeft { get; set; } = new(550, 350);
+    public ConfigSize RedeemCodeEntrySize { get; set; } = new(800, 350);
+    /// <summary>「コード入力」未命中时的点击兜底（1080p）。</summary>
+    public ConfigPoint RedeemCodeEntryClick { get; set; } = new(780, 460);
+    /// <summary>兑换码输入框点击点（1080p）。</summary>
+    public ConfigPoint RedeemInputClick { get; set; } = new(960, 510);
+    /// <summary>「決定」确认钮搜索区（1080p）。</summary>
+    public ConfigPoint RedeemConfirmTopLeft { get; set; } = new(900, 880);
+    public ConfigSize RedeemConfirmSize { get; set; } = new(500, 180);
+    /// <summary>「決定」未命中时的点击兜底（1080p）。</summary>
+    public ConfigPoint RedeemConfirmClick { get; set; } = new(1160, 975);
+    /// <summary>兑换成功「OK」搜索区（1080p）。</summary>
+    public ConfigPoint RedeemResultOkTopLeft { get; set; } = new(700, 820);
+    public ConfigSize RedeemResultOkSize { get; set; } = new(520, 200);
+    /// <summary>已兑换粉条提示搜索区（1080p，コード入力弹窗中部）。</summary>
+    public ConfigPoint RedeemAlreadyUsedTopLeft { get; set; } = new(550, 450);
+    public ConfigSize RedeemAlreadyUsedSize { get; set; } = new(820, 180);
+    /// <summary>コード入力「キャンセル」点击（1080p）。</summary>
+    public ConfigPoint RedeemCancelClick { get; set; } = new(760, 975);
+    /// <summary>底栏「ホーム」点击（1080p）；兑换结束后强制回主页。</summary>
+    public ConfigPoint RedeemBottomHomeClick { get; set; } = new(150, 990);
+    /// <summary>发现 GameKee 新兑换码时是否弹窗询问游戏内兑换。</summary>
+    public bool RedeemPromptOnNewCodes { get; set; } = true;
     public string ToggleHotkey { get; set; } = "F10";
     /// <summary>全局暂停/继续快捷键。</summary>
     public string PauseHotkey { get; set; } = "F10";
@@ -248,14 +304,23 @@ public sealed class AutomationConfig
     public string StopHotkey { get; set; } = "F11";
     /// <summary>是否已确认过首次运行提示弹窗。</summary>
     public bool FirstRunNoticeAccepted { get; set; }
+    /// <summary>首次迷宫时「商店未配置」提示是否已点过「继续」。</summary>
+    public bool SettlementShopHintAccepted { get; set; }
     /// <summary>上次日常已买够配置数量的游戏日（yyyy-MM-dd，每天 4:00 起算新一日）。</summary>
     public string? LastDailyShopDay { get; set; }
+
+    /// <summary>LastDailyShopDay 是否由购买前后次数复核产生；旧版本的未验证缓存不用于跳过。</summary>
+    public bool LastDailyShopDayVerified { get; set; }
+    /// <summary>日常四小类临时完成状态所属游戏日（每天 4:00 切日）。</summary>
+    public string? DailyShopSubcategoryStateDay { get; set; }
+    /// <summary>当日已完成的小类；仅临时跳过，不改用户配置数量。</summary>
+    public List<string> DailyShopCompletedSubcategories { get; set; } = [];
     /// <summary>商店「强化素材不足」绿提示搜索区（中心对齐绿条约 (962,411)；模板约 556×102@4K）。</summary>
     public ConfigPoint SettlementShopTipTopLeft { get; set; } = new(782, 351);
     public ConfigSize SettlementShopTipSize { get; set; } = new(360, 120);
-    /// <summary>结算左下「本日の購入回数：N / M」整行 ROI（1080p）。</summary>
-    public ConfigPoint SettlementPurchaseCountTopLeft { get; set; } = new(80, 855);
-    public ConfigSize SettlementPurchaseCountSize { get; set; } = new(480, 55);
+    /// <summary>结算左下角「本日の購入回数：已购/上限」整行 ROI（1080p；四个日常小类各自独立，切入后再读）。</summary>
+    public ConfigPoint SettlementPurchaseCountTopLeft { get; set; } = new(30, 875);
+    public ConfigSize SettlementPurchaseCountSize { get; set; } = new(580, 70);
     /// <summary>结算右上紫晶货币 ROI（1080p；略含图标，OCR 更稳）。</summary>
     public ConfigPoint SettlementCurrencyTopLeft { get; set; } = new(1650, 30);
     public ConfigSize SettlementCurrencySize { get; set; } = new(250, 70);
@@ -308,7 +373,8 @@ public sealed class AutomationConfig
             FirstSearchSize, SecondSearchSize, ThirdSearchSize, FourthSearchSize, FifthSearchSize,
             QuestBattleSimulateSize, QuestExercisesSize, QuestActivitySize, NavBackSize,
             HomeNavSize, QuestNavSize,
-            PartnerSelectionSize, BattleSkipSize, PopupCloseSize, EventChoiceSize, SettlementSearchSize,
+            PartnerSelectionSize, BattleSkipSize, PopupCloseSize, EventChoiceSize, EventRestSize,
+            SettlementSearchSize,
             SettlementMultiplierSize, SettlementBuyButtonSearchSize, SettlementConfirmSize,
             SettlementShopTipSize, SettlementPurchaseCountSize, SettlementCurrencySize,
             SettlementCategoryProbeHalfSize, SettlementCategorySearchSize,
@@ -318,9 +384,12 @@ public sealed class AutomationConfig
             MainQuestScenarioMenuSize, MainQuestScenarioSpeedSize, MainQuestScenarioOkSize,
             MainQuestScenarioChoiceSize, MainQuestScenarioPortraitSize,
             MainQuestSkipSize, MainQuestNextSize, MainQuestRematchSize, MainQuestToHomeSize,
-            HardQuestDifficultySize, HardQuestBattleSize, HudHomeSize,
+            HardQuestDifficultySize, HardQuestBattleSize, HudHomeSize, HudMenuSize,
+            RedeemCodeEntrySize, RedeemConfirmSize, RedeemResultOkSize, RedeemAlreadyUsedSize,
             DailyShopFreeOffSize, DailyShopExchangeSize, DailyShopExchangeHallSize,
-            DailyShopOkSize, DailyShopTicketSize
+            DailyShopOkSize, DailyShopTicketSize,
+            DailyFreeGiftOtokuSize, DailyFreeGiftTitleSize,
+            DailyFreeGiftPurchaseSize, DailyFreeGiftOkSize
         ];
         if (requiredSizes.Any(s => s.Width <= 0 || s.Height <= 0))
             throw new InvalidDataException("所有搜索区域尺寸必须大于零。");
@@ -355,7 +424,7 @@ public sealed class AutomationConfig
 
     public static IReadOnlyList<string> NormalizePipelineTaskOrder(IEnumerable<string>? order)
     {
-        string[] known = ["maze", "mainQuest", "hardMainQuest", "dailyShop"];
+        string[] known = ["maze", "mainQuest", "hardMainQuest", "dailyShop", "dailyFreeGift"];
         var result = new List<string>();
         if (order is not null)
         {

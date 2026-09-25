@@ -57,8 +57,9 @@ public static class LogBundleExporter
                     }
                 }
 
-                notes.Add("diagnostics 包含本次运行批次（run）下的全部截图：screenshots 为运行中按间隔归档的客户区整图，task-* 为各任务诊断图。");
-                notes.Add("一条龙会保留批次内每个任务的目录；开始下一次新运行前会清空上一批次目录。");
+                notes.Add("diagnostics 包含本次运行批次（run）下的全部截图：screenshots 为运行中按间隔归档的客户区整图，task-* 为各任务诊断图，error-stop-*.png 为错误自动停止时的界面截图。");
+                notes.Add("本地日志与诊断截图在程序启动时清理超过 3 天的旧文件；手动「导出」只打包当前批次相关内容。");
+                notes.Add("错误自动停止只截图不打包；本 ZIP 由手动「导出」统一打包。");
                 WriteText(archive, "说明.txt", string.Join(Environment.NewLine, notes));
             }
             File.Move(temporary, destination, overwrite: true);

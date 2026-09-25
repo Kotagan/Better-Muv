@@ -12,6 +12,8 @@ public static class ConfigStore
 
     public static string LogsDirectory { get; } = Path.Combine(UserDirectory, "logs");
 
+    public static string ExportsDirectory { get; } = Path.Combine(UserDirectory, "exports");
+
     /// <summary>
     /// 使用用户目录中的 config.json；若不存在则从程序目录默认配置复制。
     /// </summary>
@@ -45,9 +47,87 @@ public static class ConfigStore
             config.RouteSelectionTopLeft = new ConfigPoint(1500, 880);
             config.RouteSelectionSize = new ConfigSize(360, 180);
         }
-        if (MigrateTreasureRecognitionDefaults(config) || MigrateExecutionDefaults(config))
+        if (MigrateTreasureRecognitionDefaults(config) || MigrateExecutionDefaults(config) ||
+            MigrateDiagnosticDirectory(config))
             Save(config);
         return config;
+    }
+
+    /// <summary>
+    /// 诊断根目录（相对名或绝对路径）。会剥掉误写入的 run-/task- 嵌套。
+    /// </summary>
+    public static string CanonicalDiagnosticDirectory(string? configured)
+    {
+        if (string.IsNullOrWhiteSpace(configured))
+            return "diagnostics";
+
+        string value = configured.Trim();
+        if (!Path.IsPathRooted(value))
+        {
+            int runRel = IndexOfPathSegment(value, "run-");
+            if (runRel > 0)
+                value = value[..runRel].TrimEnd('\\', '/');
+            return string.IsNullOrWhiteSpace(value) ? "diagnostics" : value;
+        }
+
+        string full = Path.GetFullPath(value);
+        string diagToken = $"{Path.DirectorySeparatorChar}diagnostics{Path.DirectorySeparatorChar}";
+        int diagIdx = full.IndexOf(diagToken, StringComparison.OrdinalIgnoreCase);
+        if (diagIdx >= 0)
+            return full[..(diagIdx + "diagnostics".Length + 1)];
+
+        string diagEnd = $"{Path.DirectorySeparatorChar}diagnostics";
+        if (full.EndsWith(diagEnd, StringComparison.OrdinalIgnoreCase))
+            return full;
+
+        int runIdx = full.IndexOf($"{Path.DirectorySeparatorChar}run-", StringComparison.OrdinalIgnoreCase);
+        if (runIdx > 0)
+            return full[..runIdx];
+
+        return full;
+    }
+
+    /// <summary>解析为绝对诊断根目录。</summary>
+    public static string ResolveDiagnosticRoot(string? configured)
+    {
+        string canonical = CanonicalDiagnosticDirectory(configured);
+        return Path.IsPathRooted(canonical)
+            ? Path.GetFullPath(canonical)
+            : Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, canonical));
+    }
+
+    private static int IndexOfPathSegment(string path, string prefix)
+    {
+        string normalized = path.Replace('/', Path.DirectorySeparatorChar);
+        string token = Path.DirectorySeparatorChar + prefix;
+        int idx = normalized.IndexOf(token, StringComparison.OrdinalIgnoreCase);
+        if (idx >= 0)
+            return idx;
+        if (normalized.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            return 0;
+        return -1;
+    }
+
+    private static bool MigrateDiagnosticDirectory(AutomationConfig config)
+    {
+        string canonical = CanonicalDiagnosticDirectory(config.DiagnosticDirectory);
+        string preferred = canonical;
+        try
+        {
+            string absolute = ResolveDiagnosticRoot(canonical);
+            string defaultRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "diagnostics"));
+            if (string.Equals(absolute, defaultRoot, StringComparison.OrdinalIgnoreCase))
+                preferred = "diagnostics";
+        }
+        catch
+        {
+            /* 保持 canonical */
+        }
+
+        if (string.Equals(preferred, config.DiagnosticDirectory, StringComparison.OrdinalIgnoreCase))
+            return false;
+        config.DiagnosticDirectory = preferred;
+        return true;
     }
 
     private static bool MigrateExecutionDefaults(AutomationConfig config)
@@ -70,11 +150,41 @@ public static class ConfigStore
             config.GameLaunchTimeoutSeconds = 90;
             changed = true;
         }
+        // 余矿 OK/取消：旧默认偏上，按 4K 实机截图校正到按钮中心。
+        if (config.SettlementConfirmOk is { X: 1115, Y: 790 })
+        {
+            config.SettlementConfirmOk = new ConfigPoint(1130, 820);
+            changed = true;
+        }
+        if (config.SettlementConfirmCancel is { X: 810, Y: 790 })
+        {
+            config.SettlementConfirmCancel = new ConfigPoint(809, 820);
+            changed = true;
+        }
+        if (config.SettlementConfirmTopLeft is { X: 685, Y: 520 } &&
+            config.SettlementConfirmSize is { Width: 592, Height: 424 })
+        {
+            config.SettlementConfirmTopLeft = new ConfigPoint(650, 500);
+            config.SettlementConfirmSize = new ConfigSize(680, 450);
+            changed = true;
+        }
         return changed;
     }
 
-    public static void Save(AutomationConfig config) =>
-        config.Save(EnsureUserConfigPath());
+    public static void Save(AutomationConfig config)
+    {
+        // 运行中 DiagnosticDirectory 可能被设为 task 子目录；落盘只保留根路径，避免嵌套污染。
+        string runtime = config.DiagnosticDirectory;
+        config.DiagnosticDirectory = CanonicalDiagnosticDirectory(runtime);
+        try
+        {
+            config.Save(EnsureUserConfigPath());
+        }
+        finally
+        {
+            config.DiagnosticDirectory = runtime;
+        }
+    }
 
     /// <summary>
     /// 将旧版过大的宝物 ROI / 过低阈值迁移到当前默认，避免读到过期 AppData 配置。
@@ -122,13 +232,14 @@ public static class ConfigStore
             changed = true;
         }
 
-        // 难度数字 ROI：保持能完整框住三位数的区域；过窄会裁掉末位。
-        // 误读 140→100 由 DigitOcrService 形态学区分开口 4 / 斜杠 0 解决，不靠过度收窄 ROI。
-        if (config.DifficultyDigitTopLeft is { X: 1200, Y: 340 } &&
-            config.DifficultyDigitSize is { Width: 280, Height: 90 })
+        // 难度数字 ROI：须对齐 DigitTemplateReader（归一化 840×300 → 1080p 420×150）。
+        // 旧 374×125 / 1329,326 在 1080p 上读不出；1200,340 更旧。
+        if (config.DifficultyDigitTopLeft is { X: 1200, Y: 340 } or { X: 1329, Y: 326 } ||
+            config.DifficultyDigitSize.Width < 400 ||
+            config.DifficultyDigitSize.Height < 140)
         {
-            config.DifficultyDigitTopLeft = new ConfigPoint(1329, 326);
-            config.DifficultyDigitSize = new ConfigSize(374, 125);
+            config.DifficultyDigitTopLeft = new ConfigPoint(1320, 310);
+            config.DifficultyDigitSize = new ConfigSize(420, 150);
             changed = true;
         }
 
@@ -140,15 +251,15 @@ public static class ConfigStore
             changed = true;
         }
 
-        // 提速：旧轮询 250ms / 双击间隔 100ms 偏慢。
-        if (config.DetectionPollIntervalMs > 120)
+        // 识别轮询：旧默认 120ms 偏慢；统一收到 50ms。双击过短仍抬到更稳节奏。
+        if (config.DetectionPollIntervalMs != 50)
         {
-            config.DetectionPollIntervalMs = 120;
+            config.DetectionPollIntervalMs = 50;
             changed = true;
         }
-        if (config.DoubleClickIntervalMs > 50)
+        if (config.DoubleClickIntervalMs < 150)
         {
-            config.DoubleClickIntervalMs = 50;
+            config.DoubleClickIntervalMs = 180;
             changed = true;
         }
 
@@ -198,23 +309,61 @@ public static class ConfigStore
             changed = true;
         }
 
-        // 主页底栏「クエスト」：旧 65×50 小于模板(~103×72)且起点偏右会裁切枪图标。
-        if (config.FirstSearchSize.Width < 180 ||
-            config.FirstSearchSize.Height < 100 ||
-            config.SearchTopLeft.X > 1080 ||
-            config.SearchTopLeft.Y > 940)
+        // 主页「クエスト」改用文字紧裁模板；旧 POI 对枪图标过紧，跨 4K/1080p 时容易掉分。
+        if (config.SearchTopLeft is { X: 1091, Y: 957 } or { X: 1122, Y: 961 } or { X: 1000, Y: 910 } ||
+            config.FirstSearchSize is { Width: 126, Height: 95 } or { Width: 120, Height: 90 } or { Width: 260, Height: 150 })
         {
-            config.SearchTopLeft = new ConfigPoint(1000, 910);
-            config.FirstSearchSize = new ConfigSize(260, 150);
+            config.SearchTopLeft = new ConfigPoint(1080, 950);
+            config.FirstSearchSize = new ConfigSize(150, 110);
+            config.QuestNavTopLeft = new ConfigPoint(1080, 950);
+            config.QuestNavSize = new ConfigSize(150, 110);
             changed = true;
         }
 
-        // 探索按钮 ROI：需盖住完整粉钮「探索」，旧 182×38 只扫到上沿。
-        if (config.FourthSearchSize.Width < 280 || config.FourthSearchSize.Height < 90)
+        // 探索按钮 ROI：需盖住完整粉钮「探索」。
+        // 旧 182×38 / 1560,910 320×120 在 1080p 只擦到上沿，匹配约 0.25。
+        if (config.FourthSearchTopLeft is { X: 1560, Y: 910 } or { X: 1602, Y: 927 } ||
+            config.FourthSearchSize.Width < 360 ||
+            config.FourthSearchSize.Height < 130 ||
+            config.FourthClick.Y < 1000)
         {
-            config.FourthSearchTopLeft = new ConfigPoint(1560, 910);
-            config.FourthSearchSize = new ConfigSize(320, 120);
-            config.FourthClick = new ConfigPoint(1700, 960);
+            config.FourthSearchTopLeft = new ConfigPoint(1540, 940);
+            config.FourthSearchSize = new ConfigSize(380, 140);
+            config.FourthClick = new ConfigPoint(1730, 1015);
+            changed = true;
+        }
+
+        // 战斗 SKIP：旧 ROI 偏上只擦到钮上沿（分数 ~0.23）；下移并加大盖住完整「SKIP」。
+        if (config.BattleSkipTopLeft is { X: 1760, Y: 40 } or { X: 1720, Y: 20 } or { X: 1700, Y: 50 } ||
+            config.BattleSkipSize.Height < 70 ||
+            config.BattleSkipSize.Width < 160 ||
+            config.BattleSkipClick is { X: 1816, Y: 65 } or { X: 1825, Y: 88 })
+        {
+            config.BattleSkipTopLeft = new ConfigPoint(1720, 70);
+            config.BattleSkipSize = new ConfigSize(180, 70);
+            config.BattleSkipClick = new ConfigPoint(1805, 100);
+            changed = true;
+        }
+
+        // 遗物选择标题 ROI：旧 775,34 376×82 裁掉「レ」侧，1080p 分数约 0.11。
+        if (config.TreasureStateTopLeft is { X: 775, Y: 34 } ||
+            config.TreasureStateSize.Width < 480 ||
+            config.TreasureStateSize.Height < 100)
+        {
+            config.TreasureStateTopLeft = new ConfigPoint(700, 15);
+            config.TreasureStateSize = new ConfigSize(520, 120);
+            changed = true;
+        }
+
+        // 伙伴/助っ人「立ち去る」：旧 1633,919 183×75 偏右上，类型选择页约 0.09。
+        if (config.PartnerSelectionTopLeft is { X: 1633, Y: 919 } ||
+            config.PartnerSelectionSize.Width < 300 ||
+            config.PartnerSelectionSize.Height < 110 ||
+            config.PartnerClick is { X: 1724, Y: 956 })
+        {
+            config.PartnerSelectionTopLeft = new ConfigPoint(1540, 930);
+            config.PartnerSelectionSize = new ConfigSize(360, 130);
+            config.PartnerClick = new ConfigPoint(1655, 990);
             changed = true;
         }
 
@@ -228,6 +377,37 @@ public static class ConfigStore
             changed = true;
         }
 
+        // 主线出击钮：旧 ROI (1400,860) 偏上，匹配点易落在粉钮上方白区。
+        if (config.MainQuestSortieTopLeft is { X: 1400, Y: 860 } ||
+            config.MainQuestSortieTopLeft.Y < 920 ||
+            config.MainQuestSortieSize.Height > 150)
+        {
+            config.MainQuestSortieTopLeft = new ConfigPoint(1550, 960);
+            config.MainQuestSortieSize = new ConfigSize(400, 120);
+            changed = true;
+        }
+
+        // 困难「難易度変更」：旧 ROI (900,20) 在屏幕顶部，实际在关卡开始钮上方。
+        if (config.HardQuestDifficultyTopLeft is { X: 900, Y: 20 } ||
+            config.HardQuestDifficultyTopLeft.Y < 700 ||
+            config.HardQuestDifficultySize.Width > 500)
+        {
+            config.HardQuestDifficultyTopLeft = new ConfigPoint(1600, 780);
+            config.HardQuestDifficultySize = new ConfigSize(300, 100);
+            changed = true;
+        }
+
+        // 困难红底 MAIN QUEST BATTLE：旧 ROI 在顶部或 y=740 偏窄，实机横幅约 (40,700)。
+        if (config.HardQuestBattleTopLeft is { X: 20, Y: 40 } or { X: 40, Y: 740 } ||
+            config.HardQuestBattleTopLeft.Y < 650 ||
+            config.HardQuestBattleSize.Height > 200 ||
+            config.HardQuestBattleSize.Width < 450)
+        {
+            config.HardQuestBattleTopLeft = new ConfigPoint(40, 700);
+            config.HardQuestBattleSize = new ConfigSize(500, 120);
+            changed = true;
+        }
+
         // 底栏ホーム粉：旧 ROI (30,900) 偏到屏幕左侧，扫不到真正粉钮（约 612,930）。
         if (config.HomeNavTopLeft is { X: 30, Y: 900 } ||
             config.HomeNavTopLeft.X < 400 ||
@@ -235,14 +415,6 @@ public static class ConfigStore
         {
             config.HomeNavTopLeft = new ConfigPoint(590, 910);
             config.HomeNavSize = new ConfigSize(220, 140);
-            changed = true;
-        }
-
-        if (config.QuestNavTopLeft is { X: 1000, Y: 900 } ||
-            config.QuestNavSize.Width < 200)
-        {
-            config.QuestNavTopLeft = new ConfigPoint(1000, 910);
-            config.QuestNavSize = new ConfigSize(260, 150);
             changed = true;
         }
 
@@ -341,6 +513,8 @@ public static class ConfigStore
         config.EventChoiceSize = defaults.EventChoiceSize;
         config.EventChoiceFirstOption = defaults.EventChoiceFirstOption;
         config.EventChoiceSecondOption = defaults.EventChoiceSecondOption;
+        config.EventRestTopLeft = defaults.EventRestTopLeft;
+        config.EventRestSize = defaults.EventRestSize;
         config.SettlementTopLeft = defaults.SettlementTopLeft;
         config.SettlementSearchTopLeft = defaults.SettlementSearchTopLeft;
         config.SettlementSearchSize = defaults.SettlementSearchSize;
@@ -367,6 +541,8 @@ public static class ConfigStore
         config.SettlementConfirmSize = defaults.SettlementConfirmSize;
         config.SettlementConfirmCancel = defaults.SettlementConfirmCancel;
         config.SettlementConfirmOk = defaults.SettlementConfirmOk;
+        config.SettlementConfirmOkOffset = defaults.SettlementConfirmOkOffset;
+        config.SettlementConfirmCancelOffset = defaults.SettlementConfirmCancelOffset;
         config.TreasureStateTopLeft = defaults.TreasureStateTopLeft;
         config.TreasureStateSize = defaults.TreasureStateSize;
         config.TreasureOptionsTopLeft = defaults.TreasureOptionsTopLeft;

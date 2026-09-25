@@ -184,10 +184,13 @@ public sealed class DailyShopAutomation
             click = new ConfigPoint(
                 (int)Math.Round(ticket.Center.X),
                 (int)Math.Round(ticket.Center.Y));
-            _log($"每日商店：已识别「2500」（{ticket.Score:F4}），点击中心（{click.X},{click.Y}）。");
+            _log($"每日商店：已识别「2500」（{ticket.Score:F4}），屏幕中心（{click.X},{click.Y}）。");
         }
 
-        window = await _screen.ClickAsync(window, click, "2500票券", cancellationToken);
+        // 模板中心已经是屏幕坐标，不能再按 1080p 配置点缩放一次。
+        _log($"每日商店：点击 2500 票券屏幕坐标（{click.X},{click.Y}）。");
+        await _screen.ClickScreenAsync(
+            window, new System.Windows.Point(click.X, click.Y), cancellationToken);
         await Task.Delay(AfterItemClickDelayMs, cancellationToken);
         window = _screen.Refresh(window);
         window = await ExchangeThenOkAsync(window, "2500票券", cancellationToken);

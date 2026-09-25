@@ -4,7 +4,7 @@
   Publish Better-Muv (self-contained win-x64) and build an Inno Setup installer.
 #>
 param(
-    [string]$Version = "1.0.4",
+    [string]$Version = "",
     [string]$Configuration = "Release",
     [string]$Runtime = "win-x64"
 )
@@ -13,6 +13,16 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 if (-not (Test-Path (Join-Path $root "Better-Muv.csproj"))) {
     $root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+}
+$project = Join-Path $root "Better-Muv.csproj"
+
+if ([string]::IsNullOrWhiteSpace($Version)) {
+    $csprojRaw = Get-Content -LiteralPath $project -Raw
+    if ($csprojRaw -notmatch '<Version>([^<]+)</Version>') {
+        throw "Cannot read <Version> from Better-Muv.csproj"
+    }
+    $Version = $Matches[1].Trim()
+    Write-Host "==> Version from csproj: $Version"
 }
 
 if ($Version -notmatch '^(\d+\.\d+\.\d+)(?:-[0-9A-Za-z.-]+)?$') {
@@ -24,7 +34,6 @@ $publishRoot = [IO.Path]::GetFullPath((Join-Path $root "publish"))
 $publishDir = [IO.Path]::GetFullPath((Join-Path $publishRoot "$Version\$Runtime"))
 $distDir = Join-Path $root "dist"
 $iss = Join-Path $root "installer\Better-Muv.iss"
-$project = Join-Path $root "Better-Muv.csproj"
 
 Write-Host "==> Publish $project ($Configuration, $Runtime, v$Version)"
 if (Test-Path $publishDir) {
@@ -44,9 +53,6 @@ dotnet publish $project `
     --self-contained true `
     -p:PublishSingleFile=false `
     -p:IncludeNativeLibrariesForSelfExtract=true `
-    -p:Version=$Version `
-    -p:AssemblyVersion=$numericVersion `
-    -p:FileVersion=$numericVersion `
     -o $publishDir
 if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed." }
 

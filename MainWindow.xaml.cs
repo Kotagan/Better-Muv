@@ -1,4 +1,6 @@
 using System.ComponentModel;
+using System.Diagnostics;
+using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -25,6 +27,7 @@ public partial class MainWindow : Window
     private bool _resumeDiagnosticTask;
     private readonly string _configPath = ConfigStore.EnsureUserConfigPath();
     private readonly object _logFileLock = new();
+    private string _sessionLogPath = ConfigStore.EnsureLogFilePath();
     private CancellationTokenSource? _runCancellation;
     private bool _pauseRequested;
     private bool _isPaused;
@@ -34,11 +37,12 @@ public partial class MainWindow : Window
     private const string FluentPlay = "\uE768";
     private const string FluentPause = "\uE769";
     private const string FluentStop = "\uE71A";
-    private enum ActiveTask { None, Maze, MainQuest, HardMainQuest, DailyShop, Pipeline }
+    private enum ActiveTask { None, Maze, MainQuest, HardMainQuest, DailyShop, DailyFreeGift, Redeem, Pipeline }
     private ActiveTask _activeTask = ActiveTask.None;
     private readonly List<string> _pipelineQueue = [];
     private int _pipelineIndex;
     private bool _suppressPipelineToggle;
+    private bool _suppressMazeRunLimit;
     private Point _taskDragStart;
     private Border? _taskDragSource;
     private bool _taskDragPending;
@@ -48,12 +52,54 @@ public partial class MainWindow : Window
         InitializeComponent();
         _captureSession = new GameCaptureSession(AppendLog);
         InitializeShopPanel();
+        InitializeMazeRunLimitCombo();
+        InitializeRedemptionPanel();
         LoadSettings();
         LoadRunWindows();
         SetPage(Page.Home);
+        try
+        {
+            AutomationConfig config = ConfigStore.Load();
+            LocalDataRetention.CleanupOlderThanDays(
+                LocalDataRetention.RetainDays,
+                ConfigStore.LogsDirectory,
+                ConfigStore.ResolveDiagnosticRoot(config.DiagnosticDirectory));
+        }
+        catch { /* 启动清理静默失败 */ }
+
+        string version = GetAppVersion();
+        string title = $"Better-Muv {version} · 更好的 MuvLuv Girls Garden";
+        Title = title;
+        TitleBarText.Text = title;
+        AppendLog("版本：" + version);
         AppendLog("配置文件：" + _configPath);
         AppendLog("等待启动截图器。");
         ContentRendered += MainWindow_ContentRendered;
+    }
+
+    private static string GetAppVersion()
+    {
+        Assembly asm = Assembly.GetExecutingAssembly();
+        string? informational =
+            asm.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+        if (!string.IsNullOrWhiteSpace(informational))
+        {
+            // start.bat 注入 {csproj Version}+local-yyyyMMdd-HHmmss，保留 stamp 方便确认是刚编的。
+            int plus = informational.IndexOf('+');
+            if (plus >= 0)
+            {
+                string core = informational[..plus];
+                string meta = informational[(plus + 1)..];
+                if (meta.StartsWith("local-", StringComparison.OrdinalIgnoreCase))
+                    return $"{core} · {meta}";
+                return core;
+            }
+
+            return informational;
+        }
+
+        Version? v = asm.GetName().Version;
+        return v is null ? "?" : $"{v.Major}.{v.Minor}.{v.Build}";
     }
 
     private async void MainWindow_ContentRendered(object? sender, EventArgs e)
@@ -78,7 +124,7 @@ public partial class MainWindow : Window
 
     private enum Page { Home, Execute, Settings, MazeSettings }
     private enum MazeSettingsSection { Basic, Treasure, Shop }
-    private enum SettingsSection { General, Hotkey }
+    private enum SettingsSection { General, Hotkey, Redeem }
 
     private void SetPage(Page page)
     {
@@ -107,49 +153,55 @@ public partial class MainWindow : Window
 
     private void ShowSettingsGeneralButton_Click(object sender, RoutedEventArgs e) => ShowSettingsSection(SettingsSection.General);
     private void ShowSettingsHotkeyButton_Click(object sender, RoutedEventArgs e) => ShowSettingsSection(SettingsSection.Hotkey);
+    private void ShowSettingsRedeemButton_Click(object sender, RoutedEventArgs e)
+    {
+        RefreshRedemptionUi();
+        ShowSettingsSection(SettingsSection.Redeem);
+        _ = SyncRedemptionCodesAsync(quiet: true, promptIfNew: false);
+    }
 
     private void ShowSettingsSection(SettingsSection section)
     {
         SettingsGeneralSection.Visibility = section == SettingsSection.General ? Visibility.Visible : Visibility.Collapsed;
         SettingsHotkeySection.Visibility = section == SettingsSection.Hotkey ? Visibility.Visible : Visibility.Collapsed;
+        SettingsRedeemSection.Visibility = section == SettingsSection.Redeem ? Visibility.Visible : Visibility.Collapsed;
         var active = new SolidColorBrush(Color.FromRgb(59, 66, 78));
         SettingsGeneralNavButton.Background = section == SettingsSection.General ? active : Brushes.Transparent;
         SettingsHotkeyNavButton.Background = section == SettingsSection.Hotkey ? active : Brushes.Transparent;
+        SettingsRedeemNavButton.Background = section == SettingsSection.Redeem ? active : Brushes.Transparent;
     }
 
     private async void CaptureStartButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_captureSession.IsRunning)
+        // 首页「启动一条龙」= 按任务列表开关与顺序串行执行（不再只开截图器）。
+        if (_activeTask == ActiveTask.Pipeline && (_runCancellation is not null || _isPaused))
         {
-            _captureSession.Stop();
-            UpdateCaptureUi();
+            StopButton_Click(sender, e);
             return;
         }
 
-        CaptureStartButton.IsEnabled = false;
-        try
-        {
-            await _captureSession.StartAsync(ConfigStore.Load(), CancellationToken.None);
-            UpdateCaptureUi();
-        }
-        catch (Exception exception)
-        {
-            CaptureStatusText.Text = "启动失败：" + exception.Message;
-            AppendLog("截图器启动失败：" + exception.Message);
-        }
-        finally
-        {
-            CaptureStartButton.IsEnabled = true;
-        }
+        if (_runCancellation is not null || _isPaused)
+            return;
+
+        SetPage(Page.Execute);
+        OpenLogDrawer();
+        PersistPipelineSelectionFromUi();
+        AutomationConfig pipelineCfg = ConfigStore.Load();
+        if (pipelineCfg.MazeTaskEnabled && !PromptSettlementShopIfNeeded())
+            return;
+        if (!await EnsureCaptureForRunAsync("pipeline"))
+            return;
+        await StartPipelineAsync();
     }
 
     private void UpdateCaptureUi()
     {
+        bool pipelineBusy = _activeTask == ActiveTask.Pipeline && (_runCancellation is not null || _isPaused);
         bool running = _captureSession.IsRunning;
-        CaptureStartButton.Content = running ? "■  停止" : "▷  启动";
+        CaptureStartButton.Content = pipelineBusy ? "■  停止" : "▷  启动";
         CaptureStartButton.Background = new SolidColorBrush(Color.FromRgb(59, 66, 78));
-        CaptureStatusText.Text = running ? "已启动，迷宫探索可执行。" : "未启动。启动后才能执行迷宫探索。";
-        MazeStatusText.Text = running ? "截图器已就绪。" : "等待截图器启动。";
+        MazeStatusText.Text = pipelineBusy ? "一条龙运行中。"
+            : running ? "截图器已就绪。" : "等待截图器启动。";
     }
 
     private void LaunchGameCheckBox_Changed(object sender, RoutedEventArgs e)
@@ -275,30 +327,66 @@ public partial class MainWindow : Window
 
     private async void ExportLogButton_Click(object sender, RoutedEventArgs e)
     {
-        var dialog = new SaveFileDialog
-        {
-            Title = "导出日志和截图",
-            Filter = "日志与截图压缩包 (*.zip)|*.zip",
-            DefaultExt = ".zip",
-            FileName = $"Better-Muv-log-{DateTime.Now:yyyyMMdd-HHmmss}.zip",
-            AddExtension = true,
-            OverwritePrompt = true
-        };
-        if (dialog.ShowDialog(this) != true)
+        if (!ExportLogButton.IsEnabled)
             return;
+
+        ExportLogButton.IsEnabled = false;
+        string previousContent = ExportLogButton.Content as string ?? "导出";
+        ExportLogButton.Content = "导出中…";
         try
         {
+            Directory.CreateDirectory(ConfigStore.ExportsDirectory);
+            string destination = Path.Combine(
+                ConfigStore.ExportsDirectory,
+                $"Better-Muv-log-{DateTime.Now:yyyyMMdd-HHmmss}.zip");
             string directory = _diagnosticSession.RunDirectoryPath
                 ?? _diagnosticSession.DirectoryPath
                 ?? "";
             string log = LogBox.Text ?? "";
             var screenshot = WindowCaptureService.LatestScreenshot;
-            int count = await Task.Run(() => LogBundleExporter.Export(dialog.FileName, log, directory, screenshot));
-            AppendLog($"已导出日志和截图（{count} 张）：{dialog.FileName}");
+            int count = await Task.Run(() => LogBundleExporter.Export(destination, log, directory, screenshot));
+            AppendLog($"已导出日志和截图（{count} 张）：{destination}");
+            OpenExportLocation(destination);
         }
         catch (Exception exception)
         {
             AppendLog("导出日志失败：" + exception.Message);
+        }
+        finally
+        {
+            ExportLogButton.Content = previousContent;
+            ExportLogButton.IsEnabled = true;
+        }
+    }
+
+    private static void OpenExportLocation(string filePath)
+    {
+        try
+        {
+            if (File.Exists(filePath))
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = "explorer.exe",
+                    Arguments = $"/select,\"{filePath}\"",
+                    UseShellExecute = true
+                });
+                return;
+            }
+
+            string? folder = Path.GetDirectoryName(filePath);
+            if (!string.IsNullOrWhiteSpace(folder) && Directory.Exists(folder))
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = folder,
+                    UseShellExecute = true
+                });
+            }
+        }
+        catch
+        {
+            /* 打开资源管理器失败不影响导出本身 */
         }
     }
 
@@ -312,8 +400,7 @@ public partial class MainWindow : Window
         }
         _isLogDrawerOpen = true;
         LogDrawerColumn.Width = new GridLength(LogDrawerWidth);
-        if (ExecutionPanel.Visibility == Visibility.Visible)
-            LogDrawer.Visibility = Visibility.Visible;
+        LogDrawer.Visibility = Visibility.Visible;
     }
 
     private void CollapseLogDrawer()
@@ -328,9 +415,27 @@ public partial class MainWindow : Window
 
     private void BrowseGameButton_Click(object sender, RoutedEventArgs e)
     {
-        var dialog = new OpenFileDialog { Title = "选择 MuvLuv Girls Garden 程序", Filter = "程序 (*.exe)|*.exe" };
+        var dialog = new OpenFileDialog
+        {
+            Title = "选择游戏程序或快捷方式",
+            Filter = "游戏程序|muv_luv_girlsgardenx_cl.exe|快捷方式 (*.lnk)|*.lnk|程序 (*.exe)|*.exe",
+            // 不自动解引用，避免快捷方式目标被静默换成 schtasks 等非游戏路径。
+            DereferenceLinks = false
+        };
         if (dialog.ShowDialog(this) != true) return;
-        ApplyGamePath(dialog.FileName, quiet: false);
+        string selected = dialog.FileName;
+        string? normalized = GamePathLocator.TryNormalize(selected, out string reason);
+        if (normalized is null)
+        {
+            AppendLog("未保存游戏路径：" + reason);
+            if (!string.Equals(selected, reason, StringComparison.Ordinal))
+                AppendLog("你选择的是：" + selected);
+            return;
+        }
+
+        if (!string.Equals(selected, normalized, StringComparison.OrdinalIgnoreCase))
+            AppendLog($"快捷方式已解析：{selected} → {normalized}");
+        ApplyGamePath(normalized, quiet: false);
     }
 
     private void FindGameButton_Click(object sender, RoutedEventArgs e)
@@ -347,12 +452,20 @@ public partial class MainWindow : Window
 
     private void ApplyGamePath(string path, bool quiet)
     {
-        GamePathBox.Text = path;
+        string? normalized = GamePathLocator.TryNormalize(path, out string reason);
+        if (normalized is null)
+        {
+            if (!quiet)
+                AppendLog("未保存游戏路径：" + reason);
+            return;
+        }
+
+        GamePathBox.Text = normalized;
         AutomationConfig config = ConfigStore.Load();
-        config.GameExecutablePath = path;
+        config.GameExecutablePath = normalized;
         ConfigStore.Save(config);
         if (!quiet)
-            AppendLog("已设置游戏路径：" + path);
+            AppendLog($"已永久保存游戏路径：{normalized}\n配置文件：{ConfigStore.UserConfigPath}");
     }
 
     private void EnsureGamePathResolved()
@@ -364,7 +477,8 @@ public partial class MainWindow : Window
             return;
         }
 
-        string? found = GamePathLocator.TryFind(config.GameExecutablePath);
+        // 配置里是无效路径（如误选的 schtasks.exe）时尝试自动找回并写回。
+        string? found = GamePathLocator.TryFind(null);
         if (found is null)
         {
             GamePathBox.Text = config.GameExecutablePath;
@@ -372,18 +486,28 @@ public partial class MainWindow : Window
         }
 
         ApplyGamePath(found, quiet: true);
-        AppendLog("已自动找到游戏：" + found);
+        AppendLog("已自动纠正并永久保存游戏路径：" + found);
     }
 
     private void SaveGameLaunchSettings()
     {
-        AutomationConfig config = ConfigStore.Load();
-        config.GameExecutablePath = GamePathBox.Text.Trim();
-        ConfigStore.Save(config);
+        string path = GamePathBox.Text.Trim();
+        if (string.IsNullOrWhiteSpace(path))
+            return;
+        ApplyGamePath(path, quiet: true);
     }
 
     private async Task<bool> EnsureCaptureForRunAsync(string statusTarget)
     {
+        AutomationConfig config = ConfigStore.Load();
+        if (_captureSession.IsRunning && !_captureSession.HasLiveWindow(config))
+        {
+            AppendLog(config.LaunchGameWithCapture
+                ? "游戏窗口已消失，将重新启动游戏并截图器。"
+                : "游戏窗口已消失，请先打开游戏；正在重试连接截图器。");
+            _captureSession.Stop();
+        }
+
         if (_captureSession.IsRunning)
             return true;
         if (statusTarget == "maze")
@@ -394,9 +518,11 @@ public partial class MainWindow : Window
             HardMainQuestStatusText.Text = "正在启动截图器…";
         else if (statusTarget == "dailyShop")
             DailyShopStatusText.Text = "正在启动截图器…";
+        else if (statusTarget == "dailyFreeGift")
+            DailyFreeGiftStatusText.Text = "正在启动截图器…";
         try
         {
-            await _captureSession.StartAsync(ConfigStore.Load(), CancellationToken.None);
+            await _captureSession.StartAsync(config, CancellationToken.None);
             UpdateCaptureUi();
             AppendLog("执行任务前已自动启动截图器。");
             return true;
@@ -412,6 +538,8 @@ public partial class MainWindow : Window
                 HardMainQuestStatusText.Text = message;
             else if (statusTarget == "dailyShop")
                 DailyShopStatusText.Text = message;
+            else if (statusTarget == "dailyFreeGift")
+                DailyFreeGiftStatusText.Text = message;
             AppendLog("无法执行任务：" + message);
             UpdateRunUi();
             return false;
@@ -428,6 +556,8 @@ public partial class MainWindow : Window
         if (_runCancellation is not null || _isPaused)
             return;
         OpenLogDrawer();
+        if (!PromptSettlementShopIfNeeded())
+            return;
         if (!await EnsureCaptureForRunAsync("maze"))
             return;
         await StartMazeAsync();
@@ -478,6 +608,21 @@ public partial class MainWindow : Window
         await StartDailyShopAsync();
     }
 
+    private async void RunDailyFreeGiftButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_activeTask == ActiveTask.DailyFreeGift && (_runCancellation is not null || _isPaused))
+        {
+            PauseResumeButton_Click(sender, e);
+            return;
+        }
+        if (_runCancellation is not null || _isPaused)
+            return;
+        OpenLogDrawer();
+        if (!await EnsureCaptureForRunAsync("dailyFreeGift"))
+            return;
+        await StartDailyFreeGiftAsync();
+    }
+
     private async void RunPipelineButton_Click(object sender, RoutedEventArgs e)
     {
         if (_activeTask == ActiveTask.Pipeline && (_runCancellation is not null || _isPaused))
@@ -488,17 +633,55 @@ public partial class MainWindow : Window
         if (_runCancellation is not null || _isPaused)
             return;
         OpenLogDrawer();
+        // 一条龙含迷宫时同样提示未配置商店。
+        PersistPipelineSelectionFromUi();
+        AutomationConfig pipelineCfg = ConfigStore.Load();
+        if (pipelineCfg.MazeTaskEnabled && !PromptSettlementShopIfNeeded())
+            return;
         if (!await EnsureCaptureForRunAsync("pipeline"))
             return;
         await StartPipelineAsync();
     }
 
+    /// <summary>
+    /// 初次跑迷宫且结算商店无任何购买配置时弹窗；选「是」打开商店设置并中止本次启动。
+    /// </summary>
+    private bool PromptSettlementShopIfNeeded()
+    {
+        AutomationConfig config = ConfigStore.Load();
+        if (config.SettlementShopHintAccepted || config.SettlementPurchases.HasAnyPurchase())
+            return true;
+
+        MessageBoxResult choice = MessageBox.Show(
+            this,
+            "当前结算商店尚未配置购买项。\n迷宫结算时将跳过购买，直接点「完了」。\n\n是否现在去配置？",
+            "结算商店提示",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Information);
+
+        if (choice == MessageBoxResult.Yes)
+        {
+            LoadSettings();
+            SetPage(Page.MazeSettings);
+            ShowMazeSettingsSection(MazeSettingsSection.Shop);
+            AppendLog("已打开结算商店设置；配置购买数量后再启动迷宫。");
+            return false;
+        }
+
+        config.SettlementShopHintAccepted = true;
+        ConfigStore.Save(config);
+        AppendLog("已跳过商店配置提示；之后可在迷宫设置 → 结算商店中配置购买。");
+        return true;
+    }
+
     private async Task StartMazeAsync()
     {
         if (_runCancellation is not null) return;
+        bool resume = _isPaused;
+        BeginRunLogSession(resume);
         PersistMazeSettings(quiet: true);
-        _resumeDiagnosticTask = _isPaused;
-        BeginDiagnosticRun(_resumeDiagnosticTask);
+        _resumeDiagnosticTask = resume;
+        BeginDiagnosticRun(resume);
         _isPaused = false;
         _pauseRequested = false;
         _activeTask = ActiveTask.Maze;
@@ -517,6 +700,7 @@ public partial class MainWindow : Window
         catch (Exception exception)
         {
             AppendLog("迷宫错误：" + exception.Message);
+            CaptureOnAutoStop("maze");
         }
         finally
         {
@@ -527,8 +711,10 @@ public partial class MainWindow : Window
     private async Task StartMainQuestAsync()
     {
         if (_runCancellation is not null) return;
-        _resumeDiagnosticTask = _isPaused;
-        BeginDiagnosticRun(_resumeDiagnosticTask);
+        bool resume = _isPaused;
+        BeginRunLogSession(resume);
+        _resumeDiagnosticTask = resume;
+        BeginDiagnosticRun(resume);
         _isPaused = false;
         _pauseRequested = false;
         _activeTask = ActiveTask.MainQuest;
@@ -547,6 +733,7 @@ public partial class MainWindow : Window
         catch (Exception exception)
         {
             AppendLog("自动主线错误：" + exception.Message);
+            CaptureOnAutoStop("mainQuest");
         }
         finally
         {
@@ -557,8 +744,10 @@ public partial class MainWindow : Window
     private async Task StartHardMainQuestAsync()
     {
         if (_runCancellation is not null) return;
-        _resumeDiagnosticTask = _isPaused;
-        BeginDiagnosticRun(_resumeDiagnosticTask);
+        bool resume = _isPaused;
+        BeginRunLogSession(resume);
+        _resumeDiagnosticTask = resume;
+        BeginDiagnosticRun(resume);
         _isPaused = false;
         _pauseRequested = false;
         _activeTask = ActiveTask.HardMainQuest;
@@ -577,6 +766,7 @@ public partial class MainWindow : Window
         catch (Exception exception)
         {
             AppendLog("困难主线错误：" + exception.Message);
+            CaptureOnAutoStop("hardMainQuest");
         }
         finally
         {
@@ -587,8 +777,10 @@ public partial class MainWindow : Window
     private async Task StartDailyShopAsync()
     {
         if (_runCancellation is not null) return;
-        _resumeDiagnosticTask = _isPaused;
-        BeginDiagnosticRun(_resumeDiagnosticTask);
+        bool resume = _isPaused;
+        BeginRunLogSession(resume);
+        _resumeDiagnosticTask = resume;
+        BeginDiagnosticRun(resume);
         _isPaused = false;
         _pauseRequested = false;
         _activeTask = ActiveTask.DailyShop;
@@ -607,6 +799,40 @@ public partial class MainWindow : Window
         catch (Exception exception)
         {
             AppendLog("每日商店错误：" + exception.Message);
+            CaptureOnAutoStop("dailyShop");
+        }
+        finally
+        {
+            FinishRunSession();
+        }
+    }
+
+    private async Task StartDailyFreeGiftAsync()
+    {
+        if (_runCancellation is not null) return;
+        bool resume = _isPaused;
+        BeginRunLogSession(resume);
+        _resumeDiagnosticTask = resume;
+        BeginDiagnosticRun(resume);
+        _isPaused = false;
+        _pauseRequested = false;
+        _activeTask = ActiveTask.DailyFreeGift;
+        _runCancellation = new CancellationTokenSource();
+        UpdateRunUi();
+        try
+        {
+            WindowState = WindowState.Minimized;
+            await Task.Delay(250, _runCancellation.Token);
+            await RunDailyFreeGiftCoreAsync(_runCancellation.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            AppendLog(_pauseRequested ? "每日免费礼包已暂停。" : "每日免费礼包已停止。");
+        }
+        catch (Exception exception)
+        {
+            AppendLog("每日免费礼包错误：" + exception.Message);
+            CaptureOnAutoStop("dailyFreeGift");
         }
         finally
         {
@@ -619,12 +845,15 @@ public partial class MainWindow : Window
         if (_runCancellation is not null) return;
         PersistMazeSettings(quiet: true);
         bool resume = _isPaused && _activeTask == ActiveTask.Pipeline;
+        BeginRunLogSession(resume);
         _resumeDiagnosticTask = resume;
         BeginDiagnosticRun(resume);
         _isPaused = false;
         _pauseRequested = false;
         if (!resume)
         {
+            // 以当前任务列表 UI（顺序 + 开关）为准并写回配置，避免“看起来开了但没跑”。
+            PersistPipelineSelectionFromUi();
             AutomationConfig config = ConfigStore.Load();
             _pipelineQueue.Clear();
             foreach (string id in AutomationConfig.NormalizePipelineTaskOrder(config.PipelineTaskOrder))
@@ -637,18 +866,24 @@ public partial class MainWindow : Window
                     _pipelineQueue.Add(id);
                 else if (id == "dailyShop" && config.DailyShopTaskEnabled)
                     _pipelineQueue.Add(id);
+                else if (id == "dailyFreeGift" && config.DailyFreeGiftTaskEnabled)
+                    _pipelineQueue.Add(id);
             }
 
             _pipelineIndex = 0;
-            if (_pipelineQueue.Contains("maze") && config.MazeRunLimit == 0)
-                AppendLog("一条龙包含迷宫且次数为 0（无限），后续任务会等迷宫结束后才会开始。");
             if (_pipelineQueue.Count == 0)
             {
-                AppendLog("一条龙未启用任何任务，已取消。");
+                AppendLog("一条龙未启用任何任务，已取消。请打开右侧开关后再运行。");
                 _activeTask = ActiveTask.None;
                 UpdateRunUi();
                 return;
             }
+
+            ClearPipelineResultHints();
+            AppendLog("一条龙队列：" + string.Join(" → ", _pipelineQueue.Select(PipelineTaskDisplayName)) +
+                      $"（共 {_pipelineQueue.Count} 项）。");
+            if (_pipelineQueue.Contains("maze") && config.MazeRunLimit == 0)
+                AppendLog("提示：迷宫次数为「无限」，后续任务会等迷宫手动停止后才会开始。");
         }
 
         _activeTask = ActiveTask.Pipeline;
@@ -661,15 +896,43 @@ public partial class MainWindow : Window
             while (_pipelineIndex < _pipelineQueue.Count)
             {
                 string id = _pipelineQueue[_pipelineIndex];
+                SetPipelineResultHint(id, PipelineHintState.Running);
                 AppendLog($"一条龙：开始 {PipelineTaskDisplayName(id)}（{_pipelineIndex + 1}/{_pipelineQueue.Count}）。");
-                if (id == "maze")
-                    await RunMazeCoreAsync(_runCancellation.Token);
-                else if (id == "hardMainQuest")
-                    await RunHardMainQuestCoreAsync(_runCancellation.Token);
-                else if (id == "dailyShop")
-                    await RunDailyShopCoreAsync(_runCancellation.Token);
-                else
-                    await RunMainQuestCoreAsync(_runCancellation.Token);
+                try
+                {
+                    if (id == "maze")
+                        await RunMazeCoreAsync(_runCancellation.Token);
+                    else if (id == "hardMainQuest")
+                        await RunHardMainQuestCoreAsync(_runCancellation.Token);
+                    else if (id == "dailyShop")
+                        await RunDailyShopCoreAsync(_runCancellation.Token);
+                    else if (id == "dailyFreeGift")
+                        await RunDailyFreeGiftCoreAsync(_runCancellation.Token);
+                    else
+                        await RunMainQuestCoreAsync(_runCancellation.Token);
+                    SetPipelineResultHint(id, PipelineHintState.Success);
+                }
+                catch (OperationCanceledException)
+                {
+                    SetPipelineResultHint(
+                        id,
+                        _pauseRequested ? PipelineHintState.Running : PipelineHintState.Cancelled,
+                        _pauseRequested ? "已暂停，可继续" : null);
+                    if (_pauseRequested)
+                    {
+                        TextBlock? tip = PipelineResultTipFor(id);
+                        if (tip is not null)
+                            tip.Text = "已暂停";
+                    }
+                    throw;
+                }
+                catch (Exception taskEx)
+                {
+                    SetPipelineResultHint(id, PipelineHintState.Failure, taskEx.Message);
+                    AppendLog($"一条龙：{PipelineTaskDisplayName(id)} 出错，继续下一项 — {taskEx.Message}");
+                    CaptureOnAutoStop(id);
+                }
+
                 _pipelineIndex++;
             }
 
@@ -682,11 +945,89 @@ public partial class MainWindow : Window
         catch (Exception exception)
         {
             AppendLog("一条龙错误：" + exception.Message);
+            CaptureOnAutoStop("pipeline");
         }
         finally
         {
             FinishRunSession();
         }
+    }
+
+    private enum PipelineHintState { Running, Success, Failure, Cancelled }
+
+    private void ClearPipelineResultHints()
+    {
+        foreach (TextBlock tip in PipelineResultTips())
+        {
+            tip.Text = "";
+            tip.Visibility = Visibility.Collapsed;
+            tip.ToolTip = null;
+        }
+    }
+
+    private IEnumerable<TextBlock> PipelineResultTips()
+    {
+        yield return MazePipelineResultText;
+        yield return MainQuestPipelineResultText;
+        yield return HardMainQuestPipelineResultText;
+        yield return DailyShopPipelineResultText;
+        yield return DailyFreeGiftPipelineResultText;
+    }
+
+    private TextBlock? PipelineResultTipFor(string id) => id switch
+    {
+        "maze" => MazePipelineResultText,
+        "mainQuest" => MainQuestPipelineResultText,
+        "hardMainQuest" => HardMainQuestPipelineResultText,
+        "dailyShop" => DailyShopPipelineResultText,
+        "dailyFreeGift" => DailyFreeGiftPipelineResultText,
+        _ => null
+    };
+
+    private void SetPipelineResultHint(string id, PipelineHintState state, string? detail = null)
+    {
+        TextBlock? tip = PipelineResultTipFor(id);
+        if (tip is null) return;
+
+        tip.Visibility = Visibility.Visible;
+        tip.ToolTip = string.IsNullOrWhiteSpace(detail) ? null : detail;
+        switch (state)
+        {
+            case PipelineHintState.Running:
+                tip.Text = "执行中…";
+                tip.Foreground = new SolidColorBrush(Color.FromRgb(0x3E, 0xA6, 0xF1));
+                break;
+            case PipelineHintState.Success:
+                tip.Text = "成功";
+                tip.Foreground = new SolidColorBrush(Color.FromRgb(0x3D, 0xC9, 0x7A));
+                break;
+            case PipelineHintState.Failure:
+                tip.Text = "失败";
+                tip.Foreground = new SolidColorBrush(Color.FromRgb(0xF0, 0x6B, 0x6B));
+                break;
+            case PipelineHintState.Cancelled:
+                tip.Text = "已中断";
+                tip.Foreground = new SolidColorBrush(Color.FromRgb(0xE0, 0xA8, 0x45));
+                break;
+        }
+    }
+
+    /// <summary>把任务页当前顺序与「纳入一条龙」开关写回配置。</summary>
+    private void PersistPipelineSelectionFromUi()
+    {
+        AutomationConfig config = ConfigStore.Load();
+        config.MazeTaskEnabled = MazePipelineToggle.IsChecked == true;
+        config.MainQuestTaskEnabled = MainQuestPipelineToggle.IsChecked == true;
+        config.HardMainQuestTaskEnabled = HardMainQuestPipelineToggle.IsChecked == true;
+        config.DailyShopTaskEnabled = DailyShopPipelineToggle.IsChecked == true;
+        config.DailyFreeGiftTaskEnabled = DailyFreeGiftPipelineToggle.IsChecked == true;
+        config.PipelineTaskOrder = TaskListPanel.Children
+            .OfType<FrameworkElement>()
+            .Select(card => card.Tag as string)
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Cast<string>()
+            .ToList();
+        ConfigStore.Save(config);
     }
 
     private Task RunMazeCoreAsync(CancellationToken cancellationToken)
@@ -713,38 +1054,37 @@ public partial class MainWindow : Window
         return automation.RunOnceAsync(cancellationToken);
     }
 
+    private Task RunDailyFreeGiftCoreAsync(CancellationToken cancellationToken)
+    {
+        var automation = new DailyFreeGiftAutomation(PrepareDiagnosticTask("dailyFreeGift"), AppendLog);
+        return automation.RunOnceAsync(cancellationToken);
+    }
+
     private void BeginDiagnosticRun(bool resume)
     {
         AutomationConfig config = ConfigStore.Load();
-        string root = Path.IsPathRooted(config.DiagnosticDirectory)
-            ? config.DiagnosticDirectory
-            : Path.Combine(AppContext.BaseDirectory, config.DiagnosticDirectory);
+        string root = ConfigStore.ResolveDiagnosticRoot(config.DiagnosticDirectory);
         if (!resume)
             WindowCaptureService.ResetScreenshot();
         string runDirectory = _diagnosticSession.BeginRun(root, resume);
         WindowCaptureService.SetArchiveDirectory(Path.Combine(runDirectory, "screenshots"));
         if (!resume)
-        {
-            int removed = _diagnosticSession.LastCleanupRemovedDirectories;
-            AppendLog(removed > 0
-                ? $"已清空上一批次诊断目录（{removed} 个），本轮：{runDirectory}"
-                : $"本轮诊断批次目录：{runDirectory}");
-        }
+            AppendLog($"本轮诊断批次：{Path.GetFileName(runDirectory)}");
     }
 
     private AutomationConfig PrepareDiagnosticTask(string taskKey)
     {
         AutomationConfig config = ConfigStore.Load();
-        string root = Path.IsPathRooted(config.DiagnosticDirectory)
-            ? config.DiagnosticDirectory
-            : Path.Combine(AppContext.BaseDirectory, config.DiagnosticDirectory);
+        string root = ConfigStore.ResolveDiagnosticRoot(config.DiagnosticDirectory);
         bool resume = _resumeDiagnosticTask && _diagnosticSession.TaskKey == taskKey;
         _resumeDiagnosticTask = false;
         // 单任务入口若未先 BeginRun，这里兜底；一条龙已在 StartPipeline 建好批次。
         if (_diagnosticSession.RunDirectoryPath is null)
             BeginDiagnosticRun(resume);
-        config.DiagnosticDirectory = _diagnosticSession.Begin(root, taskKey, resume);
-        AppendLog($"{PipelineTaskDisplayName(taskKey)}诊断截图目录：{config.DiagnosticDirectory}");
+        string taskDirectory = _diagnosticSession.Begin(root, taskKey, resume);
+        // 仅运行时指向任务目录；ConfigStore.Save 会把根路径写回配置，避免嵌套。
+        config.DiagnosticDirectory = taskDirectory;
+        AppendLog($"{PipelineTaskDisplayName(taskKey)}诊断目录：{Path.GetFileName(taskDirectory)}");
         return config;
     }
 
@@ -766,6 +1106,33 @@ public partial class MainWindow : Window
 
         ReloadShopPurchases();
         UpdateRunUi();
+        UpdateCaptureUi();
+    }
+
+    /// <summary>
+    /// 错误自动停止：只截游戏界面到诊断目录，不打包；手动「导出」时一并打进 ZIP。
+    /// 须在恢复本窗口之前调用（此时游戏仍在前台）。
+    /// </summary>
+    private void CaptureOnAutoStop(string reason)
+    {
+        string? directory = _diagnosticSession.DirectoryPath
+            ?? _diagnosticSession.RunDirectoryPath;
+        AutoStopCapture.SaveErrorUi(directory, TryCaptureGameClientForAutoStop(), reason, AppendLog);
+    }
+
+    private BitmapSource? TryCaptureGameClientForAutoStop()
+    {
+        try
+        {
+            AutomationConfig config = ConfigStore.Load();
+            var capture = new WindowCaptureService();
+            GameWindow window = capture.FindWindow(config);
+            return capture.CaptureClient(window);
+        }
+        catch
+        {
+            return WindowCaptureService.LatestScreenshot?.Image;
+        }
     }
 
     private static string PipelineTaskDisplayName(string id) => id switch
@@ -773,6 +1140,8 @@ public partial class MainWindow : Window
         "maze" => "迷宫探索",
         "hardMainQuest" => "自动困难主线",
         "dailyShop" => "每日商店",
+        "dailyFreeGift" => "每日免费礼包",
+        "redeem" => "兑换码",
         _ => "自动主线任务"
     };
 
@@ -788,6 +1157,8 @@ public partial class MainWindow : Window
                 _ = StartHardMainQuestAsync();
             else if (_activeTask == ActiveTask.DailyShop)
                 _ = StartDailyShopAsync();
+            else if (_activeTask == ActiveTask.DailyFreeGift)
+                _ = StartDailyFreeGiftAsync();
             else
                 _ = StartMazeAsync();
             return;
@@ -829,6 +1200,8 @@ public partial class MainWindow : Window
         bool mainQuestUi = _activeTask == ActiveTask.MainQuest;
         bool hardMainQuestUi = _activeTask == ActiveTask.HardMainQuest;
         bool dailyShopUi = _activeTask == ActiveTask.DailyShop;
+        bool dailyFreeGiftUi = _activeTask == ActiveTask.DailyFreeGift;
+        bool redeemUi = _activeTask == ActiveTask.Redeem;
         bool pipelineUi = _activeTask == ActiveTask.Pipeline;
         bool idle = !running && !_isPaused;
 
@@ -836,24 +1209,28 @@ public partial class MainWindow : Window
         RunMainQuestButton.IsEnabled = idle || mainQuestUi;
         RunHardMainQuestButton.IsEnabled = idle || hardMainQuestUi;
         RunDailyShopButton.IsEnabled = idle || dailyShopUi;
+        RunDailyFreeGiftButton.IsEnabled = idle || dailyFreeGiftUi;
         RunPipelineButton.IsEnabled = idle || pipelineUi;
         MazePipelineToggle.IsEnabled = idle;
         MainQuestPipelineToggle.IsEnabled = idle;
         HardMainQuestPipelineToggle.IsEnabled = idle;
         DailyShopPipelineToggle.IsEnabled = idle;
+        DailyFreeGiftPipelineToggle.IsEnabled = idle;
 
         // 独立暂停键隐藏；运行键兼任暂停/继续，旁边保留停止键。
         PauseResumeButton.Visibility = Visibility.Collapsed;
         PauseMainQuestButton.Visibility = Visibility.Collapsed;
         PauseHardMainQuestButton.Visibility = Visibility.Collapsed;
         PauseDailyShopButton.Visibility = Visibility.Collapsed;
+        PauseDailyFreeGiftButton.Visibility = Visibility.Collapsed;
         PausePipelineButton.Visibility = Visibility.Collapsed;
 
         StopButton.Visibility = showControls && mazeUi ? Visibility.Visible : Visibility.Collapsed;
         StopMainQuestButton.Visibility = showControls && mainQuestUi ? Visibility.Visible : Visibility.Collapsed;
         StopHardMainQuestButton.Visibility = showControls && hardMainQuestUi ? Visibility.Visible : Visibility.Collapsed;
         StopDailyShopButton.Visibility = showControls && dailyShopUi ? Visibility.Visible : Visibility.Collapsed;
-        StopPipelineButton.Visibility = showControls && pipelineUi ? Visibility.Visible : Visibility.Collapsed;
+        StopDailyFreeGiftButton.Visibility = showControls && dailyFreeGiftUi ? Visibility.Visible : Visibility.Collapsed;
+        StopPipelineButton.Visibility = showControls && (pipelineUi || redeemUi) ? Visibility.Visible : Visibility.Collapsed;
         RunPipelineButton.Visibility = Visibility.Visible;
 
         // 运行中：暂停 + 停止；暂停中：继续(播放) + 停止。
@@ -862,10 +1239,12 @@ public partial class MainWindow : Window
         RunMainQuestButton.Content = mainQuestUi && showControls ? runGlyph : FluentPlay;
         RunHardMainQuestButton.Content = hardMainQuestUi && showControls ? runGlyph : FluentPlay;
         RunDailyShopButton.Content = dailyShopUi && showControls ? runGlyph : FluentPlay;
+        RunDailyFreeGiftButton.Content = dailyFreeGiftUi && showControls ? runGlyph : FluentPlay;
         RunMazeButton.ToolTip = mazeUi && running ? "暂停" : mazeUi && _isPaused ? "继续" : "运行";
         RunMainQuestButton.ToolTip = mainQuestUi && running ? "暂停" : mainQuestUi && _isPaused ? "继续" : "运行";
         RunHardMainQuestButton.ToolTip = hardMainQuestUi && running ? "暂停" : hardMainQuestUi && _isPaused ? "继续" : "运行";
         RunDailyShopButton.ToolTip = dailyShopUi && running ? "暂停" : dailyShopUi && _isPaused ? "继续" : "运行";
+        RunDailyFreeGiftButton.ToolTip = dailyFreeGiftUi && running ? "暂停" : dailyFreeGiftUi && _isPaused ? "继续" : "运行";
         RunPipelineButton.Content = pipelineUi && running ? "暂停"
             : pipelineUi && _isPaused ? "继续"
             : "运行";
@@ -874,16 +1253,19 @@ public partial class MainWindow : Window
         StopMainQuestButton.Content = FluentStop;
         StopHardMainQuestButton.Content = FluentStop;
         StopDailyShopButton.Content = FluentStop;
+        StopDailyFreeGiftButton.Content = FluentStop;
         StopPipelineButton.Content = FluentStop;
         StopButton.ToolTip = "停止";
         StopMainQuestButton.ToolTip = "停止";
         StopHardMainQuestButton.ToolTip = "停止";
         StopDailyShopButton.ToolTip = "停止";
+        StopDailyFreeGiftButton.ToolTip = "停止";
         StopPipelineButton.ToolTip = "停止";
         StopButton.IsEnabled = true;
         StopMainQuestButton.IsEnabled = true;
         StopHardMainQuestButton.IsEnabled = true;
         StopDailyShopButton.IsEnabled = true;
+        StopDailyFreeGiftButton.IsEnabled = true;
         StopPipelineButton.IsEnabled = true;
 
         MazeStatusText.Text = mazeUi && running ? "迷宫探索运行中。"
@@ -898,6 +1280,9 @@ public partial class MainWindow : Window
         DailyShopStatusText.Text = dailyShopUi && running ? "每日商店运行中。"
             : dailyShopUi && _isPaused ? "每日商店已暂停。"
             : "";
+        DailyFreeGiftStatusText.Text = dailyFreeGiftUi && running ? "每日免费礼包运行中。"
+            : dailyFreeGiftUi && _isPaused ? "每日免费礼包已暂停。"
+            : "";
     }
 
     private void LoadSettings()
@@ -905,9 +1290,11 @@ public partial class MainWindow : Window
         AutomationConfig config = ConfigStore.Load();
         LaunchGameCheckBox.IsChecked = config.LaunchGameWithCapture;
         EnsureGamePathResolved();
-        MazeRunLimitBox.Text = config.MazeRunLimit.ToString();
-        DifficultyKeepRadio.IsChecked = MazeDifficultyRunner.NormalizeMode(config.MazeDifficultyMode) != "custom";
-        DifficultyCustomRadio.IsChecked = !DifficultyKeepRadio.IsChecked;
+        SetMazeRunLimitCombo(config.MazeRunLimit);
+        string difficultyMode = MazeDifficultyRunner.NormalizeMode(config.MazeDifficultyMode);
+        DifficultyKeepRadio.IsChecked = difficultyMode == "keep";
+        DifficultyCustomRadio.IsChecked = difficultyMode == "custom";
+        DifficultyTowerRadio.IsChecked = difficultyMode == "tower";
         DifficultyTargetBox.Text = config.MazeDifficultyTarget.ToString();
         DifficultyTargetBox.IsEnabled = DifficultyCustomRadio.IsChecked == true;
         TreasurePriorityList.Items.Clear();
@@ -917,11 +1304,15 @@ public partial class MainWindow : Window
         PauseHotkeyBox.Text = config.PauseHotkey;
         StopHotkeyBox.Text = config.StopHotkey;
         DiagnosticModeCheckBox.IsChecked = config.SaveDiagnostics;
+        _suppressRedeemPromptToggle = true;
+        RedeemPromptCheckBox.IsChecked = config.RedeemPromptOnNewCodes;
+        _suppressRedeemPromptToggle = false;
         _suppressPipelineToggle = true;
         MazePipelineToggle.IsChecked = config.MazeTaskEnabled;
         MainQuestPipelineToggle.IsChecked = config.MainQuestTaskEnabled;
         HardMainQuestPipelineToggle.IsChecked = config.HardMainQuestTaskEnabled;
         DailyShopPipelineToggle.IsChecked = config.DailyShopTaskEnabled;
+        DailyFreeGiftPipelineToggle.IsChecked = config.DailyFreeGiftTaskEnabled;
         _suppressPipelineToggle = false;
         ApplyTaskListOrder(config.PipelineTaskOrder);
         UpdateCaptureUi();
@@ -936,6 +1327,7 @@ public partial class MainWindow : Window
         config.MainQuestTaskEnabled = MainQuestPipelineToggle.IsChecked == true;
         config.HardMainQuestTaskEnabled = HardMainQuestPipelineToggle.IsChecked == true;
         config.DailyShopTaskEnabled = DailyShopPipelineToggle.IsChecked == true;
+        config.DailyFreeGiftTaskEnabled = DailyFreeGiftPipelineToggle.IsChecked == true;
         ConfigStore.Save(config);
     }
 
@@ -1115,7 +1507,8 @@ public partial class MainWindow : Window
             ["maze"] = MazeTaskCard,
             ["mainQuest"] = MainQuestTaskCard,
             ["hardMainQuest"] = HardMainQuestTaskCard,
-            ["dailyShop"] = DailyShopTaskCard
+            ["dailyShop"] = DailyShopTaskCard,
+            ["dailyFreeGift"] = DailyFreeGiftTaskCard
         };
         TaskListPanel.Children.Clear();
         foreach (string id in AutomationConfig.NormalizePipelineTaskOrder(order))
@@ -1125,7 +1518,121 @@ public partial class MainWindow : Window
         }
     }
 
-    private void MazeRunLimitBox_LostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e) => PersistMazeSettings();
+    private void InitializeMazeRunLimitCombo()
+    {
+        MazeRunLimitCombo.Items.Clear();
+        MazeRunLimitCombo.Items.Add("无限");
+        foreach (int n in new[] { 1, 2, 3, 5, 10, 20, 30, 50, 100 })
+            MazeRunLimitCombo.Items.Add(n.ToString());
+    }
+
+    private void MazeRunLimitCombo_Loaded(object sender, RoutedEventArgs e)
+    {
+        WireMazeRunLimitEditableBox();
+    }
+
+    private void WireMazeRunLimitEditableBox()
+    {
+        if (MazeRunLimitCombo.Template?.FindName("PART_EditableTextBox", MazeRunLimitCombo) is not TextBox box)
+            return;
+        box.PreviewTextInput -= MazeRunLimitEditable_PreviewTextInput;
+        box.PreviewTextInput += MazeRunLimitEditable_PreviewTextInput;
+        box.PreviewKeyDown -= MazeRunLimitEditable_PreviewKeyDown;
+        box.PreviewKeyDown += MazeRunLimitEditable_PreviewKeyDown;
+        DataObject.RemovePastingHandler(box, MazeRunLimitEditable_Pasting);
+        DataObject.AddPastingHandler(box, MazeRunLimitEditable_Pasting);
+        InputMethod.SetIsInputMethodEnabled(box, false);
+        box.MaxLength = 4;
+    }
+
+    private void MazeRunLimitEditable_PreviewTextInput(object sender, TextCompositionEventArgs e)
+    {
+        if (sender is not TextBox box)
+            return;
+        // 仅允许数字；从「无限」开始敲数字时先清空再填入。
+        if (string.IsNullOrEmpty(e.Text) || !e.Text.All(char.IsDigit))
+        {
+            e.Handled = true;
+            return;
+        }
+
+        if (box.Text is "无限" or "∞")
+        {
+            box.Text = e.Text;
+            box.CaretIndex = box.Text.Length;
+            e.Handled = true;
+        }
+    }
+
+    private void MazeRunLimitEditable_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key is Key.Space)
+            e.Handled = true;
+    }
+
+    private void MazeRunLimitEditable_Pasting(object sender, DataObjectPastingEventArgs e)
+    {
+        if (!e.DataObject.GetDataPresent(DataFormats.Text))
+        {
+            e.CancelCommand();
+            return;
+        }
+
+        string text = (e.DataObject.GetData(DataFormats.Text) as string ?? "").Trim();
+        if (text.Length == 0 || !text.All(char.IsDigit))
+            e.CancelCommand();
+    }
+
+    private static string FormatMazeRunLimit(int limit) => limit <= 0 ? "无限" : limit.ToString();
+
+    private static int ParseMazeRunLimitText(string? text, int fallback)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return fallback;
+        string t = text.Trim();
+        if (t is "无限" or "∞" or "0")
+            return 0;
+        return int.TryParse(t, out int n) && n >= 0 ? n : fallback;
+    }
+
+    private void SetMazeRunLimitCombo(int limit)
+    {
+        _suppressMazeRunLimit = true;
+        try
+        {
+            string display = FormatMazeRunLimit(limit);
+            MazeRunLimitCombo.SelectedIndex = MazeRunLimitCombo.Items.IndexOf(display);
+            MazeRunLimitCombo.Text = display;
+            if (MazeRunLimitCombo.Template?.FindName("PART_EditableTextBox", MazeRunLimitCombo) is TextBox box)
+                box.Text = display;
+        }
+        finally
+        {
+            _suppressMazeRunLimit = false;
+        }
+    }
+
+    private void MazeRunLimitCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!IsLoaded || _suppressMazeRunLimit) return;
+        if (MazeRunLimitCombo.SelectedItem is string selected)
+        {
+            MazeRunLimitCombo.Text = selected;
+            if (MazeRunLimitCombo.Template?.FindName("PART_EditableTextBox", MazeRunLimitCombo) is TextBox box)
+                box.Text = selected;
+        }
+        PersistMazeSettings(quiet: true);
+    }
+
+    private void MazeRunLimitCombo_LostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        if (!IsLoaded || _suppressMazeRunLimit) return;
+        PersistMazeSettings(quiet: true);
+        // 把用户填的 0 规范化成「无限」显示。
+        AutomationConfig config = ConfigStore.Load();
+        SetMazeRunLimitCombo(config.MazeRunLimit);
+    }
+
     private void DifficultyMode_Changed(object sender, RoutedEventArgs e)
     {
         if (!IsLoaded) return;
@@ -1137,10 +1644,16 @@ public partial class MainWindow : Window
     private void PersistMazeSettings(bool quiet = false)
     {
         AutomationConfig config = ConfigStore.Load();
-        if (!int.TryParse(MazeRunLimitBox.Text.Trim(), out int limit) || limit < 0) limit = config.MazeRunLimit;
+        string raw = MazeRunLimitCombo.Template?.FindName("PART_EditableTextBox", MazeRunLimitCombo) is TextBox box
+            ? box.Text
+            : MazeRunLimitCombo.Text;
+        int limit = ParseMazeRunLimitText(raw, config.MazeRunLimit);
         if (!int.TryParse(DifficultyTargetBox.Text.Trim(), out int target) || target is < 1 or > 999) target = config.MazeDifficultyTarget;
         config.MazeRunLimit = limit;
-        config.MazeDifficultyMode = DifficultyCustomRadio.IsChecked == true ? "custom" : "keep";
+        config.MazeDifficultyMode =
+            DifficultyTowerRadio.IsChecked == true ? "tower"
+            : DifficultyCustomRadio.IsChecked == true ? "custom"
+            : "keep";
         config.MazeDifficultyTarget = target;
         config.TreasurePriority = TreasurePriorityList.Items.Cast<string>()
             .Select(display => TreasureNames.FirstOrDefault(item => item.Value == display).Key ?? display).ToList();
@@ -1265,7 +1778,18 @@ public partial class MainWindow : Window
     private void AppendLog(string message)
     {
         string line = $"[{DateTime.Now:HH:mm:ss}] {message}";
-        try { lock (_logFileLock) File.AppendAllText(ConfigStore.EnsureLogFilePath(), line + Environment.NewLine); } catch { }
+        try
+        {
+            lock (_logFileLock)
+            {
+                string path = string.IsNullOrWhiteSpace(_sessionLogPath)
+                    ? ConfigStore.EnsureLogFilePath()
+                    : _sessionLogPath;
+                File.AppendAllText(path, line + Environment.NewLine);
+            }
+        }
+        catch { /* 日志落盘失败不影响主流程 */ }
+
         if (!Dispatcher.CheckAccess())
         {
             Dispatcher.Invoke(() => AppendLogToUi(line));
@@ -1278,5 +1802,34 @@ public partial class MainWindow : Window
     {
         LogBox.AppendText(line + Environment.NewLine);
         LogBox.ScrollToEnd();
+    }
+
+    /// <summary>
+    /// 重新开始任务/一条龙：清空界面日志并新开日志文件。暂停后继续则保留。
+    /// </summary>
+    private void BeginRunLogSession(bool resume)
+    {
+        if (resume)
+            return;
+
+        void ClearUi()
+        {
+            LogBox.Clear();
+        }
+
+        if (Dispatcher.CheckAccess())
+            ClearUi();
+        else
+            Dispatcher.Invoke(ClearUi);
+
+        Directory.CreateDirectory(ConfigStore.LogsDirectory);
+        string path = Path.Combine(
+            ConfigStore.LogsDirectory,
+            $"Better-Muv-run-{DateTime.Now:yyyyMMdd-HHmmss}.log");
+        lock (_logFileLock)
+            _sessionLogPath = path;
+
+        AppendLog("版本：" + GetAppVersion());
+        AppendLog("本轮日志文件：" + path);
     }
 }

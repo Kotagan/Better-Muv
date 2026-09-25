@@ -38,7 +38,7 @@ public class LogBundleExporterTests
             using var notes = new StreamReader(zip.GetEntry("说明.txt")!.Open());
             string explanation = notes.ReadToEnd();
             Assert.Contains("screenshots", explanation);
-            Assert.Contains("一条龙", explanation);
+            Assert.Contains("导出", explanation);
         }
         finally { Directory.Delete(root, recursive: true); }
     }

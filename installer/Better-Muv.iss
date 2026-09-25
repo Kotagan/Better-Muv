@@ -3,11 +3,11 @@
 ; registry entries, and a proper uninstaller.
 
 #ifndef AppVersion
-  #define AppVersion "1.0.4"
+  #error AppVersion must be passed by pack-installer.ps1 (/DAppVersion=...)
 #endif
 
 #ifndef AppNumericVersion
-  #define AppNumericVersion "1.0.4.0"
+  #error AppNumericVersion must be passed by pack-installer.ps1 (/DAppNumericVersion=...)
 #endif
 
 #ifndef PublishDir
@@ -37,6 +37,8 @@ AppUpdatesURL={#MyAppURL}/releases
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
+; 升级时沿用上次安装目录；文件�?ignoreversion，可直接覆盖旧版�?UsePreviousAppDir=yes
+DirExistsWarning=no
 LicenseFile=
 InfoBeforeFile=
 OutputDir={#OutputDir}

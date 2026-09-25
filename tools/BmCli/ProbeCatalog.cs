@@ -57,8 +57,9 @@ internal static class ProbeCatalog
             "maze" =>
             [
                 P(ctx, "third", "exploration-ready.png", c.ThirdSearchTopLeft, c.ThirdSearchSize, 0.62),
-                P(ctx, "fourth", "exploration-action.png", c.FourthSearchTopLeft, c.FourthSearchSize, 0.68),
-                P(ctx, "battle", "battle-skip.png", c.BattleSkipTopLeft, c.BattleSkipSize, 0.68),
+                P(ctx, "fourth", "exploration-action.png", c.FourthSearchTopLeft, c.FourthSearchSize, 0.80),
+                P(ctx, "battle", "battle-skip.png", c.BattleSkipTopLeft, c.BattleSkipSize, 0.62),
+                P(ctx, "rest", "event-rest.png", c.EventRestTopLeft, c.EventRestSize, 0.68),
                 P(ctx, "event", "event-choice.png", c.EventChoiceTopLeft, c.EventChoiceSize, 0.68),
                 P(ctx, "partner", "partner-leave.png",
                     c.PartnerSelectionTopLeft, c.PartnerSelectionSize, 0.68),
@@ -107,6 +108,8 @@ internal static class ProbeCatalog
             [
                 P(ctx, "popupClose", "popup-close.png",
                     c.PopupCloseTopLeft, c.PopupCloseSize, 0.70),
+                P(ctx, "achievementClose", "achievement-close.png",
+                    new ConfigPoint(650, 860), new ConfigSize(620, 200), 0.72),
             ],
             "hud" =>
             [

@@ -10,12 +10,12 @@
     "referenceWidth":  1920,
     "referenceHeight":  1080,
     "searchTopLeft":  {
-                          "x":  1122,
-                          "y":  961
+                          "x":  1080,
+                          "y":  950
                       },
     "firstSearchSize":  {
-                            "width":  120,
-                            "height":  90
+                            "width":  150,
+                            "height":  110
                         },
     "secondSearchTopLeft":  {
                                   "x":  1470,
@@ -34,12 +34,12 @@
                             "height":  120
                         },
     "fourthSearchTopLeft":  {
-                                "x":  1602,
-                                "y":  927
+                                "x":  1540,
+                                "y":  940
                             },
     "fourthSearchSize":  {
-                             "width":  182,
-                             "height":  38
+                             "width":  380,
+                             "height":  140
                          },
     "fifthSearchTopLeft":  {
                                "x":  1621,
@@ -50,20 +50,20 @@
                             "height":  64
                         },
     "partnerSelectionTopLeft":  {
-                                    "x":  1633,
-                                    "y":  919
+                                    "x":  1540,
+                                    "y":  930
                                 },
     "partnerSelectionSize":  {
-                                 "width":  183,
-                                 "height":  75
+                                 "width":  360,
+                                 "height":  130
                              },
     "battleSkipTopLeft":  {
-                              "x":  1760,
-                              "y":  40
+                              "x":  1720,
+                              "y":  20
                           },
     "battleSkipSize":  {
-                           "width":  112,
-                           "height":  51
+                           "width":  180,
+                           "height":  80
                        },
     "eventChoiceTopLeft":  {
                                "x":  1018,
@@ -81,6 +81,14 @@
                                     "x":  1300,
                                     "y":  825
                                 },
+    "eventRestTopLeft":  {
+                             "x":  900,
+                             "y":  640
+                         },
+    "eventRestSize":  {
+                          "width":  980,
+                          "height":  160
+                      },
     "settlementTopLeft":  {
                               "x":  1674,
                               "y":  948
@@ -275,12 +283,12 @@
                                                }
                             },
     "treasureStateTopLeft":  {
-                                 "x":  775,
-                                 "y":  34
+                                 "x":  700,
+                                 "y":  15
                              },
     "treasureStateSize":  {
-                              "width":  376,
-                              "height":  82
+                              "width":  520,
+                              "height":  120
                           },
     "treasureOptionsTopLeft":  {
                                    "x":  478,
@@ -327,16 +335,16 @@
                        "y":  836
                    },
     "fourthClick":  {
-                        "x":  1693,
-                        "y":  942
+                        "x":  1730,
+                        "y":  1015
                     },
     "fifthClick":  {
                        "x":  1672,
                        "y":  959
                    },
     "partnerClick":  {
-                         "x":  1724,
-                         "y":  956
+                         "x":  1655,
+                         "y":  990
                      },
     "battleSkipClick":  {
                             "x":  1816,
@@ -349,12 +357,12 @@
     "mazeDifficultyMode":  "keep",
     "mazeDifficultyTarget":  1,
     "difficultyDigitTopLeft":  {
-                                   "x":  1329,
-                                   "y":  326
+                                   "x":  1320,
+                                   "y":  310
                                },
     "difficultyDigitSize":  {
-                                "width":  374,
-                                "height":  125
+                                "width":  420,
+                                "height":  150
                             },
     "difficultyDecreaseClick":  {
                                     "x":  992,

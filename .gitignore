@@ -41,3 +41,10 @@ TestResults/
 *.local.json
 .env
 .env.*
+
+# Local rebuild taskbar launcher
+Better-Muv-Rebuild.exe
+tools/RebuildLauncher/bin/
+tools/RebuildLauncher/publish/
+tools/RebuildLauncher/obj/
+

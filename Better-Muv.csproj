@@ -9,9 +9,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>1.0.4</Version>
-    <AssemblyVersion>1.0.4.0</AssemblyVersion>
-    <FileVersion>1.0.4.0</FileVersion>
+    <Version>1.2.1</Version>
+    <AssemblyVersion>1.2.1.0</AssemblyVersion>
+    <FileVersion>1.2.1.0</FileVersion>
     <Product>Better-Muv</Product>
     <Company>Kotagan</Company>
     <Authors>Kotagan</Authors>
@@ -36,10 +36,14 @@
     <Content Include="Assets\Templates\area-select-ok.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\digits\*.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\maze-next.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\maze-victory-next.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\partner-leave.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\battle-skip.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\popup-close.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\achievement-close.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\event-choice.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\event-choice-mg-arm.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\event-rest.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\settlement-complete.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\lv-max.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\buy-disabled.png" CopyToOutputDirectory="PreserveNewest" />
@@ -106,9 +110,12 @@
     <Content Include="Assets\Templates\main-quest-start.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\main-quest-sortie.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\main-quest-scenario-replay.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\main-quest-scenario-replay-1080.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\main-quest-scenario-menu.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\main-quest-scenario-menu-back.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\main-quest-scenario-speed.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\main-quest-scenario-speed-on.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\main-quest-scenario-voice-none.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\main-quest-scenario-ok.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\main-quest-scenario-choice.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\main-quest-scenario-choice-alt.png" CopyToOutputDirectory="PreserveNewest" />
@@ -120,6 +127,13 @@
     <Content Include="Assets\Templates\hard-quest-difficulty.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\hard-quest-battle.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\hud-home.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\hud-menu.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\serial-code-entry.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\serial-code-confirm.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\serial-code-already-used.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\shop-otoku-pack.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\daily-free-gift-title.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\shop-purchase.png" CopyToOutputDirectory="PreserveNewest" />
     <None Include="config.json">
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </None>

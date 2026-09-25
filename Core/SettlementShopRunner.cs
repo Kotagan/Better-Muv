@@ -17,13 +17,16 @@ public sealed class SettlementShopRunner
     private enum BuySlotVisual
     {
         Available,
-        AtLimit
+        AtLimit,
+        /// <summary>日常購入钮变暗：存矿不足或本格不可买。</summary>
+        DailyDark
     }
 
     private readonly AutomationConfig _config;
     private readonly ScreenAutomation _screen;
     private readonly TemplateMatcher _settlementMatcher;
     private readonly TemplateMatcher _lvMaxMatcher;
+    private readonly TemplateMatcher _buyDisabledMatcher;
     private readonly TemplateMatcher _dailyLimitTipMatcher;
     private readonly TemplateMatcher _greenDoneMatcher;
     private readonly TemplateMatcher _confirmMatcher;
@@ -59,6 +62,7 @@ public sealed class SettlementShopRunner
         _log = log;
         _settlementMatcher = TemplateAssets.Load(templateDirectory, "settlement-complete.png");
         _lvMaxMatcher = TemplateAssets.Load(templateDirectory, "shop-orange-limit.png");
+        _buyDisabledMatcher = TemplateAssets.Load(templateDirectory, "shop-daily-dark.png");
         _dailyLimitTipMatcher = TemplateAssets.Load(templateDirectory, "shop-daily-limit-tip.png");
         _greenDoneMatcher = TemplateAssets.Load(templateDirectory, "shop-green-done.png");
         _confirmMatcher = TemplateAssets.Load(templateDirectory, "settlement-confirm.png");
@@ -106,7 +110,7 @@ public sealed class SettlementShopRunner
     {
         if (_shopPassCompleted)
         {
-            _log("结算仍在，购买已结束，重试完了离开（余矿则点确认）。");
+            _log("结算仍在，购买已结束，重试完了离开（随后检查确定）。");
             bool leftOnly = await LeaveSettlementAsync(window, cancellationToken);
             if (leftOnly)
                 _shopPassCompleted = false;
@@ -128,21 +132,30 @@ public sealed class SettlementShopRunner
 
             if (!_sessionBuyDone && purchases.Daily.HasAny())
             {
+                // 四个日常小类各自有左下角「本日の購入回数」存量，每次切入后 OCR，不再用整天缓存整类跳过。
                 DateTime now = DateTime.Now;
-                if (DailyShopSchedule.QuotaFilledThisShopDay(_config.LastDailyShopDay, now))
+                bool dailyVerified = await RunDailyAsync(window, purchases.Daily, cancellationToken);
+                if (!_sessionBuyDone && dailyVerified)
                 {
-                    _log($"日常已买够配置数量，等到 {DailyShopSchedule.NextReset(now):MM-dd HH:mm}（每天 {DailyShopSchedule.ResetHour} 点）刷新后再买。");
+                    _config.LastDailyShopDay = DailyShopSchedule.CurrentShopDayKey(now);
+                    _config.LastDailyShopDayVerified = true;
+                    ConfigStore.Save(_config);
+                    _log($"日常四小类左下存量均已确认买够/为 0，等到 {DailyShopSchedule.NextReset(now):MM-dd HH:mm} 刷新。");
+                }
+                else if (!_sessionBuyDone)
+                {
+                    _config.LastDailyShopDayVerified = false;
+                    ConfigStore.Save(_config);
+                    _log("日常未全部确认（左下存量未验证），本日不写完成标记，下次结算按小类重试。");
                 }
                 else
                 {
-                    await RunDailyAsync(window, purchases.Daily, cancellationToken);
-                    if (!_sessionBuyDone)
-                    {
-                        _config.LastDailyShopDay = DailyShopSchedule.CurrentShopDayKey(now);
-                        ConfigStore.Save(_config);
-                        _log($"日常已按配置买够，等到 {DailyShopSchedule.NextReset(now):MM-dd HH:mm} 刷新后再买。");
-                    }
+                    _log($"日常中途结束（{_sessionBuyDoneReason ?? "会话结束"}），本日标记不写入。");
                 }
+            }
+            else if (!_sessionBuyDone)
+            {
+                _log("日常购买配置全为 0，跳过日常（含磁带/升级单元）。");
             }
 
             if (!_sessionBuyDone && totalTimer.ElapsedMilliseconds < ShopBudgetMs && purchases.Equipment.HasAny())
@@ -151,17 +164,31 @@ public sealed class SettlementShopRunner
                 if (!_sessionBuyDone)
                     await RunEquipmentAsync(window, purchases.Equipment, cancellationToken);
             }
+            else if (_sessionBuyDone && purchases.Equipment.HasAny())
+            {
+                _log($"装备购买跳过（商店已结束：{_sessionBuyDoneReason ?? "未知"}）。");
+            }
+
             if (!_sessionBuyDone && totalTimer.ElapsedMilliseconds < ShopBudgetMs && purchases.Excavation.HasAny())
             {
                 await RefreshCurrencySkipFlagAsync(window, cancellationToken);
                 if (!_sessionBuyDone)
                     await RunExcavationAsync(window, purchases.Excavation, cancellationToken);
             }
+            else if (_sessionBuyDone && purchases.Excavation.HasAny())
+            {
+                _log($"挖掘购买跳过（商店已结束：{_sessionBuyDoneReason ?? "未知"}）。");
+            }
+
             if (!_sessionBuyDone && totalTimer.ElapsedMilliseconds < ShopBudgetMs && purchases.Artifactor.HasAny())
             {
                 await RefreshCurrencySkipFlagAsync(window, cancellationToken);
                 if (!_sessionBuyDone)
                     await RunArtifactorAsync(window, purchases.Artifactor, cancellationToken);
+            }
+            else if (_sessionBuyDone && purchases.Artifactor.HasAny())
+            {
+                _log($"Artifactor 购买跳过（商店已结束：{_sessionBuyDoneReason ?? "未知"}）。");
             }
 
             if (_sessionBuyDone)
@@ -185,64 +212,79 @@ public sealed class SettlementShopRunner
 
     private async Task<bool> LeaveSettlementAsync(GameWindow window, CancellationToken cancellationToken)
     {
-        _log("商店购买流程结束，点击完了离开。");
-        var leaveTimer = Stopwatch.StartNew();
-        int attempts = 0;
-        while (leaveTimer.ElapsedMilliseconds < 20000)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (!await IsSettlementVisibleAsync(window, cancellationToken))
-            {
-                // 点完了后若货币未花完会出余矿确认，点确认离开。
-                await HandleLeftoverConfirmAsync(window, cancellationToken, maxWaitMs: 4000);
-                if (!await IsSettlementVisibleAsync(window, cancellationToken))
-                {
-                    _log(attempts == 0
-                        ? "结算界面已自行消失。"
-                        : $"已离开结算界面（完了点击 {attempts} 次）。");
-                    return true;
-                }
-            }
+        // 点完了 → 识别 OK 位置（有则点）→ 再认完了；都认不到=已退出；仍有完了则重试，满 3 次报错并截图。
+        _log("商店购买流程结束，点完了离开（随后识别 OK）。");
+        const int maxRounds = 3;
+        const double doneClickThreshold = 0.72;
 
-            attempts++;
-            TemplateProbeResult doneProbe = await ProbeSettlementDoneAsync(window, cancellationToken);
-            if (doneProbe.IsMatch)
-            {
-                await _screen.ClickProbeAsync(
-                    window, doneProbe, $"结算完了#{attempts}", cancellationToken, settleDelayMs: 200);
-            }
-            else
-            {
-                window = await _screen.ClickAsync(
-                    window, _config.SettlementTopLeft, $"结算完了#{attempts}", cancellationToken);
-            }
-            await Task.Delay(500, cancellationToken);
-            await HandleLeftoverConfirmAsync(window, cancellationToken, maxWaitMs: 4000);
-        }
-
-        _log("结算离开超时，兜底：余矿确认 OK → 完了匹配中心 → 伙伴离开点。");
-        await _screen.ClickAsync(window, _config.SettlementConfirmOk, "结算余矿确认(兜底)", cancellationToken);
-        await Task.Delay(500, cancellationToken);
-        TemplateProbeResult fallbackDone = await ProbeSettlementDoneAsync(window, cancellationToken);
-        if (fallbackDone.IsMatch)
-            await _screen.ClickProbeAsync(window, fallbackDone, "结算完了(兜底)", cancellationToken, settleDelayMs: 200);
-        else
-            await _screen.ClickAsync(window, _config.SettlementTopLeft, "结算完了(兜底)", cancellationToken);
-        await Task.Delay(600, cancellationToken);
-        await HandleLeftoverConfirmAsync(window, cancellationToken, maxWaitMs: 4000);
         if (!await IsSettlementVisibleAsync(window, cancellationToken))
         {
-            _log("兜底后已离开结算。");
+            _log("结算界面已自行消失。");
             return true;
         }
 
-        await _screen.ClickAsync(window, _config.PartnerClick, "结算离开(伙伴点兜底)", cancellationToken);
-        await Task.Delay(700, cancellationToken);
-        bool left = !await IsSettlementVisibleAsync(window, cancellationToken);
-        _log(left
-            ? "伙伴点兜底后已离开结算。"
-            : $"结算完了点击超时（{attempts} 次），界面仍在。");
-        return left;
+        for (int round = 1; round <= maxRounds; round++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            TemplateProbeResult doneProbe = await ProbeSettlementDoneAsync(window, cancellationToken);
+            if (!doneProbe.IsMatch)
+            {
+                _log($"未检测到完了，视为已离开（第 {round} 轮前）。");
+                return true;
+            }
+
+            if (doneProbe.Score >= doneClickThreshold)
+            {
+                await _screen.ClickProbeAsync(
+                    window, doneProbe, $"结算完了#{round}", cancellationToken, settleDelayMs: 200);
+            }
+            else
+            {
+                _log($"结算完了分偏低（{doneProbe.Score:F3} < {doneClickThreshold:F2}），改点写死坐标。");
+                window = await _screen.ClickAsync(
+                    window, _config.SettlementTopLeft, $"结算完了#{round}", cancellationToken);
+            }
+
+            await Task.Delay(500, cancellationToken);
+            if (await TryClickConfirmAfterDoneAsync(window, cancellationToken))
+                await Task.Delay(500, cancellationToken);
+            else
+                _log($"第 {round} 轮未识别到 OK。");
+
+            // 再认完了：没有 = 已退出；还有 = 本轮失败。
+            await Task.Delay(300, cancellationToken);
+            TemplateProbeResult stillDone = await ProbeSettlementDoneAsync(window, cancellationToken);
+            if (!stillDone.IsMatch)
+            {
+                _log($"已离开结算（第 {round} 轮，完了消失）。");
+                return true;
+            }
+
+            _log($"离开未成功：仍检测到完了 {stillDone.Score:F2}（{round}/{maxRounds}）。");
+        }
+
+        // 截图由 MainWindow 在错误自动停止时统一处理；此处只抛错停止。
+        throw new InvalidOperationException("结算离开失败：完了仍在（已重试 3 次）");
+    }
+
+    /// <summary>点完了后短扫 OK 按钮；命中则点其中心。</summary>
+    private async Task<bool> TryClickConfirmAfterDoneAsync(
+        GameWindow window, CancellationToken cancellationToken)
+    {
+        var timer = Stopwatch.StartNew();
+        const int maxWaitMs = 3000;
+        bool loggedMiss = false;
+        while (timer.ElapsedMilliseconds < maxWaitMs)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (await TryClickLeftoverConfirmAsync(window, cancellationToken, logMiss: !loggedMiss))
+                return true;
+            loggedMiss = true;
+            await Task.Delay(_config.DetectionPollIntervalMs, cancellationToken);
+        }
+
+        return false;
     }
 
     private async Task<TemplateProbeResult> ProbeSettlementDoneAsync(
@@ -258,21 +300,50 @@ public sealed class SettlementShopRunner
             window, _settlementMatcher, topLeft, size, cancellationToken, matchThreshold: 0.48);
     }
 
-    private async Task RunDailyAsync(
+    private async Task<bool> RunDailyAsync(
         GameWindow window, DailySettlementPurchases daily, CancellationToken cancellationToken)
     {
+        _log("购买日常：开始（左下角四小类独立存量） " +
+             $"技能书I[{SettlementShopCatalog.FormatSlotPlan("daily", "skillBook1", daily.SkillBook1)}] " +
+             $"技能书II[{SettlementShopCatalog.FormatSlotPlan("daily", "skillBook2", daily.SkillBook2)}] " +
+             $"磁带[{SettlementShopCatalog.FormatSlotPlan("daily", "disk", daily.Disk)}] " +
+             $"升级单元[{SettlementShopCatalog.FormatSlotPlan("daily", "unit", daily.Unit)}]");
         if (!await TrySelectCategoryAsync(
                 window, _config.SettlementCategoryDaily, "结算大类：日常", _catDailyOn, cancellationToken))
-            return;
+        {
+            _log("购买日常：切入大类失败，后续日常小类全部跳过。");
+            return false;
+        }
         await Task.Delay(350, cancellationToken);
+        bool verified = true;
         if (!await BuyDailySubcategoryOrSkipAsync(window, "skillBook1", 0, daily.SkillBook1, cancellationToken))
-            return;
+        {
+            _log($"购买日常：在技能书 I 后结束（{_sessionBuyDoneReason ?? "会话结束"}），磁带/升级单元未执行。");
+            return false;
+        }
+        verified &= _lastDailySubcategoryVerified;
         if (!await BuyDailySubcategoryOrSkipAsync(window, "skillBook2", 1, daily.SkillBook2, cancellationToken))
-            return;
+        {
+            _log($"购买日常：在技能书 II 后结束（{_sessionBuyDoneReason ?? "会话结束"}），磁带/升级单元未执行。");
+            return false;
+        }
+        verified &= _lastDailySubcategoryVerified;
         if (!await BuyDailySubcategoryOrSkipAsync(window, "disk", 2, daily.Disk, cancellationToken))
-            return;
-        await BuyDailySubcategoryOrSkipAsync(window, "unit", 3, daily.Unit, cancellationToken);
+        {
+            _log($"购买日常：在磁带后结束（{_sessionBuyDoneReason ?? "会话结束"}），升级单元未执行。");
+            return false;
+        }
+        verified &= _lastDailySubcategoryVerified;
+        if (!await BuyDailySubcategoryOrSkipAsync(window, "unit", 3, daily.Unit, cancellationToken))
+            return false;
+        verified &= _lastDailySubcategoryVerified;
+        _log(_sessionBuyDone
+            ? $"购买日常：结束（{_sessionBuyDoneReason ?? "会话结束"}）。"
+            : "购买日常：四个小类流程走完。");
+        return verified && !_sessionBuyDone;
     }
+
+    private bool _lastDailySubcategoryVerified;
 
     private async Task<bool> BuyDailySubcategoryOrSkipAsync(
         GameWindow window,
@@ -281,18 +352,55 @@ public sealed class SettlementShopRunner
         int[] quantities,
         CancellationToken cancellationToken)
     {
+        _lastDailySubcategoryVerified = true;
+        string subName = SettlementShopCatalog.SubcategoryDisplayName("daily", subcategoryKey);
+
+        string shopDay = DailyShopSchedule.CurrentShopDayKey(DateTime.Now);
+        _config.DailyShopCompletedSubcategories ??= [];
+        if (!string.Equals(_config.DailyShopSubcategoryStateDay, shopDay, StringComparison.Ordinal))
+        {
+            _config.DailyShopSubcategoryStateDay = shopDay;
+            _config.DailyShopCompletedSubcategories.Clear();
+            ConfigStore.Save(_config);
+            _log($"日常小类临时完成状态已切换到 {shopDay}（每天 4 点刷新）。");
+        }
+
+        if (_config.DailyShopCompletedSubcategories.Contains(subcategoryKey, StringComparer.OrdinalIgnoreCase))
+        {
+            _log($"购买日常/{subName}：今天已确认完成，临时按配置 0 跳过。");
+            return true;
+        }
+
         await RefreshCurrencySkipFlagAsync(window, cancellationToken);
         if (_sessionBuyDone)
+        {
+            _log($"购买日常/{subName}：跳过（商店已结束：{_sessionBuyDoneReason ?? "未知"}）。");
             return false;
-        return await BuySubcategorySlotsAsync(window, "daily", subcategoryKey, tabIndex, quantities, cancellationToken);
+        }
+        bool result = await BuySubcategorySlotsAsync(
+            window, "daily", subcategoryKey, tabIndex, quantities, cancellationToken);
+        if (result && _lastDailySubcategoryVerified)
+        {
+            _config.DailyShopCompletedSubcategories.Add(subcategoryKey);
+            ConfigStore.Save(_config);
+            _log($"购买日常/{subName}：写入当日临时完成状态，下次结算按配置 0 跳过。");
+        }
+        return result;
     }
 
     private async Task RunEquipmentAsync(
         GameWindow window, EquipmentSettlementPurchases equipment, CancellationToken cancellationToken)
     {
+        _log("购买装备：开始 " +
+             $"物理[{SettlementShopCatalog.FormatSlotPlan("equipment", "physics", equipment.Physics)}] " +
+             $"EN[{SettlementShopCatalog.FormatSlotPlan("equipment", "en", equipment.En)}] " +
+             $"敏捷[{SettlementShopCatalog.FormatSlotPlan("equipment", "agility", equipment.Agility)}]");
         if (!await TrySelectCategoryAsync(
                 window, _config.SettlementCategoryEquipment, "结算大类：装备", _catEquipmentOn, cancellationToken))
+        {
+            _log("购买装备：切入大类失败，跳过。");
             return;
+        }
         await Task.Delay(350, cancellationToken);
         if (!await BuySubcategorySlotsAsync(window, "equipment", "physics", 0, equipment.Physics, cancellationToken))
             return;
@@ -304,9 +412,13 @@ public sealed class SettlementShopRunner
     private async Task RunExcavationAsync(
         GameWindow window, ExcavationSettlementPurchases excavation, CancellationToken cancellationToken)
     {
+        _log($"购买挖掘：开始，计划 {SettlementShopCatalog.FormatSlotPlan("excavation", null, excavation.ToSlots())}");
         if (!await TrySelectCategoryAsync(
                 window, _config.SettlementCategoryExcavation, "结算大类：挖掘", _catExcavationOn, cancellationToken))
+        {
+            _log("购买挖掘：切入大类失败，跳过。");
             return;
+        }
         await Task.Delay(350, cancellationToken);
         await BuySlotsAsync(window, "excavation", null, excavation.ToSlots(), cancellationToken);
     }
@@ -314,9 +426,16 @@ public sealed class SettlementShopRunner
     private async Task RunArtifactorAsync(
         GameWindow window, ArtifactorSettlementPurchases artifactor, CancellationToken cancellationToken)
     {
+        _log("购买 Artifactor：开始 " +
+             $"物理[{SettlementShopCatalog.FormatSlotPlan("artifactor", "physics", artifactor.Physics)}] " +
+             $"EN[{SettlementShopCatalog.FormatSlotPlan("artifactor", "en", artifactor.En)}] " +
+             $"敏捷[{SettlementShopCatalog.FormatSlotPlan("artifactor", "agility", artifactor.Agility)}]");
         if (!await TrySelectCategoryAsync(
                 window, _config.SettlementCategoryArtifactor, "结算大类：Artifactor", _catArtifactorOn, cancellationToken))
+        {
+            _log("购买 Artifactor：切入大类失败，跳过。");
             return;
+        }
         await Task.Delay(350, cancellationToken);
         if (!await BuySubcategorySlotsAsync(window, "artifactor", "physics", 0, artifactor.Physics, cancellationToken))
             return;
@@ -355,10 +474,22 @@ public sealed class SettlementShopRunner
         int[] quantities,
         CancellationToken cancellationToken)
     {
-        if (_sessionBuyDone || !quantities.Any(v => v != 0))
-            return !_sessionBuyDone;
+        string subName = SettlementShopCatalog.SubcategoryDisplayName(category, subcategoryKey);
+        string scope = $"{SettlementShopCatalog.CategoryDisplayName(category)}/{subName}";
+        string plan = SettlementShopCatalog.FormatSlotPlan(category, subcategoryKey, quantities);
 
-        string scope = $"{SettlementShopCatalog.CategoryDisplayName(category)}/{subcategoryKey}";
+        if (_sessionBuyDone)
+        {
+            _log($"购买 {scope}：跳过（商店已结束：{_sessionBuyDoneReason ?? "未知"}）。");
+            return false;
+        }
+        if (!quantities.Any(v => v != 0))
+        {
+            _log($"购买 {scope}：配置全为 0，跳过。");
+            return true;
+        }
+
+        _log($"购买 {scope}：开始，计划 {plan}");
         ConfigPoint tab = _config.SettlementSubcategoryTabs[tabIndex];
         string matcherKey = $"{category}/{subcategoryKey}";
         // 日常小类即使已选中也再点一次，避免切大类后内容未刷新就读格（曾误判技能书1木为暗色）。
@@ -377,32 +508,54 @@ public sealed class SettlementShopRunner
             }
             catch (InvalidOperationException ex)
             {
-                _log($"{ex.Message}，跳过该小类，继续后续购买。");
+                _log($"购买 {scope}：切页失败（{ex.Message}），跳过该小类。");
                 return !_sessionBuyDone;
             }
         }
 
         await Task.Delay(forceSubClick ? 280 : 150, cancellationToken);
 
-        // 日常每个小类（技能书/磁带/升级单元）有独立的「本日の購入回数」；切入后再读，为 0 只跳过本小类。
+        // 日常每个小类独立：切入后再 OCR 左下角「本日の購入回数」存量；为 0 只跳过本小类。
+        int? purchaseLeft = null;
         if (category.Equals("daily", StringComparison.OrdinalIgnoreCase))
         {
             await RefreshCurrencySkipFlagAsync(window, cancellationToken);
             if (_sessionBuyDone)
+            {
+                _log($"购买 {scope}：切入后商店已结束（{_sessionBuyDoneReason ?? "未知"}）。");
                 return false;
+            }
 
-            int? purchaseLeft = await TryReadPurchaseCountLeftAsync(window, cancellationToken);
+            purchaseLeft = await TryReadPurchaseCountLeftAsync(window, cancellationToken);
             if (purchaseLeft is 0)
             {
-                _log($"{scope}：本小类购买次数为 0，跳过该小类。");
+                _log($"购买 {scope}：左下角本小类存量剩余 0，跳过（其它小类独立继续）。");
+                _lastDailySubcategoryVerified = true;
                 return true;
             }
 
             if (purchaseLeft is int left)
-                _log($"{scope}：本小类购买次数剩余 {left}。");
+            {
+                _log($"购买 {scope}：左下角本小类存量剩余 {left}。");
+            }
+            else
+            {
+                // OCR 失败时禁止全买盲点，避免存矿被掏空。
+                _log($"购买 {scope}：左下角存量 OCR 未读出，跳过本小类（不盲买；其它小类独立继续）。");
+                _lastDailySubcategoryVerified = false;
+                return true;
+            }
         }
 
-        return await BuySlotsAsync(window, category, subcategoryKey, quantities, cancellationToken);
+        bool ok = await BuySlotsAsync(window, category, subcategoryKey, quantities, cancellationToken, purchaseLeft);
+        // 日常按钮正常时按配置点击即可，不再用购买后的左下次数二次确认。
+        // 左下次数仅用于进小类时判定额度，以及与暗色按钮组合判断矿不足。
+        if (category.Equals("daily", StringComparison.OrdinalIgnoreCase))
+            _lastDailySubcategoryVerified = ok;
+        _log(ok
+            ? $"购买 {scope}：小类完成，计划 {plan}。"
+            : $"购买 {scope}：中途结束（{_sessionBuyDoneReason ?? "会话结束"}）。");
+        return ok;
     }
 
     /// <summary>写死点点击；选中模板仅日志，失败不阻断。</summary>
@@ -507,12 +660,15 @@ public sealed class SettlementShopRunner
         string category,
         string? subcategory,
         int[] quantities,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        int? dailyPurchaseLeft = null)
     {
+        string subName = SettlementShopCatalog.SubcategoryDisplayName(category, subcategory);
         string scope = subcategory is null
             ? SettlementShopCatalog.CategoryDisplayName(category)
-            : $"{SettlementShopCatalog.CategoryDisplayName(category)}/{subcategory}";
+            : $"{SettlementShopCatalog.CategoryDisplayName(category)}/{subName}";
         bool isDaily = category.Equals("daily", StringComparison.OrdinalIgnoreCase);
+        IReadOnlyList<string> itemNames = SettlementShopCatalog.ItemNames(category, subcategory);
 
         for (int i = 0; i < quantities.Length && i < _config.SettlementBuyButtons.Count; i++)
         {
@@ -523,20 +679,28 @@ public sealed class SettlementShopRunner
             if (quantity == 0)
                 continue;
 
+            string itemLabel = i < itemNames.Count && !string.IsNullOrWhiteSpace(itemNames[i])
+                ? itemNames[i]
+                : $"第{i + 1}格";
+            string slotTag = $"{scope}/{itemLabel}";
+
             ConfigPoint button = _config.SettlementBuyButtons[i];
-            // 日常不以暗色/最大購入钮预判，点到粉红「これ以上購入できません」再停。
-            if (!isDaily)
+            BuySlotVisual visualBefore = await ReadBuySlotVisualAsync(window, button, cancellationToken);
+            if (visualBefore == BuySlotVisual.AtLimit)
             {
-                BuySlotVisual visual = await ReadBuySlotVisualAsync(window, button, cancellationToken);
-                if (visual == BuySlotVisual.AtLimit)
-                {
-                    DisableSlotInConfig(category, subcategory, quantities, i, scope);
-                    continue;
-                }
+                DisableSlotInConfig(category, subcategory, quantities, i, scope);
+                continue;
+            }
+            if (visualBefore == BuySlotVisual.DailyDark)
+            {
+                if (await StopOnDailyDarkAsync(window, slotTag, dailyPurchaseLeft, cancellationToken))
+                    return false;
+                continue;
             }
 
             if (quantity < 0)
             {
+                _log($"购买 {slotTag}：全买开始。");
                 // 全买：MAX → ×10 → ×1 逐级降；每级连点直到售罄/买不动/货币归零。
                 MultiplierState[] multipliers =
                 [
@@ -545,6 +709,11 @@ public sealed class SettlementShopRunner
                     MultiplierState.X1
                 ];
                 bool slotFinished = false;
+                int totalClicks = 0;
+                // 日常次数已知时封顶；未知则最多 8 次/档，避免 OCR/粉红提示漏检时空转 20×3。
+                int maxClicksPerTier = isDaily
+                    ? Math.Clamp(dailyPurchaseLeft ?? 8, 1, 12)
+                    : 20;
                 foreach (MultiplierState mult in multipliers)
                 {
                     if (_sessionBuyDone || slotFinished)
@@ -552,64 +721,105 @@ public sealed class SettlementShopRunner
 
                     if (!await EnsureMultiplierAsync(window, mult, cancellationToken))
                     {
-                        _log($"{scope} 第 {i + 1} 格未确认倍率 {FormatMultiplier(mult)}，尝试更低倍率。");
+                        _log($"购买 {slotTag}：未确认倍率 {FormatMultiplier(mult)}，尝试更低倍率。");
                         continue;
                     }
 
-                    for (int n = 0; n < 20; n++)
+                    int? leftBeforeTier = isDaily
+                        ? await TryReadPurchaseCountLeftAsync(window, cancellationToken)
+                        : null;
+                    int clicksThisTier = 0;
+                    for (int n = 0; n < maxClicksPerTier; n++)
                     {
                         if (_sessionBuyDone)
                             return false;
 
-                        window = await _screen.ClickAsync(
-                            window,
-                            button,
-                            $"{scope} 第 {i + 1} 格全买 {FormatMultiplier(mult)}({n + 1}/20)",
-                            cancellationToken);
-                        await Task.Delay(80, cancellationToken);
-
-                        if (isDaily && await DetectDailyLimitTipAsync(window, cancellationToken))
+                        // 点前再认暗色：存矿不足时钮会变暗，禁止继续点空钱包。
+                        BuySlotVisual preClick = await ReadBuySlotVisualAsync(window, button, cancellationToken);
+                        if (preClick == BuySlotVisual.AtLimit)
                         {
-                            _log($"{scope} 第 {i + 1} 格命中「これ以上購入できません」，停止该格。");
+                            DisableSlotInConfig(category, subcategory, quantities, i, scope);
+                            slotFinished = true;
+                            break;
+                        }
+                        if (preClick == BuySlotVisual.DailyDark)
+                        {
+                            if (await StopOnDailyDarkAsync(window, slotTag, leftBeforeTier ?? dailyPurchaseLeft, cancellationToken))
+                                return false;
                             slotFinished = true;
                             break;
                         }
 
-                        if (!isDaily)
+                        window = await _screen.ClickAsync(
+                            window,
+                            button,
+                            $"购买 {slotTag} {FormatMultiplier(mult)}({n + 1}/{maxClicksPerTier})",
+                            cancellationToken);
+                        await Task.Delay(80, cancellationToken);
+                        clicksThisTier++;
+                        totalClicks++;
+
+                        if (isDaily && await DetectDailyLimitTipAsync(window, cancellationToken))
                         {
-                            BuySlotVisual visual = await ReadBuySlotVisualAsync(window, button, cancellationToken);
-                            if (visual == BuySlotVisual.AtLimit)
-                            {
-                                DisableSlotInConfig(category, subcategory, quantities, i, scope);
-                                slotFinished = true;
-                                break;
-                            }
+                            _log($"购买 {slotTag}：命中「これ以上購入できません」，停止该格（已点 {totalClicks} 次）。");
+                            slotFinished = true;
+                            break;
+                        }
+
+                        BuySlotVisual afterClick = await ReadBuySlotVisualAsync(window, button, cancellationToken);
+                        if (afterClick == BuySlotVisual.AtLimit)
+                        {
+                            DisableSlotInConfig(category, subcategory, quantities, i, scope);
+                            slotFinished = true;
+                            break;
+                        }
+                        if (afterClick == BuySlotVisual.DailyDark)
+                        {
+                            if (await StopOnDailyDarkAsync(window, slotTag, leftBeforeTier ?? dailyPurchaseLeft, cancellationToken))
+                                return false;
+                            slotFinished = true;
+                            break;
                         }
 
                         if (await DetectGreenDoneAsync(window, cancellationToken))
+                        {
+                            _log($"购买 {slotTag}：已点 {totalClicks} 次后命中绿色提示。");
                             return false;
+                        }
 
                         await RefreshCurrencySkipFlagAsync(window, cancellationToken);
                         if (_sessionBuyDone)
                             return false;
+
+                    }
+
+                    // 日常某一档点满仍无上限提示：不再降档空转。
+                    if (isDaily && !slotFinished && clicksThisTier >= maxClicksPerTier)
+                    {
+                        _log($"购买 {slotTag}：{FormatMultiplier(mult)} 已点满仍无上限提示，停止该格。");
+                        slotFinished = true;
                     }
                 }
 
+                _log($"购买 {slotTag}：全买结束，共点击 {totalClicks} 次。");
                 continue;
             }
 
             // 单次购买上限，防止倍率识别失败时连点上百次卡死。
             int capped = Math.Min(quantity, 30);
             if (capped != quantity)
-                _log($"{scope} 第 {i + 1} 格配置 {quantity}，单次封顶按 {capped} 执行。");
+                _log($"购买 {slotTag}：配置 {quantity}，单次封顶按 {capped} 执行。");
+            else
+                _log($"购买 {slotTag}：目标数量 {capped}。");
 
             int tens = capped / 10;
             int ones = capped % 10;
+            int boughtClicks = 0;
             if (tens > 0)
             {
                 if (!await EnsureMultiplierAsync(window, MultiplierState.X10, cancellationToken))
                 {
-                    _log($"{scope} 第 {i + 1} 格未确认倍率 ×10，跳过 ×10 段。");
+                    _log($"购买 {slotTag}：未确认倍率 ×10，跳过 ×10 段。");
                 }
                 else
                 {
@@ -618,26 +828,46 @@ public sealed class SettlementShopRunner
                         if (_sessionBuyDone)
                             return false;
 
-                        window = await _screen.ClickAsync(
-                            window, button, $"{scope} 第 {i + 1} 格 ×10 ({n + 1}/{tens})", cancellationToken);
-                        await Task.Delay(50, cancellationToken);
-
-                        if (isDaily && await DetectDailyLimitTipAsync(window, cancellationToken))
+                        BuySlotVisual preClick = await ReadBuySlotVisualAsync(window, button, cancellationToken);
+                        if (preClick == BuySlotVisual.AtLimit)
                         {
-                            _log($"{scope} 第 {i + 1} 格命中「これ以上購入できません」，停止该格。");
+                            DisableSlotInConfig(category, subcategory, quantities, i, scope);
+                            ones = 0;
+                            break;
+                        }
+                        if (preClick == BuySlotVisual.DailyDark)
+                        {
+                            if (await StopOnDailyDarkAsync(window, slotTag, dailyPurchaseLeft, cancellationToken))
+                                return false;
                             ones = 0;
                             break;
                         }
 
-                        if (!isDaily)
+                        window = await _screen.ClickAsync(
+                            window, button, $"购买 {slotTag} ×10 ({n + 1}/{tens})", cancellationToken);
+                        await Task.Delay(50, cancellationToken);
+                        boughtClicks += 10;
+
+                        if (isDaily && await DetectDailyLimitTipAsync(window, cancellationToken))
                         {
-                            BuySlotVisual visual = await ReadBuySlotVisualAsync(window, button, cancellationToken);
-                            if (visual == BuySlotVisual.AtLimit)
-                            {
-                                DisableSlotInConfig(category, subcategory, quantities, i, scope);
-                                ones = 0;
-                                break;
-                            }
+                            _log($"购买 {slotTag}：命中「これ以上購入できません」，停止该格。");
+                            ones = 0;
+                            break;
+                        }
+
+                        BuySlotVisual afterClick = await ReadBuySlotVisualAsync(window, button, cancellationToken);
+                        if (afterClick == BuySlotVisual.AtLimit)
+                        {
+                            DisableSlotInConfig(category, subcategory, quantities, i, scope);
+                            ones = 0;
+                            break;
+                        }
+                        if (afterClick == BuySlotVisual.DailyDark)
+                        {
+                            if (await StopOnDailyDarkAsync(window, slotTag, dailyPurchaseLeft, cancellationToken))
+                                return false;
+                            ones = 0;
+                            break;
                         }
 
                         if (await DetectGreenDoneAsync(window, cancellationToken))
@@ -654,7 +884,7 @@ public sealed class SettlementShopRunner
             {
                 if (!await EnsureMultiplierAsync(window, MultiplierState.X1, cancellationToken))
                 {
-                    _log($"{scope} 第 {i + 1} 格未确认倍率 ×1，跳过 ×1 段。");
+                    _log($"购买 {slotTag}：未确认倍率 ×1，跳过 ×1 段。");
                 }
                 else
                 {
@@ -663,24 +893,41 @@ public sealed class SettlementShopRunner
                         if (_sessionBuyDone)
                             return false;
 
-                        window = await _screen.ClickAsync(
-                            window, button, $"{scope} 第 {i + 1} 格 ×1 ({n + 1}/{ones})", cancellationToken);
-                        await Task.Delay(50, cancellationToken);
-
-                        if (isDaily && await DetectDailyLimitTipAsync(window, cancellationToken))
+                        BuySlotVisual preClick = await ReadBuySlotVisualAsync(window, button, cancellationToken);
+                        if (preClick == BuySlotVisual.AtLimit)
                         {
-                            _log($"{scope} 第 {i + 1} 格命中「これ以上購入できません」，停止该格。");
+                            DisableSlotInConfig(category, subcategory, quantities, i, scope);
+                            break;
+                        }
+                        if (preClick == BuySlotVisual.DailyDark)
+                        {
+                            if (await StopOnDailyDarkAsync(window, slotTag, dailyPurchaseLeft, cancellationToken))
+                                return false;
                             break;
                         }
 
-                        if (!isDaily)
+                        window = await _screen.ClickAsync(
+                            window, button, $"购买 {slotTag} ×1 ({n + 1}/{ones})", cancellationToken);
+                        await Task.Delay(50, cancellationToken);
+                        boughtClicks += 1;
+
+                        if (isDaily && await DetectDailyLimitTipAsync(window, cancellationToken))
                         {
-                            BuySlotVisual visual = await ReadBuySlotVisualAsync(window, button, cancellationToken);
-                            if (visual == BuySlotVisual.AtLimit)
-                            {
-                                DisableSlotInConfig(category, subcategory, quantities, i, scope);
-                                break;
-                            }
+                            _log($"购买 {slotTag}：命中「これ以上購入できません」，停止该格。");
+                            break;
+                        }
+
+                        BuySlotVisual afterClick = await ReadBuySlotVisualAsync(window, button, cancellationToken);
+                        if (afterClick == BuySlotVisual.AtLimit)
+                        {
+                            DisableSlotInConfig(category, subcategory, quantities, i, scope);
+                            break;
+                        }
+                        if (afterClick == BuySlotVisual.DailyDark)
+                        {
+                            if (await StopOnDailyDarkAsync(window, slotTag, dailyPurchaseLeft, cancellationToken))
+                                return false;
+                            break;
                         }
 
                         if (await DetectGreenDoneAsync(window, cancellationToken))
@@ -692,9 +939,39 @@ public sealed class SettlementShopRunner
                     }
                 }
             }
+
+            if (!_sessionBuyDone)
+                _log($"购买 {slotTag}：本格点击完成（约 {boughtClicks} 件）。");
         }
 
         return !_sessionBuyDone;
+    }
+
+    /// <summary>
+    /// 日常購入钮变暗需结合左下次数判断：次数仍大于 0 表示额度未满但当前买不了，判定矿不足并退出；
+    /// 次数为 0 表示小类已完成；次数未知时不据此退出整店。
+    /// </summary>
+    private async Task<bool> StopOnDailyDarkAsync(
+        GameWindow window, string slotTag, int? purchaseLeftHint, CancellationToken cancellationToken)
+    {
+        int? left = purchaseLeftHint;
+        if (left is null)
+            left = await TryReadPurchaseCountLeftAsync(window, cancellationToken);
+
+        if (left is > 0)
+        {
+            _sessionBuyDone = true;
+            _sessionBuyDoneReason =
+                $"购买 {slotTag}：左下次数仍剩 {left} 且購入钮暗色，判定矿不足，退出本次商店。";
+            _log(_sessionBuyDoneReason);
+            return true;
+        }
+
+        if (left is 0)
+            _log($"购买 {slotTag}：左下次数为 0 且購入钮暗色，本小类已完成。");
+        else
+            _log($"购买 {slotTag}：購入钮暗色但左下次数未识别，仅跳过当前商品。");
+        return false;
     }
 
     private static string FormatMultiplier(MultiplierState state) => state switch
@@ -810,9 +1087,10 @@ public sealed class SettlementShopRunner
         GameWindow window, ConfigPoint button, CancellationToken cancellationToken)
     {
         ConfigPoint inset = _config.SettlementBuyButtonSearchInset;
-        // 模板 shop-orange-limit≈330×94（4K），搜索区须盖住 LvMAX。
+        // 模板 shop-orange-limit≈330×94（4K），shop-daily-dark 覆盖暗色購入钮。
         ConfigSize size = ScreenAutomation.EnsureFitsTemplate(
-            _config.SettlementBuyButtonSearchSize, _lvMaxMatcher);
+            ScreenAutomation.EnsureFitsTemplate(_config.SettlementBuyButtonSearchSize, _lvMaxMatcher),
+            _buyDisabledMatcher);
         var topLeft = new ConfigPoint(
             Math.Max(0, button.X - inset.X),
             Math.Max(0, button.Y - inset.Y));
@@ -822,21 +1100,33 @@ public sealed class SettlementShopRunner
         BitmapSource image = region.Image;
         image.Freeze();
 
-        TemplateMatchResult lvMax = await Task.Run(
-            () => _screen.Match(_lvMaxMatcher, image, region.LogicalWidth, region.LogicalHeight),
-            cancellationToken);
+        TemplateMatchResult[] matches = await Task.Run(() =>
+        {
+            var results = new TemplateMatchResult[2];
+            Parallel.Invoke(
+                () => results[0] = _screen.Match(
+                    _lvMaxMatcher, image, region.LogicalWidth, region.LogicalHeight),
+                () => results[1] = _screen.Match(
+                    _buyDisabledMatcher, image, region.LogicalWidth, region.LogicalHeight));
+            return results;
+        }, cancellationToken);
 
+        double lvMaxScore = matches[0].Score;
+        double darkScore = matches[1].Score;
         const double lvMaxThreshold = 0.80;
-        double lvMaxScore = lvMax.Score;
         bool lvMaxHit = lvMaxScore >= lvMaxThreshold;
+        bool darkHit = darkScore >= 0.55;
         bool orangeHint = OrangeLimitFraction(image) >= 0.08;
 
         if (lvMaxHit || (orangeHint && lvMaxScore >= 0.55))
         {
             if (!lvMaxHit)
-                _log($"格子已购完(橙色兜底)：LvMAX={lvMaxScore:F2}");
+                _log($"格子已购完(橙色兜底)：LvMAX={lvMaxScore:F2} 暗色={darkScore:F2}");
             return BuySlotVisual.AtLimit;
         }
+
+        if (darkHit)
+            return BuySlotVisual.DailyDark;
 
         return BuySlotVisual.Available;
     }
@@ -850,7 +1140,7 @@ public sealed class SettlementShopRunner
 
         TemplateProbeResult tip = await _screen.ProbeAsync(
             window, _dailyLimitTipMatcher, tipTopLeft, tipSize,
-            cancellationToken, matchThreshold: 0.80);
+            cancellationToken, matchThreshold: 0.72);
         return tip.IsMatch;
     }
 
@@ -918,10 +1208,13 @@ public sealed class SettlementShopRunner
         string? text = await DigitOcrService.TryReadTextAsync(
             _screen.CaptureRegion(window, _config.SettlementPurchaseCountTopLeft, _config.SettlementPurchaseCountSize).Image,
             cancellationToken);
-        int? left = DigitOcrService.TryParseRatioLeft(text);
-        if (left is null && !string.IsNullOrWhiteSpace(text))
-            _log($"购买次数 OCR 原文「{text}」，未能解析 N/M。");
-        return left;
+        // 左下角「本日の購入回数：已购/上限」，剩余 = 上限 - 已购（四小类各自独立）。
+        int? remaining = DigitOcrService.TryParseDailyPurchaseRemaining(text);
+        if (remaining is null && !string.IsNullOrWhiteSpace(text))
+            _log($"左下存量 OCR 原文「{text}」，未能解析已购/上限。");
+        else if (remaining is int left && !string.IsNullOrWhiteSpace(text))
+            _log($"左下存量 OCR「{text.Trim()}」→ 剩余 {left}。");
+        return remaining;
     }
 
     private async Task<int?> TryReadCurrencyAsync(GameWindow window, CancellationToken cancellationToken)
@@ -938,38 +1231,46 @@ public sealed class SettlementShopRunner
     private void DisableSlotInConfig(
         string category, string? subcategory, int[] quantities, int slotIndex, string scope)
     {
-        quantities[slotIndex] = 0;
+        // 必须先 DisableSlot 再清零工作数组：若先把共享数组置 0，DisableSlot 会认为无变更而不 Save。
         bool changed = SettlementShopCatalog.DisableSlot(
             _config.SettlementPurchases, category, subcategory, slotIndex);
+        quantities[slotIndex] = 0;
         if (changed)
             ConfigStore.Save(_config);
-        _log($"{scope} 第 {slotIndex + 1} 格橙色到达上限，已关闭对应购买栏位。");
+        _log(changed
+            ? $"{scope} 第 {slotIndex + 1} 格橙色到达上限，已关闭并保存对应购买栏位。"
+            : $"{scope} 第 {slotIndex + 1} 格橙色到达上限，对应购买栏位已是关闭。");
     }
 
-    private async Task HandleLeftoverConfirmAsync(
-        GameWindow window, CancellationToken cancellationToken, int maxWaitMs = 8000)
+    /// <summary>识别确认弹窗（粉色 OK 模板）；命中后点配置的 OK/取消坐标。</summary>
+    private async Task<bool> TryClickLeftoverConfirmAsync(
+        GameWindow window, CancellationToken cancellationToken, bool logMiss = true)
     {
-        var timer = Stopwatch.StartNew();
-        while (timer.ElapsedMilliseconds < maxWaitMs)
+        var topLeft = new ConfigPoint(
+            Math.Max(0, _config.SettlementConfirmTopLeft.X - 120),
+            Math.Max(0, _config.SettlementConfirmTopLeft.Y - 80));
+        var size = new ConfigSize(
+            Math.Max(_config.SettlementConfirmSize.Width + 240, 700),
+            Math.Max(_config.SettlementConfirmSize.Height + 160, 480));
+        // 导出日志里曾出现 0.591，略低于原 0.62。
+        TemplateProbeResult confirm = await _screen.ProbeAsync(
+            window, _confirmMatcher, topLeft, size, cancellationToken, matchThreshold: 0.55);
+        if (!confirm.IsMatch)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            TemplateProbeResult confirm = await _screen.ProbeAsync(
-                window, _confirmMatcher, _config.SettlementConfirmTopLeft,
-                _config.SettlementConfirmSize, cancellationToken, matchThreshold: 0.55);
-            if (confirm.IsMatch)
-            {
-                ConfigPoint target = _config.SettlementConfirmLeftover
-                    ? _config.SettlementConfirmOk
-                    : _config.SettlementConfirmCancel;
-                string action = _config.SettlementConfirmLeftover ? "确认" : "取消";
-                _log($"检测到余矿确认弹窗，点击{action}。");
-                await _screen.ClickAsync(window, target, $"结算余矿{action}", cancellationToken);
-                await Task.Delay(_config.DetectionPollIntervalMs, cancellationToken);
-                return;
-            }
-
-            await Task.Delay(_config.DetectionPollIntervalMs, cancellationToken);
+            if (logMiss)
+                _log($"OK 未命中（最高 {confirm.Score:F3}）。");
+            return false;
         }
+
+        bool leftover = _config.SettlementConfirmLeftover;
+        ConfigPoint target = leftover
+            ? _config.SettlementConfirmOk
+            : _config.SettlementConfirmCancel;
+        string action = leftover ? "OK" : "取消";
+        _log($"识别到确认弹窗（{confirm.Score:F2}），点击配置{action} ({target.X},{target.Y})。");
+        await _screen.ClickAsync(window, target, $"结算{action}", cancellationToken);
+        await Task.Delay(600, cancellationToken);
+        return true;
     }
 
     private static string Describe(MultiplierState state) => state switch

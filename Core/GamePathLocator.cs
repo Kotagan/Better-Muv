@@ -26,6 +26,80 @@ public static class GamePathLocator
         File.Exists(path) &&
         string.Equals(Path.GetFileName(path), ExecutableName, StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// 解析用户选择的路径（支持 .lnk）。成功时返回游戏 exe 绝对路径；失败返回 null 并给出原因。
+    /// </summary>
+    public static string? TryNormalize(string? selectedPath, out string reason)
+    {
+        reason = "";
+        if (string.IsNullOrWhiteSpace(selectedPath))
+        {
+            reason = "路径为空。";
+            return null;
+        }
+
+        string path = selectedPath.Trim().Trim('"');
+        if (path.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase))
+        {
+            string? target = TryResolveShortcut(path);
+            if (target is null)
+            {
+                reason = "无法解析快捷方式：" + path;
+                return null;
+            }
+
+            path = target;
+        }
+
+        if (!File.Exists(path))
+        {
+            reason = "文件不存在：" + path;
+            return null;
+        }
+
+        if (!string.Equals(Path.GetFileName(path), ExecutableName, StringComparison.OrdinalIgnoreCase))
+        {
+            reason =
+                $"不是游戏程序（需要 {ExecutableName}，实际为 {Path.GetFileName(path)}）。" +
+                "请选游戏目录下的 exe，或指向该 exe 的快捷方式。";
+            return null;
+        }
+
+        return Path.GetFullPath(path);
+    }
+
+    /// <summary>读取 .lnk 目标路径；失败返回 null。</summary>
+    public static string? TryResolveShortcut(string shortcutPath)
+    {
+        if (string.IsNullOrWhiteSpace(shortcutPath) || !File.Exists(shortcutPath))
+            return null;
+        try
+        {
+            Type? shellType = Type.GetTypeFromProgID("WScript.Shell");
+            if (shellType is null)
+                return null;
+            object shell = Activator.CreateInstance(shellType)
+                ?? throw new InvalidOperationException("WScript.Shell");
+            object shortcut = shellType.InvokeMember(
+                "CreateShortcut",
+                System.Reflection.BindingFlags.InvokeMethod,
+                null,
+                shell,
+                [shortcutPath])!;
+            string? target = shortcut.GetType().InvokeMember(
+                "TargetPath",
+                System.Reflection.BindingFlags.GetProperty,
+                null,
+                shortcut,
+                null) as string;
+            return string.IsNullOrWhiteSpace(target) ? null : target.Trim().Trim('"');
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     /// <summary>按优先级查找：已配置路径 → 运行中进程 → 常见目录 → Steam 库 → 各盘全盘文件名搜索。</summary>
     public static string? TryFind(string? preferred = null)
     {

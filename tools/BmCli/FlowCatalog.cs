@@ -25,7 +25,7 @@ internal static class FlowCatalog
                 "扫迷宫内界面（third/fourth/treasure/route/...）",
                 "未命中 → QuestFromHomeEntry → SecondClick",
                 "难度 OCR（失败仍点探索準備）→ 探索",
-                "循环：next > battle > event > partner > settlement > treasure > route",
+                "循环：next > battle > rest > event > partner > settlement > treasure > route",
                 "结算商店 SettlementShopRunner；宣传弹窗 PromoPopupDismisser"
             ]),
             Flow("mainQuest", "自动主线", "Core/MainQuestAutomation.cs", "mainquest",
@@ -45,7 +45,7 @@ internal static class FlowCatalog
             ]),
             Flow("pipeline", "一条龙", "MainWindow.xaml.cs", null,
             [
-                "按 PipelineTaskOrder 串行 maze / mainQuest / hardMainQuest / dailyShop",
+                "按 PipelineTaskOrder 串行 maze / mainQuest / hardMainQuest / dailyShop / dailyFreeGift",
                 "共享 DiagnosticTaskSession 诊断目录"
             ]),
             Flow("dailyShop", "每日商店", "Core/DailyShopAutomation.cs", null,
@@ -53,6 +53,12 @@ internal static class FlowCatalog
                 "HudHomeReturn → 商店 → 交換所",
                 "100%OFF（10s 未识别则跳过）→ 交換 → OK → 滚轮下拉",
                 "左下角 2500 → 交換 → OK（×2；首次 10s 未识别则回主页结束）"
+            ]),
+            Flow("dailyFreeGift", "每日免费礼包", "Core/DailyFreeGiftAutomation.cs", null,
+            [
+                "HudHomeReturn → 商店 → お得パック",
+                "识别 デイリー無料パック → 点击 → 購入 → OK",
+                "无購入弹窗视为今日已领；每天 5:00 刷新"
             ])
         },
         ["helperModules"] = new[]
@@ -98,7 +104,7 @@ internal static class FlowCatalog
 
 ## 迷宫 `maze` → preset `maze`
 校准一次 → 扫迷宫内界面 → 否则入口连点 → 难度/探索 → 循环  
-优先级：next > battle > event > partner > settlement > treasure > route
+优先级：next > battle > rest > event > partner > settlement > treasure > route
 
 ## 主线 `mainQuest` → preset `mainquest`
 Bootstrap → 入口连点 → Start 双击开始/情景同点 →  

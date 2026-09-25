@@ -4,12 +4,10 @@ using System.Windows.Media.Imaging;
 
 namespace BetterMuv.Core;
 
-/// <summary>迷宫跑测时把遗物整卡、关键模板候选落到固定目录，按内容去重。</summary>
+/// <summary>迷宫跑测时把遗物整卡落到固定目录，按内容去重。</summary>
 public static class MazeAssetHarvest
 {
     public static string CatalogRoot => Path.Combine(ResolveDataRoot(), "relic-catalog");
-
-    public static string TemplateHarvestRoot => Path.Combine(ResolveDataRoot(), "template-harvest");
 
     private static string ResolveDataRoot()
     {
@@ -58,18 +56,6 @@ public static class MazeAssetHarvest
         }
 
         return saved;
-    }
-
-    /// <summary>保存下一步 / 路线 / メイズ探索等关键模板候选（完整按钮/标题，非碎边）。</summary>
-    public static bool SaveTemplateCandidate(string key, BitmapSource image, Action<string>? log = null)
-    {
-        Directory.CreateDirectory(TemplateHarvestRoot);
-        if (SaveUniquePng(TemplateHarvestRoot, key, image, out string path))
-        {
-            log?.Invoke($"模板候选已存：{path}");
-            return true;
-        }
-        return false;
     }
 
     private static bool SaveUniquePng(string dir, string prefix, BitmapSource image, out string path)

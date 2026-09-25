@@ -29,7 +29,7 @@ public class DiagnosticTaskSessionTests
     }
 
     [Fact]
-    public void NewRunClearsPreviousBatchEntirelyButPreservesUnrelatedRootFiles()
+    public void NewRunKeepsPreviousBatchUntilRetentionCleanup()
     {
         string root = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
@@ -39,19 +39,15 @@ public class DiagnosticTaskSessionTests
             string firstRun = session.BeginRun(root, false);
             string firstTask = session.Begin(root, "maze", false);
             File.WriteAllText(Path.Combine(firstTask, "scene.png"), "old");
-            File.WriteAllText(Path.Combine(firstTask, "keep.txt"), "inside batch");
             File.WriteAllText(Path.Combine(session.ScreenshotsDirectory, "game-1.png"), "shot");
-            File.WriteAllText(Path.Combine(root, "quest-roi-20260907-184447-001.png"), "legacy");
             File.WriteAllText(Path.Combine(root, "personal.png"), "keep");
 
             var next = new DiagnosticTaskSession();
             string secondRun = next.BeginRun(root, false);
             Assert.NotEqual(firstRun, secondRun);
-            Assert.False(Directory.Exists(firstRun));
-            Assert.False(Directory.Exists(firstTask));
-            Assert.Equal(1, next.LastCleanupRemovedDirectories);
+            Assert.True(Directory.Exists(firstRun));
+            Assert.True(File.Exists(Path.Combine(firstTask, "scene.png")));
             Assert.True(File.Exists(Path.Combine(root, "personal.png")));
-            Assert.False(File.Exists(Path.Combine(root, "quest-roi-20260907-184447-001.png")));
         }
         finally { Directory.Delete(root, true); }
     }
@@ -71,5 +67,62 @@ public class DiagnosticTaskSessionTests
             Assert.True(File.Exists(Path.Combine(first, "scene.png")));
         }
         finally { Directory.Delete(root, true); }
+    }
+}
+
+public class LocalDataRetentionTests
+{
+    [Fact]
+    public void CanonicalDiagnosticDirectoryStripsNestedRunTaskPaths()
+    {
+        string nested =
+            @"C:\workspace\Better-Muv\bin\Debug\net10.0\diagnostics\run-a\task-maze-1\run-b\task-maze-2";
+        Assert.Equal(
+            @"C:\workspace\Better-Muv\bin\Debug\net10.0\diagnostics",
+            ConfigStore.CanonicalDiagnosticDirectory(nested));
+        Assert.Equal("diagnostics", ConfigStore.CanonicalDiagnosticDirectory("diagnostics"));
+        Assert.Equal(
+            "diagnostics",
+            ConfigStore.CanonicalDiagnosticDirectory(@"diagnostics\run-old\task-maze"));
+    }
+
+    [Fact]
+    public void CleanupRemovesLogsAndDiagnosticDirsOlderThanRetainDays()
+    {
+        string root = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        string logs = Path.Combine(root, "logs");
+        string diagnostics = Path.Combine(root, "diagnostics");
+        Directory.CreateDirectory(logs);
+        Directory.CreateDirectory(diagnostics);
+        try
+        {
+            string oldLog = Path.Combine(logs, "old.log");
+            string newLog = Path.Combine(logs, "new.log");
+            File.WriteAllText(oldLog, "old");
+            File.WriteAllText(newLog, "new");
+            File.SetLastWriteTime(oldLog, DateTime.Now.AddDays(-5));
+            File.SetLastWriteTime(newLog, DateTime.Now.AddHours(-1));
+
+            string oldRun = Path.Combine(diagnostics, "run-old");
+            string newRun = Path.Combine(diagnostics, "run-new");
+            Directory.CreateDirectory(oldRun);
+            Directory.CreateDirectory(newRun);
+            File.WriteAllText(Path.Combine(oldRun, "a.png"), "x");
+            File.WriteAllText(Path.Combine(newRun, "b.png"), "y");
+            Directory.SetLastWriteTime(oldRun, DateTime.Now.AddDays(-4));
+            Directory.SetLastWriteTime(newRun, DateTime.Now.AddHours(-2));
+
+            LocalDataRetention.CleanupOlderThanDays(3, logs, diagnostics);
+
+            Assert.False(File.Exists(oldLog));
+            Assert.True(File.Exists(newLog));
+            Assert.False(Directory.Exists(oldRun));
+            Assert.True(Directory.Exists(newRun));
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+                Directory.Delete(root, true);
+        }
     }
 }
