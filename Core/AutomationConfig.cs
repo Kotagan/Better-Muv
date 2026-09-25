@@ -176,9 +176,10 @@ public sealed class AutomationConfig
     public bool HardMainQuestTaskEnabled { get; set; }
     public bool DailyShopTaskEnabled { get; set; }
     public bool DailyFreeGiftTaskEnabled { get; set; }
-    /// <summary>一条龙任务顺序，项为 maze / mainQuest / hardMainQuest / dailyShop / dailyFreeGift。</summary>
+    public bool DailyExercisesTaskEnabled { get; set; }
+    /// <summary>一条龙任务顺序，项为 maze / mainQuest / hardMainQuest / dailyShop / dailyFreeGift / dailyExercises。</summary>
     public List<string> PipelineTaskOrder { get; set; } =
-        ["maze", "mainQuest", "hardMainQuest", "dailyShop", "dailyFreeGift"];
+        ["maze", "mainQuest", "hardMainQuest", "dailyShop", "dailyFreeGift", "dailyExercises"];
     // 每日商店连点（1080p）；注释为 4K 客户区坐标（÷2）。
     // 4K (3560,1930)
     public ConfigPoint DailyShopEntryClick { get; set; } = new(1780, 965);
@@ -222,6 +223,14 @@ public sealed class AutomationConfig
     public ConfigSize DailyFreeGiftOkSize { get; set; } = new(520, 200);
     /// <summary>每日免费礼包上次领完的商店日（每天 5:00 刷新）。</summary>
     public string? LastDailyFreeGiftDay { get; set; }
+    /// <summary>戦術演習大厅「出撃準備」搜索区（1080p）。</summary>
+    public ConfigPoint DailyExercisesPrepareTopLeft { get; set; } = new(1500, 820);
+    public ConfigSize DailyExercisesPrepareSize { get; set; } = new(400, 120);
+    /// <summary>大厅「本日あとN回」数字区（1080p），用于识别 0 次。</summary>
+    public ConfigPoint DailyExercisesRemainingTopLeft { get; set; } = new(1680, 790);
+    public ConfigSize DailyExercisesRemainingSize { get; set; } = new(180, 70);
+    /// <summary>每日演习上次打完的游戏日（每天 5:00 刷新）。</summary>
+    public string? LastDailyExercisesDay { get; set; }
     // 主线 ROI（1080p）；模板匹配后点中心。
     public ConfigPoint MainQuestHomeTopLeft { get; set; } = new(1000, 880);
     public ConfigSize MainQuestHomeSize { get; set; } = new(340, 160);
@@ -389,7 +398,8 @@ public sealed class AutomationConfig
             DailyShopFreeOffSize, DailyShopExchangeSize, DailyShopExchangeHallSize,
             DailyShopOkSize, DailyShopTicketSize,
             DailyFreeGiftOtokuSize, DailyFreeGiftTitleSize,
-            DailyFreeGiftPurchaseSize, DailyFreeGiftOkSize
+            DailyFreeGiftPurchaseSize, DailyFreeGiftOkSize,
+            DailyExercisesPrepareSize, DailyExercisesRemainingSize
         ];
         if (requiredSizes.Any(s => s.Width <= 0 || s.Height <= 0))
             throw new InvalidDataException("所有搜索区域尺寸必须大于零。");
@@ -424,7 +434,7 @@ public sealed class AutomationConfig
 
     public static IReadOnlyList<string> NormalizePipelineTaskOrder(IEnumerable<string>? order)
     {
-        string[] known = ["maze", "mainQuest", "hardMainQuest", "dailyShop", "dailyFreeGift"];
+        string[] known = ["maze", "mainQuest", "hardMainQuest", "dailyShop", "dailyFreeGift", "dailyExercises"];
         var result = new List<string>();
         if (order is not null)
         {

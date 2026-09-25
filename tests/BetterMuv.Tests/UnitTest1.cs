@@ -134,8 +134,8 @@ public class AutomationConfigTests
         Assert.Equal("F10", config.PauseHotkey);
         Assert.Equal("F11", config.StopHotkey);
         Assert.Equal(90, config.GameLaunchTimeoutSeconds);
-        Assert.Equal(["maze", "mainQuest", "hardMainQuest", "dailyShop", "dailyFreeGift"], AutomationConfig.NormalizePipelineTaskOrder(null));
-        Assert.Equal(["mainQuest", "maze", "hardMainQuest", "dailyShop", "dailyFreeGift"], AutomationConfig.NormalizePipelineTaskOrder(["mainQuest", "maze", "unknown"]));
+        Assert.Equal(["maze", "mainQuest", "hardMainQuest", "dailyShop", "dailyFreeGift", "dailyExercises"], AutomationConfig.NormalizePipelineTaskOrder(null));
+        Assert.Equal(["mainQuest", "maze", "hardMainQuest", "dailyShop", "dailyFreeGift", "dailyExercises"], AutomationConfig.NormalizePipelineTaskOrder(["mainQuest", "maze", "unknown"]));
         Assert.Equal(new ConfigPoint(1780, 965), new AutomationConfig().DailyShopEntryClick);
         Assert.Equal(new ConfigPoint(1611, 473), new AutomationConfig().SecondClick);
         Assert.Equal(new ConfigPoint(1080, 950), new AutomationConfig().SearchTopLeft);

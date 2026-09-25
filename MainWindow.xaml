@@ -316,6 +316,29 @@
                                 <CheckBox x:Name="DailyFreeGiftPipelineToggle" Grid.Column="5" Style="{StaticResource ToggleSwitch}" Margin="10,0,0,0" ToolTip="纳入一条龙" Checked="PipelineTaskToggle_Changed" Unchecked="PipelineTaskToggle_Changed"/>
                             </Grid>
                         </Border>
+                        <Border x:Name="DailyExercisesTaskCard" Style="{StaticResource Card}" Tag="dailyExercises" Cursor="SizeAll" ToolTip="拖动调整顺序"
+                                PreviewMouseLeftButtonDown="TaskCard_PreviewMouseLeftButtonDown" MouseMove="TaskCard_MouseMove" PreviewMouseLeftButtonUp="TaskCard_PreviewMouseLeftButtonUp">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="TaskRun"/>
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="TaskPause"/>
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="TaskStop"/>
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="TaskSettings"/>
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="TaskToggle"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Text="每日演习" FontSize="16"/>
+                                    <TextBlock x:Name="DailyExercisesStatusText" Visibility="Collapsed"/>
+                                    <TextBlock x:Name="DailyExercisesPipelineResultText" FontSize="13" FontWeight="SemiBold" Margin="0,3,0,0" Visibility="Collapsed"/>
+                                </StackPanel>
+                                <Button x:Name="RunDailyExercisesButton" Grid.Column="1" Style="{StaticResource IconButton}" MinWidth="36" Content="&#xE768;" ToolTip="运行" Click="RunDailyExercisesButton_Click"/>
+                                <Button x:Name="PauseDailyExercisesButton" Grid.Column="2" Style="{StaticResource IconButton}" Content="&#xE769;" ToolTip="暂停" Visibility="Collapsed" Click="PauseResumeButton_Click"/>
+                                <Button x:Name="StopDailyExercisesButton" Grid.Column="3" Style="{StaticResource IconButton}" Content="&#xE71A;" ToolTip="停止" Visibility="Collapsed" Click="StopButton_Click"/>
+                                <Button Grid.Column="4" Style="{StaticResource IconButton}" MinWidth="36" Visibility="Hidden" IsHitTestVisible="False" Focusable="False" Content="&#xE713;"/>
+                                <CheckBox x:Name="DailyExercisesPipelineToggle" Grid.Column="5" Style="{StaticResource ToggleSwitch}" Margin="10,0,0,0" ToolTip="纳入一条龙" Checked="PipelineTaskToggle_Changed" Unchecked="PipelineTaskToggle_Changed"/>
+                            </Grid>
+                        </Border>
                     </StackPanel>
                 </StackPanel>
             </ScrollViewer>

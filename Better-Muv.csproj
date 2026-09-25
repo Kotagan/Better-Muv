@@ -9,9 +9,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>1.2.1</Version>
-    <AssemblyVersion>1.2.1.0</AssemblyVersion>
-    <FileVersion>1.2.1.0</FileVersion>
+    <Version>1.2.2</Version>
+    <AssemblyVersion>1.2.2.0</AssemblyVersion>
+    <FileVersion>1.2.2.0</FileVersion>
     <Product>Better-Muv</Product>
     <Company>Kotagan</Company>
     <Authors>Kotagan</Authors>
@@ -133,6 +133,8 @@
     <Content Include="Assets\Templates\serial-code-already-used.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\shop-otoku-pack.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\daily-free-gift-title.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\exercises-prepare.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\exercises-remaining-zero.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\shop-purchase.png" CopyToOutputDirectory="PreserveNewest" />
     <None Include="config.json">
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>

@@ -45,7 +45,7 @@ internal static class FlowCatalog
             ]),
             Flow("pipeline", "一条龙", "MainWindow.xaml.cs", null,
             [
-                "按 PipelineTaskOrder 串行 maze / mainQuest / hardMainQuest / dailyShop / dailyFreeGift",
+                "按 PipelineTaskOrder 串行 maze / mainQuest / hardMainQuest / dailyShop / dailyFreeGift / dailyExercises",
                 "共享 DiagnosticTaskSession 诊断目录"
             ]),
             Flow("dailyShop", "每日商店", "Core/DailyShopAutomation.cs", null,
@@ -59,6 +59,12 @@ internal static class FlowCatalog
                 "HudHomeReturn → 商店 → お得パック",
                 "识别 デイリー無料パック → 点击 → 購入 → OK",
                 "无購入弹窗视为今日已领；每天 5:00 刷新"
+            ]),
+            Flow("dailyExercises", "每日演习", "Core/DailyExercisesAutomation.cs", null,
+            [
+                "QuestFromHomeEntry → 戦術演習",
+                "循环：出撃準備 → 出撃 → SKIP/次へ（最多 5 次）",
+                "识别 本日あと0回 或次数用尽后写完成日；每天 5:00 刷新"
             ])
         },
         ["helperModules"] = new[]

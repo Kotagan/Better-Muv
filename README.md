@@ -18,6 +18,7 @@ English | **中文** | 繁體中文 | 日本語
 - **自动主线 / 困难主线**
 - **每日商店**：日常兑换（如 100% OFF 等）
 - **每日免费礼包**：商店 → お得パック → デイリー無料パック
+- **每日演习**：クエスト → 戦術演習（出撃準備 → 出撃 → SKIP/次へ，最多 5 次/日）
 - **一条龙**：按任务页开关与顺序依次执行
 
 ### 兑换码
@@ -150,10 +151,10 @@ dotnet publish Better-Muv.csproj -c Release -r win-x64 --self-contained true -o 
 打包可安装程序（需先安装 [Inno Setup 6](https://jrsoftware.org/isinfo.php)）：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\pack-installer.ps1 -Version 1.2.1
+powershell -ExecutionPolicy Bypass -File scripts\pack-installer.ps1 -Version 1.2.2
 ```
 
-生成物：`dist\Better-Muv-Setup-1.2.1.exe`。
+生成物：`dist\Better-Muv-Setup-1.2.2.exe`。
 
 ---
 
