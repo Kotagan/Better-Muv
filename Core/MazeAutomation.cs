@@ -14,6 +14,7 @@ public sealed class MazeAutomation
     private const string BattleSkipTaskName = "识别战斗界面";
     private const string EventChoiceTaskName = "识别事件选择界面";
     private const string EventRestTaskName = "识别休息事件界面";
+    private const string CraftTaskName = "识别迷宫合成关";
     private const string SettlementTaskName = "识别迷宫结算界面";
     private const string TreasureTaskName = "识别宝物选择状态";
     private const string RouteSelectionTaskName = "识别路线选择界面";
@@ -23,10 +24,14 @@ public sealed class MazeAutomation
     private const double ThirdPresenceThreshold = 0.62;
     /// <summary>下一步（战斗结算 / SEARCH RESULTS）略放宽，避免结算页粉钮因背景裁切漏检。</summary>
     private const double NextPresenceThreshold = 0.70;
-    /// <summary>路线选择标题判定阈值（需更高，避免主界面等误匹配）。</summary>
-    private const double RoutePresenceThreshold = 0.72;
     /// <summary>右下粉钮「探索」：略高于任务页「一括受取」等同色误检（约 0.80 边缘）。</summary>
     private const double FourthPresenceThreshold = 0.80;
+    /// <summary>路线选择标题判定阈值（需更高，避免主界面等误匹配）。</summary>
+    private const double RoutePresenceThreshold = 0.72;
+    /// <summary>胜利页「次へ」：须明显高于制作页灰粉「クラフト実行」误检（导出约 0.79~0.82）。</summary>
+    private const double VictoryNextPresenceThreshold = 0.88;
+    /// <summary>合成关标题「クラフト」存在阈值。</summary>
+    private const double CraftPresenceThreshold = 0.72;
     /// <summary>战斗 SKIP 判定略放宽（右上角小钮，开战前几秒模板常弱）。</summary>
     private const double BattleSkipPresenceThreshold = 0.58;
     /// <summary>未满阈值但偏高时，用写死点补点 SKIP。</summary>
@@ -55,6 +60,8 @@ public sealed class MazeAutomation
     private readonly TemplateMatcher _eventChoiceMatcher;
     private readonly TemplateMatcher _eventChoiceMgArmMatcher;
     private readonly TemplateMatcher _eventRestMatcher;
+    private readonly TemplateMatcher _craftTitleMatcher;
+    private readonly TemplateMatcher _craftEndMatcher;
     private readonly SettlementShopRunner _settlementShop;
     private readonly MazeDifficultyRunner _difficulty;
     private readonly TemplateMatcher _treasureStateMatcher;
@@ -81,6 +88,8 @@ public sealed class MazeAutomation
         _eventChoiceMatcher = TemplateAssets.Load("event-choice.png");
         _eventChoiceMgArmMatcher = TemplateAssets.Load("event-choice-mg-arm.png");
         _eventRestMatcher = TemplateAssets.Load("event-rest.png");
+        _craftTitleMatcher = TemplateAssets.Load("maze-craft-title.png");
+        _craftEndMatcher = TemplateAssets.Load("maze-craft-end.png");
         _settlementShop = new SettlementShopRunner(config, _screen, templateDirectory, log);
         _difficulty = new MazeDifficultyRunner(config, _screen, log);
         _treasureStateMatcher = TemplateAssets.Load("treasure-state.png");
@@ -336,6 +345,9 @@ public sealed class MazeAutomation
                 case "rest":
                     _log($"识别到迷宫探索中界面（休息 {matched.Score:F4}），进入迷宫循环。");
                     return await RunMazeLoopAsync(window, 0, cancellationToken, preferredScreen: "rest");
+                case "craft":
+                    _log($"{CraftTaskName}识别成功（{matched.Score:F4}），进入迷宫循环。");
+                    return await RunMazeLoopAsync(window, 0, cancellationToken, preferredScreen: "craft");
                 case "battle":
                     _log($"识别到迷宫探索中界面（战斗 {matched.Score:F4}），进入迷宫循环。");
                     return await RunMazeLoopAsync(window, 0, cancellationToken, preferredScreen: "battle");
@@ -518,14 +530,14 @@ public sealed class MazeAutomation
     private static readonly string[] StartupScreenPriority =
     [
         // 不再识别主页/任务选择页；入口靠回主页后固定连点。
-    "treasure", "route", "settlement", "partner", "victoryNext", "next", "third", "fourth", "rest", "event", "eventMgArm", "battle"
+    "treasure", "route", "settlement", "partner", "craft", "victoryNext", "next", "third", "fourth", "rest", "event", "eventMgArm", "battle"
     ];
 
     private static readonly string[] MazeExplorationScreenPriority =
     [
-        // 先点「次へ」；结算须优于伙伴（结算店面常弱匹配伙伴模板 ~0.70，会抢走完了流程）。
+        // 先点「次へ」；合成关须早于假 victoryNext 脱困；结算须优于伙伴。
         // rest 优先于 event：单选项休息页与双选项事件 UI 不同，避免漏点「休息をとる」。
-        "victoryNext", "next", "battle", "rest", "event", "eventMgArm", "settlement", "partner", "treasure", "route"
+        "victoryNext", "next", "craft", "battle", "rest", "event", "eventMgArm", "settlement", "partner", "treasure", "route"
     ];
 
     private List<TemplateProbe> BuildBattlePhaseProbes() =>
@@ -554,7 +566,7 @@ public sealed class MazeAutomation
             new ConfigSize(
                 Math.Max(_config.FifthSearchSize.Width + 80, 360),
                 Math.Max(_config.FifthSearchSize.Height + 80, 180)),
-            0.80)
+            VictoryNextPresenceThreshold)
     ];
 
     private List<TemplateProbe> BuildMazeExplorationProbes() =>
@@ -568,6 +580,8 @@ public sealed class MazeAutomation
                 Math.Max(_config.BattleSkipSize.Height + 80, 140)),
             BattleSkipPresenceThreshold),
         new("rest", _eventRestMatcher, _config.EventRestTopLeft, _config.EventRestSize, MazePresenceThreshold),
+        // 合成关：顶栏「クラフト」标题；点底栏「クラフト終了」跳过（配方自动合成后续再加）。
+        new("craft", _craftTitleMatcher, _config.CraftTitleTopLeft, _config.CraftTitleSize, CraftPresenceThreshold),
         new("event", _eventChoiceMatcher, _config.EventChoiceTopLeft, _config.EventChoiceSize, MazePresenceThreshold),
         new("eventMgArm", _eventChoiceMgArmMatcher, _config.EventChoiceTopLeft, _config.EventChoiceSize, MazePresenceThreshold),
         new("partner", _partnerSelectionMatcher, _config.PartnerSelectionTopLeft, _config.PartnerSelectionSize,
@@ -608,7 +622,7 @@ public sealed class MazeAutomation
             new ConfigSize(
                 Math.Max(_config.FifthSearchSize.Width + 80, 360),
                 Math.Max(_config.FifthSearchSize.Height + 80, 180)),
-            0.80)
+            VictoryNextPresenceThreshold)
     ];
 
     private List<TemplateProbe> BuildStartupAllProbes()
@@ -905,8 +919,10 @@ public sealed class MazeAutomation
                     TemplateProbeResult t = GetProbe(probes, "treasure");
                     TemplateProbeResult r = GetProbe(probes, "route");
                     TemplateProbeResult n = GetProbe(probes, "next");
+                    TemplateProbeResult vn = GetProbe(probes, "victoryNext");
                     _log($"迷宫探索 {MazeMissTimeoutMs / 1000.0:0.#} 秒无有效推进（当前屏={screen ?? "?"} " +
-                         $"宝物 {t.Score:F2} / 路线 {r.Score:F2} / 下一步 {n.Score:F2}），停止。");
+                         $"宝物 {t.Score:F2} / 路线 {r.Score:F2} / 下一步 {n.Score:F2} / victoryNext {vn.Score:F2}），尝试回主页脱困。");
+                    await new HudHomeReturn(_config, _screen, _log).TryAsync(window, cancellationToken);
                     return false;
                 }
             }
@@ -968,7 +984,7 @@ public sealed class MazeAutomation
                 await Task.Delay(150, cancellationToken);
 
                 TemplateMatcher nextMatcher = isVictoryNext ? _victoryNextMatcher : _fifthMatcher;
-                double nextThreshold = isVictoryNext ? 0.80 : NextPresenceThreshold;
+                double nextThreshold = isVictoryNext ? VictoryNextPresenceThreshold : NextPresenceThreshold;
                 TemplateProbeResult stillNext = await _screen.ProbeAsync(
                     window, nextMatcher,
                     new ConfigPoint(Math.Max(0, _config.FifthSearchTopLeft.X - 40),
@@ -1006,6 +1022,36 @@ public sealed class MazeAutomation
         }
 
         nextHandled = false;
+
+        if (Is("craft"))
+        {
+            TemplateProbeResult craftProbe = Probe("craft");
+            if (craftProbe.IsMatch)
+            {
+                _log($"{CraftTaskName}识别成功（{craftProbe.Score:F4}），点击「クラフト終了」离开（暂不自动配方合成）。");
+                TemplateProbeResult endProbe = await _screen.ProbeAsync(
+                    window, _craftEndMatcher,
+                    _config.CraftEndTopLeft, _config.CraftEndSize,
+                    cancellationToken, matchThreshold: 0.68);
+                if (endProbe.IsMatch)
+                {
+                    await _screen.ClickProbeAsync(
+                        window, endProbe, "クラフト終了", cancellationToken, settleDelayMs: 200);
+                }
+                else
+                {
+                    _log($"「クラフト終了」模板未命中（最高 {endProbe.Score:F3}），改点固定坐标。");
+                    await _screen.ClickAsync(
+                        window, _config.CraftEndClick, "クラフト終了(坐标)", cancellationToken);
+                }
+
+                await Task.Delay(500, cancellationToken);
+                return State(true);
+            }
+
+            if (screen is not null)
+                return State(false);
+        }
 
         if (Is("battle"))
         {

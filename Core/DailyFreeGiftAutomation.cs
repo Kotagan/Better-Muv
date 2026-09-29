@@ -44,7 +44,7 @@ public sealed class DailyFreeGiftAutomation
         _okMatcherAlt = TemplateAssets.Load("daily-shop-ok.png");
     }
 
-    public async Task RunOnceAsync(CancellationToken cancellationToken)
+    public async Task<TaskRunResult> RunOnceAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         DateTime now = DateTime.Now;
@@ -52,7 +52,7 @@ public sealed class DailyFreeGiftAutomation
         if (QuotaFilledThisDay(_config.LastDailyFreeGiftDay, now))
         {
             _log($"每日免费礼包：今日（{dayKey}）已领过，等到 {NextReset(now):MM-dd HH:mm} 刷新。");
-            return;
+            return TaskRunResult.Success("今日已领过");
         }
 
         GameWindow window = _screen.FindWindow(_config.WindowTitleKeyword);
@@ -60,21 +60,35 @@ public sealed class DailyFreeGiftAutomation
         if (!await _screen.FocusAsync(window.Handle, cancellationToken))
         {
             _log("未能将游戏置于前台，请先手动点一下游戏窗口。");
-            return;
+            return TaskRunResult.Fail("未能将游戏置于前台");
         }
 
         await Task.Delay(200, cancellationToken);
         window = await _screen.EnsurePreferredClientAsync(window, cancellationToken);
         _log($"每日免费礼包：客户区 {window.ClientRect.Width}×{window.ClientRect.Height}");
 
-        await new HudHomeReturn(_config, _screen, _log).TryAsync(window, cancellationToken);
+        var home = new HomePresence(_config, _screen, _log);
+        (window, bool onHome) = await home.EnsureAsync(window, "每日免费礼包", cancellationToken);
+        if (!onHome)
+            return TaskRunResult.Fail("未能回到主界面");
+
         await Task.Delay(AfterHomeDelayMs, cancellationToken);
+        window = _screen.Refresh(window);
+        await new PromoPopupDismisser(_config, _screen, _log).DismissAllAsync(window, cancellationToken);
         window = _screen.Refresh(window);
 
         _log($"每日免费礼包：点击商店入口（{_config.DailyShopEntryClick.X},{_config.DailyShopEntryClick.Y}）。");
         window = await _screen.ClickAsync(window, _config.DailyShopEntryClick, "商店入口", cancellationToken);
         await Task.Delay(AfterShopOpenDelayMs, cancellationToken);
         window = _screen.Refresh(window);
+        for (int i = 0; i < 3; i++)
+        {
+            int closed = await new PromoPopupDismisser(_config, _screen, _log).DismissAllAsync(window, cancellationToken);
+            window = _screen.Refresh(window);
+            if (closed == 0)
+                break;
+            await Task.Delay(350, cancellationToken);
+        }
 
         window = await ClickOtokuPackAsync(window, cancellationToken);
         await Task.Delay(AfterTabDelayMs, cancellationToken);
@@ -97,6 +111,9 @@ public sealed class DailyFreeGiftAutomation
         _log("每日免费礼包：返回主页。");
         await new HudHomeReturn(_config, _screen, _log).TryAsync(window, cancellationToken);
         _log("每日免费礼包：结束。");
+        return claimed
+            ? TaskRunResult.Success()
+            : TaskRunResult.Fail("未能确认领取");
     }
 
     private async Task<GameWindow> ClickOtokuPackAsync(GameWindow window, CancellationToken cancellationToken)

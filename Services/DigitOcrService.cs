@@ -106,7 +106,7 @@ public static class DigitOcrService
     }
 
     /// <summary>
-    /// 日常「本日の購入回数：已购/上限」。剩余 = 上限 - 已购；缺右侧或上限&lt;已购（截断误读）则 null。
+    /// 日常「本日の購入回数：剩余/上限」。左侧就是剩余次数；缺右侧或剩余&gt;上限（截断误读）则 null。
     /// </summary>
     public static int? TryParseDailyPurchaseRemaining(string? text)
     {
@@ -128,14 +128,14 @@ public static class DigitOcrService
         var match = System.Text.RegularExpressions.Regex.Match(normalized, @"(\d+)\s*/\s*(\d+)");
         if (!match.Success)
             return null;
-        if (!int.TryParse(match.Groups[1].Value, out int used))
+        if (!int.TryParse(match.Groups[1].Value, out int remaining))
             return null;
         if (!int.TryParse(match.Groups[2].Value, out int max))
             return null;
-        // 截断成「18/2」时上限会小于已购，视为不可信。
-        if (max < used)
+        // 截断成「18/2」时上限会小于剩余，视为不可信。
+        if (max < remaining)
             return null;
-        return max - used;
+        return remaining;
     }
 
     /// <summary>读取带千分位的非负整数（允许 0）。</summary>

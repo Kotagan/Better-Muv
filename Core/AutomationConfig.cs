@@ -72,6 +72,14 @@ public sealed class AutomationConfig
     /// <summary>迷宫「一時の休息」按钮搜索区（1080p；右栏单选项）。</summary>
     public ConfigPoint EventRestTopLeft { get; set; } = new(900, 640);
     public ConfigSize EventRestSize { get; set; } = new(980, 160);
+    /// <summary>迷宫合成关标题「クラフト」搜索区（1080p；顶栏）。</summary>
+    public ConfigPoint CraftTitleTopLeft { get; set; } = new(820, 20);
+    public ConfigSize CraftTitleSize { get; set; } = new(320, 70);
+    /// <summary>迷宫合成关「クラフト終了」搜索区（1080p；底栏）。</summary>
+    public ConfigPoint CraftEndTopLeft { get; set; } = new(1180, 930);
+    public ConfigSize CraftEndSize { get; set; } = new(400, 120);
+    /// <summary>合成关结束固定点击（1080p；模板漏检兜底）。</summary>
+    public ConfigPoint CraftEndClick { get; set; } = new(1405, 988);
     /// <summary>结算「完了」点击坐标（1080p）。</summary>
     public ConfigPoint SettlementTopLeft { get; set; } = new(1674, 948);
     public ConfigPoint SettlementSearchTopLeft { get; set; } = new(1500, 880);
@@ -177,9 +185,14 @@ public sealed class AutomationConfig
     public bool DailyShopTaskEnabled { get; set; }
     public bool DailyFreeGiftTaskEnabled { get; set; }
     public bool DailyExercisesTaskEnabled { get; set; }
-    /// <summary>一条龙任务顺序，项为 maze / mainQuest / hardMainQuest / dailyShop / dailyFreeGift / dailyExercises。</summary>
+    public bool DailySimulationTowerTaskEnabled { get; set; }
+    public bool DailyMissionsTaskEnabled { get; set; }
+    public bool DailyCircleTaskEnabled { get; set; }
+    public bool DailyHarvestTaskEnabled { get; set; }
+    public bool DailyFreeBoostTaskEnabled { get; set; }
+    /// <summary>一条龙任务顺序，项为 maze / mainQuest / hardMainQuest / dailyShop / dailyFreeGift / dailyExercises / dailyMissions / dailyCircle / dailyHarvest / dailyFreeBoost。</summary>
     public List<string> PipelineTaskOrder { get; set; } =
-        ["maze", "mainQuest", "hardMainQuest", "dailyShop", "dailyFreeGift", "dailyExercises"];
+        ["maze", "mainQuest", "hardMainQuest", "dailyShop", "dailyFreeGift", "dailyExercises", "dailySimulationTower", "dailyMissions", "dailyCircle", "dailyHarvest", "dailyFreeBoost"];
     // 每日商店连点（1080p）；注释为 4K 客户区坐标（÷2）。
     // 4K (3560,1930)
     public ConfigPoint DailyShopEntryClick { get; set; } = new(1780, 965);
@@ -196,8 +209,8 @@ public sealed class AutomationConfig
     // 4K (1944,1874)
     public ConfigPoint DailyShopDoneClick { get; set; } = new(972, 937);
     /// <summary>每日商店「100%OFF」搜索区（1080p）。</summary>
-    public ConfigPoint DailyShopFreeOffTopLeft { get; set; } = new(348, 628);
-    public ConfigSize DailyShopFreeOffSize { get; set; } = new(140, 36);
+    public ConfigPoint DailyShopFreeOffTopLeft { get; set; } = new(300, 600);
+    public ConfigSize DailyShopFreeOffSize { get; set; } = new(280, 80);
     public ConfigPoint DailyShopFreeItemClick { get; set; } = new(413, 698);
     /// <summary>零元购弹窗「交換」按钮搜索区（1080p）。</summary>
     public ConfigPoint DailyShopExchangeTopLeft { get; set; } = new(1050, 920);
@@ -231,6 +244,73 @@ public sealed class AutomationConfig
     public ConfigSize DailyExercisesRemainingSize { get; set; } = new(180, 70);
     /// <summary>每日演习上次打完的游戏日（每天 5:00 刷新）。</summary>
     public string? LastDailyExercisesDay { get; set; }
+    public string? LastDailySimulationTowerDay { get; set; }
+    /// <summary>按“每座塔 10 次”规则完成的游戏日；与旧版单次完成标记分开。</summary>
+    public string? LastDailySimulationTowerTenRunDay { get; set; }
+    /// <summary>可处理五次奖励页后的十次循环完成日。</summary>
+    public string? LastDailySimulationTowerStableLoopDay { get; set; }
+    public Dictionary<string, ConfigPoint> DailySimulationTowerClicks { get; set; } = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["fire"] = new(500, 635), ["water"] = new(1420, 635),
+        ["earth"] = new(1420, 835), ["wood"] = new(500, 835)
+    };
+    public ConfigPoint DailySimulationPrepareTopLeft { get; set; } = new(1500, 900);
+    public ConfigSize DailySimulationPrepareSize { get; set; } = new(420, 180);
+    public ConfigPoint DailySimulationPrepareClick { get; set; } = new(1740, 1020);
+    public ConfigPoint DailySimulationTitleTopLeft { get; set; } = new(100, 0);
+    public ConfigSize DailySimulationTitleSize { get; set; } = new(450, 110);
+    public ConfigPoint DailySimulationListTopLeft { get; set; } = new(1600, 100);
+    public ConfigSize DailySimulationListSize { get; set; } = new(320, 140);
+    public ConfigPoint DailySimulationRemainingTopLeft { get; set; } = new(1600, 900);
+    public ConfigSize DailySimulationRemainingSize { get; set; } = new(320, 100);
+    /// <summary>主页右侧「ミッション」入口（1080p）。</summary>
+    public ConfigPoint DailyMissionsEntryClick { get; set; } = new(1850, 382);
+    public ConfigPoint DailyMissionsEntryTopLeft { get; set; } = new(1750, 300);
+    public ConfigSize DailyMissionsEntrySize { get; set; } = new(170, 150);
+    public ConfigPoint DailyMissionsTitleTopLeft { get; set; } = new(80, 10);
+    public ConfigSize DailyMissionsTitleSize { get; set; } = new(360, 100);
+    public ConfigPoint DailyMissionsDailyTabClick { get; set; } = new(70, 280);
+    public ConfigPoint DailyMissionsClearedTopLeft { get; set; } = new(600, 450);
+    public ConfigSize DailyMissionsClearedSize { get; set; } = new(900, 350);
+    public ConfigPoint DailyMissionsClaimTopLeft { get; set; } = new(1450, 900);
+    public ConfigSize DailyMissionsClaimSize { get; set; } = new(420, 160);
+    public ConfigPoint DailyMissionsOkTopLeft { get; set; } = new(700, 820);
+    public ConfigSize DailyMissionsOkSize { get; set; } = new(520, 200);
+    /// <summary>每日任务上次领完日（每天 5:00 刷新）。</summary>
+    public string? LastDailyMissionsDay { get; set; }
+    /// <summary>底栏「サークル」点击中心（1080p）。</summary>
+    public ConfigPoint DailyCircleNavClick { get; set; } = new(850, 1025);
+    public ConfigPoint DailyCircleNavTopLeft { get; set; } = new(700, 960);
+    public ConfigSize DailyCircleNavSize { get; set; } = new(300, 120);
+    public ConfigPoint DailyCircleTitleTopLeft { get; set; } = new(80, 10);
+    public ConfigSize DailyCircleTitleSize { get; set; } = new(360, 100);
+    public ConfigPoint DailyCircleMissionEntryClick { get; set; } = new(1512, 182);
+    public ConfigPoint DailyCircleMissionEntryTopLeft { get; set; } = new(1300, 120);
+    public ConfigSize DailyCircleMissionEntrySize { get; set; } = new(420, 120);
+    /// <summary>每日社团任务上次领完日（每天 5:00 刷新）。</summary>
+    public string? LastDailyCircleDay { get; set; }
+    /// <summary>主页采矿小人/矿车入口（1080p）。</summary>
+    public ConfigPoint MiningEntryClick { get; set; } = new(1740, 774);
+    public ConfigPoint MiningEntryTopLeft { get; set; } = new(1580, 650);
+    public ConfigSize MiningEntrySize { get; set; } = new(340, 260);
+    /// <summary>採掘弹窗标题搜索区（1080p）。</summary>
+    public ConfigPoint MiningTitleTopLeft { get; set; } = new(820, 30);
+    public ConfigSize MiningTitleSize { get; set; } = new(400, 130);
+    /// <summary>採掘「受取」粉钮搜索区（1080p）。</summary>
+    public ConfigPoint MiningClaimTopLeft { get; set; } = new(1280, 780);
+    public ConfigSize MiningClaimSize { get; set; } = new(420, 150);
+    /// <summary>採掘「0時短受取」搜索区（1080p）。</summary>
+    public ConfigPoint MiningBoostTopLeft { get; set; } = new(1050, 790);
+    public ConfigSize MiningBoostSize { get; set; } = new(450, 150);
+    /// <summary>時短確認弹窗「実行」粉钮搜索区（1080p）。</summary>
+    public ConfigPoint MiningBoostExecuteTopLeft { get; set; } = new(920, 900);
+    public ConfigSize MiningBoostExecuteSize { get; set; } = new(360, 140);
+    public ConfigPoint MiningOkTopLeft { get; set; } = new(700, 820);
+    public ConfigSize MiningOkSize { get; set; } = new(520, 200);
+    /// <summary>每日收菜上次完成日（每天 5:00 刷新）。</summary>
+    public string? LastDailyHarvestDay { get; set; }
+    /// <summary>每日免费加速上次用完日（每天 5:00 刷新）。</summary>
+    public string? LastDailyFreeBoostDay { get; set; }
     // 主线 ROI（1080p）；模板匹配后点中心。
     public ConfigPoint MainQuestHomeTopLeft { get; set; } = new(1000, 880);
     public ConfigSize MainQuestHomeSize { get; set; } = new(340, 160);
@@ -327,7 +407,7 @@ public sealed class AutomationConfig
     /// <summary>商店「强化素材不足」绿提示搜索区（中心对齐绿条约 (962,411)；模板约 556×102@4K）。</summary>
     public ConfigPoint SettlementShopTipTopLeft { get; set; } = new(782, 351);
     public ConfigSize SettlementShopTipSize { get; set; } = new(360, 120);
-    /// <summary>结算左下角「本日の購入回数：已购/上限」整行 ROI（1080p；四个日常小类各自独立，切入后再读）。</summary>
+    /// <summary>结算左下角「本日の購入回数：剩余/上限」整行 ROI（1080p；四个日常小类各自独立，切入后再读）。</summary>
     public ConfigPoint SettlementPurchaseCountTopLeft { get; set; } = new(30, 875);
     public ConfigSize SettlementPurchaseCountSize { get; set; } = new(580, 70);
     /// <summary>结算右上紫晶货币 ROI（1080p；略含图标，OCR 更稳）。</summary>
@@ -383,6 +463,7 @@ public sealed class AutomationConfig
             QuestBattleSimulateSize, QuestExercisesSize, QuestActivitySize, NavBackSize,
             HomeNavSize, QuestNavSize,
             PartnerSelectionSize, BattleSkipSize, PopupCloseSize, EventChoiceSize, EventRestSize,
+            CraftTitleSize, CraftEndSize,
             SettlementSearchSize,
             SettlementMultiplierSize, SettlementBuyButtonSearchSize, SettlementConfirmSize,
             SettlementShopTipSize, SettlementPurchaseCountSize, SettlementCurrencySize,
@@ -399,7 +480,12 @@ public sealed class AutomationConfig
             DailyShopOkSize, DailyShopTicketSize,
             DailyFreeGiftOtokuSize, DailyFreeGiftTitleSize,
             DailyFreeGiftPurchaseSize, DailyFreeGiftOkSize,
-            DailyExercisesPrepareSize, DailyExercisesRemainingSize
+            DailyExercisesPrepareSize, DailyExercisesRemainingSize, DailySimulationPrepareSize,
+            DailySimulationTitleSize, DailySimulationListSize, DailySimulationRemainingSize,
+            DailyMissionsEntrySize, DailyMissionsTitleSize, DailyMissionsClearedSize,
+            DailyMissionsClaimSize, DailyMissionsOkSize,
+            DailyCircleNavSize, DailyCircleTitleSize, DailyCircleMissionEntrySize,
+            MiningEntrySize, MiningTitleSize, MiningClaimSize, MiningBoostSize, MiningBoostExecuteSize, MiningOkSize
         ];
         if (requiredSizes.Any(s => s.Width <= 0 || s.Height <= 0))
             throw new InvalidDataException("所有搜索区域尺寸必须大于零。");
@@ -413,6 +499,9 @@ public sealed class AutomationConfig
         if (MainQuestRunLimit < 1)
             throw new InvalidDataException("mainQuestRunLimit 必须大于等于 1。");
         PipelineTaskOrder = NormalizePipelineTaskOrder(PipelineTaskOrder).ToList();
+        DailySimulationTowerClicks ??= new Dictionary<string, ConfigPoint>(StringComparer.OrdinalIgnoreCase);
+        MigrateLegacyDailySimulationTowerClicks();
+        MigrateLegacyMiningEntry();
         if (MazeRunLimit < 0)
             throw new InvalidDataException("mazeRunLimit 不能为负数（0 表示无限）。");
         MazeDifficultyMode = MazeDifficultyRunner.NormalizeMode(MazeDifficultyMode);
@@ -432,9 +521,52 @@ public sealed class AutomationConfig
             throw new InvalidDataException("settlementShopTipSize 宽高必须大于零。");
     }
 
+    private void MigrateLegacyDailySimulationTowerClicks()
+    {
+        // 1.2.6 将周六两张卡左右写反；仅在两个值同时吻合时成对纠正。
+        if (DailySimulationTowerClicks.TryGetValue("earth", out ConfigPoint? wrongEarth) &&
+            DailySimulationTowerClicks.TryGetValue("wood", out ConfigPoint? wrongWood) &&
+            wrongEarth == new ConfigPoint(500, 835) && wrongWood == new ConfigPoint(1420, 835))
+        {
+            DailySimulationTowerClicks["earth"] = new ConfigPoint(1420, 835);
+            DailySimulationTowerClicks["wood"] = new ConfigPoint(500, 835);
+        }
+
+        Dictionary<string, (ConfigPoint Old, ConfigPoint Current)> migrations = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["fire"] = (new ConfigPoint(410, 470), new ConfigPoint(500, 635)),
+            ["water"] = (new ConfigPoint(780, 470), new ConfigPoint(1420, 635)),
+            ["earth"] = (new ConfigPoint(1150, 470), new ConfigPoint(1420, 835)),
+            ["wood"] = (new ConfigPoint(1520, 470), new ConfigPoint(500, 835))
+        };
+        foreach ((string key, (ConfigPoint oldPoint, ConfigPoint currentPoint)) in migrations)
+        {
+            if (DailySimulationTowerClicks.TryGetValue(key, out ConfigPoint? configured) && configured == oldPoint)
+                DailySimulationTowerClicks[key] = currentPoint;
+        }
+    }
+
+    private void MigrateLegacyMiningEntry()
+    {
+        // 旧版入口坐标取自采矿小人尚未移到主页最右侧时的布局。
+        // 三项同时吻合才迁移，避免覆盖用户手动校准的配置。
+        if (MiningEntryClick == new ConfigPoint(1462, 774) &&
+            MiningEntryTopLeft == new ConfigPoint(1340, 650) &&
+            MiningEntrySize == new ConfigSize(260, 260))
+        {
+            MiningEntryClick = new ConfigPoint(1740, 774);
+            MiningEntryTopLeft = new ConfigPoint(1580, 650);
+            MiningEntrySize = new ConfigSize(340, 260);
+        }
+    }
+
     public static IReadOnlyList<string> NormalizePipelineTaskOrder(IEnumerable<string>? order)
     {
-        string[] known = ["maze", "mainQuest", "hardMainQuest", "dailyShop", "dailyFreeGift", "dailyExercises"];
+        string[] known =
+        [
+            "maze", "mainQuest", "hardMainQuest", "dailyShop", "dailyFreeGift",
+            "dailyExercises", "dailySimulationTower", "dailyMissions", "dailyCircle", "dailyHarvest", "dailyFreeBoost"
+        ];
         var result = new List<string>();
         if (order is not null)
         {

@@ -20,6 +20,7 @@ public sealed class QuestFromHomeEntry
     private readonly ScreenAutomation _screen;
     private readonly Action<string> _log;
     private readonly TemplateMatcher _questMatcher;
+    private readonly PromoPopupDismisser _promo;
 
     public QuestFromHomeEntry(AutomationConfig config, ScreenAutomation screen, Action<string> log)
     {
@@ -27,6 +28,7 @@ public sealed class QuestFromHomeEntry
         _screen = screen;
         _log = log;
         _questMatcher = TemplateAssets.Load("quest.png");
+        _promo = new PromoPopupDismisser(config, screen, log);
     }
 
     public static ConfigPoint MainQuestBannerClick(AutomationConfig config) => new(
@@ -60,7 +62,8 @@ public sealed class QuestFromHomeEntry
         CancellationToken cancellationToken,
         TemplateMatcher? targetReadyMatcher = null,
         ConfigPoint? readyTopLeft = null,
-        ConfigSize? readySize = null)
+        ConfigSize? readySize = null,
+        bool singleClickTarget = false)
     {
         // 有主页钮则点一次并已在内部等 500ms。
         await new HudHomeReturn(_config, _screen, _log).TryAsync(window, cancellationToken);
@@ -132,7 +135,14 @@ public sealed class QuestFromHomeEntry
             _log($"已识别“{targetName}”（{ready.Score:F4}），开始点击。");
         }
 
-        window = await DoubleClickAsync(window, targetClick, targetName, cancellationToken);
+        if (singleClickTarget)
+        {
+            window = await _screen.ClickAsync(window, targetClick, targetName, cancellationToken, parkCursor: false);
+            await Task.Delay(250, cancellationToken);
+            _screen.ParkCursorAway(window);
+        }
+        else
+            window = await DoubleClickAsync(window, targetClick, targetName, cancellationToken);
         await Task.Delay(AfterTargetDelayMs, cancellationToken);
         return _screen.Refresh(window);
     }
@@ -174,8 +184,10 @@ public sealed class QuestFromHomeEntry
         int ticks = 0;
         do
         {
-            if (ticks > 0 && ticks % 8 == 0)
+            if (ticks > 0 && ticks % 4 == 0)
             {
+                window = _screen.Refresh(window);
+                await _promo.DismissAllAsync(window, cancellationToken);
                 window = _screen.Refresh(window);
                 await _screen.FocusAsync(window.Handle, cancellationToken);
             }

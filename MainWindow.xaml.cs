@@ -37,7 +37,7 @@ public partial class MainWindow : Window
     private const string FluentPlay = "\uE768";
     private const string FluentPause = "\uE769";
     private const string FluentStop = "\uE71A";
-    private enum ActiveTask { None, Maze, MainQuest, HardMainQuest, DailyShop, DailyFreeGift, DailyExercises, Redeem, Pipeline }
+    private enum ActiveTask { None, Maze, MainQuest, HardMainQuest, DailyShop, DailyFreeGift, DailyExercises, DailySimulationTower, DailyMissions, DailyCircle, DailyHarvest, DailyFreeBoost, Redeem, Pipeline }
     private ActiveTask _activeTask = ActiveTask.None;
     private readonly List<string> _pipelineQueue = [];
     private int _pipelineIndex;
@@ -522,6 +522,16 @@ public partial class MainWindow : Window
             DailyFreeGiftStatusText.Text = "正在启动截图器…";
         else if (statusTarget == "dailyExercises")
             DailyExercisesStatusText.Text = "正在启动截图器…";
+        else if (statusTarget == "dailySimulationTower")
+            DailySimulationTowerStatusText.Text = "正在启动截图器…";
+        else if (statusTarget == "dailyMissions")
+            DailyMissionsStatusText.Text = "正在启动截图器…";
+        else if (statusTarget == "dailyCircle")
+            DailyCircleStatusText.Text = "正在启动截图器…";
+        else if (statusTarget == "dailyHarvest")
+            DailyHarvestStatusText.Text = "正在启动截图器…";
+        else if (statusTarget == "dailyFreeBoost")
+            DailyFreeBoostStatusText.Text = "正在启动截图器…";
         try
         {
             await _captureSession.StartAsync(config, CancellationToken.None);
@@ -544,6 +554,16 @@ public partial class MainWindow : Window
                 DailyFreeGiftStatusText.Text = message;
             else if (statusTarget == "dailyExercises")
                 DailyExercisesStatusText.Text = message;
+            else if (statusTarget == "dailySimulationTower")
+                DailySimulationTowerStatusText.Text = message;
+            else if (statusTarget == "dailyMissions")
+                DailyMissionsStatusText.Text = message;
+            else if (statusTarget == "dailyCircle")
+                DailyCircleStatusText.Text = message;
+            else if (statusTarget == "dailyHarvest")
+                DailyHarvestStatusText.Text = message;
+            else if (statusTarget == "dailyFreeBoost")
+                DailyFreeBoostStatusText.Text = message;
             AppendLog("无法执行任务：" + message);
             UpdateRunUi();
             return false;
@@ -641,6 +661,88 @@ public partial class MainWindow : Window
             return;
         await StartDailyExercisesAsync();
     }
+
+    private async void RunDailySimulationTowerButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_activeTask == ActiveTask.DailySimulationTower && (_runCancellation is not null || _isPaused))
+        {
+            PauseResumeButton_Click(sender, e);
+            return;
+        }
+        if (_runCancellation is not null || _isPaused)
+            return;
+        OpenLogDrawer();
+        if (!await EnsureCaptureForRunAsync("dailySimulationTower"))
+            return;
+        await StartDailySimulationTowerAsync();
+    }
+
+    private async void RunDailyMissionsButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_activeTask == ActiveTask.DailyMissions && (_runCancellation is not null || _isPaused))
+        {
+            PauseResumeButton_Click(sender, e);
+            return;
+        }
+        if (_runCancellation is not null || _isPaused)
+            return;
+        OpenLogDrawer();
+        if (!await EnsureCaptureForRunAsync("dailyMissions"))
+            return;
+        await StartDailyMissionsAsync();
+    }
+
+    private async void RunDailyCircleButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_activeTask == ActiveTask.DailyCircle && (_runCancellation is not null || _isPaused))
+        {
+            PauseResumeButton_Click(sender, e);
+            return;
+        }
+        if (_runCancellation is not null || _isPaused)
+            return;
+        OpenLogDrawer();
+        if (!await EnsureCaptureForRunAsync("dailyCircle"))
+            return;
+        await StartDailyCircleAsync();
+    }
+
+    private async void RunDailyHarvestButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_activeTask == ActiveTask.DailyHarvest && (_runCancellation is not null || _isPaused))
+        {
+            PauseResumeButton_Click(sender, e);
+            return;
+        }
+        if (_runCancellation is not null || _isPaused)
+        {
+            AppendLog("每日收菜：当前有其它任务在运行或已暂停，请先停止后再试。");
+            return;
+        }
+        OpenLogDrawer();
+        AppendLog("每日收菜：开始执行。");
+        DailyHarvestStatusText.Text = "正在启动…";
+        DailyHarvestStatusText.Visibility = Visibility.Visible;
+        if (!await EnsureCaptureForRunAsync("dailyHarvest"))
+            return;
+        await StartDailyHarvestAsync();
+    }
+
+    private async void RunDailyFreeBoostButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_activeTask == ActiveTask.DailyFreeBoost && (_runCancellation is not null || _isPaused))
+        {
+            PauseResumeButton_Click(sender, e);
+            return;
+        }
+        if (_runCancellation is not null || _isPaused)
+            return;
+        OpenLogDrawer();
+        if (!await EnsureCaptureForRunAsync("dailyFreeBoost"))
+            return;
+        await StartDailyFreeBoostAsync();
+    }
+
 
     private async void RunPipelineButton_Click(object sender, RoutedEventArgs e)
     {
@@ -892,6 +994,172 @@ public partial class MainWindow : Window
         }
     }
 
+    private async Task StartDailySimulationTowerAsync()
+    {
+        if (_runCancellation is not null) return;
+        bool resume = _isPaused;
+        BeginRunLogSession(resume);
+        _resumeDiagnosticTask = resume;
+        BeginDiagnosticRun(resume);
+        _isPaused = false;
+        _pauseRequested = false;
+        _activeTask = ActiveTask.DailySimulationTower;
+        _runCancellation = new CancellationTokenSource();
+        UpdateRunUi();
+        try
+        {
+            WindowState = WindowState.Minimized;
+            await Task.Delay(250, _runCancellation.Token);
+            await RunDailySimulationTowerCoreAsync(_runCancellation.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            AppendLog(_pauseRequested ? "每日模拟战斗爬塔已暂停。" : "每日模拟战斗爬塔已停止。");
+        }
+        catch (Exception exception)
+        {
+            AppendLog("每日模拟战斗爬塔错误：" + exception.Message);
+            CaptureOnAutoStop("dailySimulationTower");
+        }
+        finally
+        {
+            FinishRunSession();
+        }
+    }
+
+    private async Task StartDailyMissionsAsync()
+    {
+        if (_runCancellation is not null) return;
+        bool resume = _isPaused;
+        BeginRunLogSession(resume);
+        _resumeDiagnosticTask = resume;
+        BeginDiagnosticRun(resume);
+        _isPaused = false;
+        _pauseRequested = false;
+        _activeTask = ActiveTask.DailyMissions;
+        _runCancellation = new CancellationTokenSource();
+        UpdateRunUi();
+        try
+        {
+            WindowState = WindowState.Minimized;
+            await Task.Delay(250, _runCancellation.Token);
+            await RunDailyMissionsCoreAsync(_runCancellation.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            AppendLog(_pauseRequested ? "每日任务已暂停。" : "每日任务已停止。");
+        }
+        catch (Exception exception)
+        {
+            AppendLog("每日任务错误：" + exception.Message);
+            CaptureOnAutoStop("dailyMissions");
+        }
+        finally
+        {
+            FinishRunSession();
+        }
+    }
+
+    private async Task StartDailyCircleAsync()
+    {
+        if (_runCancellation is not null) return;
+        bool resume = _isPaused;
+        BeginRunLogSession(resume);
+        _resumeDiagnosticTask = resume;
+        BeginDiagnosticRun(resume);
+        _isPaused = false;
+        _pauseRequested = false;
+        _activeTask = ActiveTask.DailyCircle;
+        _runCancellation = new CancellationTokenSource();
+        UpdateRunUi();
+        try
+        {
+            WindowState = WindowState.Minimized;
+            await Task.Delay(250, _runCancellation.Token);
+            await RunDailyCircleCoreAsync(_runCancellation.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            AppendLog(_pauseRequested ? "每日社团已暂停。" : "每日社团已停止。");
+        }
+        catch (Exception exception)
+        {
+            AppendLog("每日社团错误：" + exception.Message);
+            CaptureOnAutoStop("dailyCircle");
+        }
+        finally
+        {
+            FinishRunSession();
+        }
+    }
+
+
+    private async Task StartDailyHarvestAsync()
+    {
+        if (_runCancellation is not null) return;
+        bool resume = _isPaused;
+        BeginRunLogSession(resume);
+        _resumeDiagnosticTask = resume;
+        BeginDiagnosticRun(resume);
+        _isPaused = false;
+        _pauseRequested = false;
+        _activeTask = ActiveTask.DailyHarvest;
+        _runCancellation = new CancellationTokenSource();
+        UpdateRunUi();
+        try
+        {
+            WindowState = WindowState.Minimized;
+            await Task.Delay(250, _runCancellation.Token);
+            await RunDailyHarvestCoreAsync(_runCancellation.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            AppendLog(_pauseRequested ? "每日收菜已暂停。" : "每日收菜已停止。");
+        }
+        catch (Exception exception)
+        {
+            AppendLog("每日收菜错误：" + exception.Message);
+            CaptureOnAutoStop("dailyHarvest");
+        }
+        finally
+        {
+            FinishRunSession();
+        }
+    }
+
+    private async Task StartDailyFreeBoostAsync()
+    {
+        if (_runCancellation is not null) return;
+        bool resume = _isPaused;
+        BeginRunLogSession(resume);
+        _resumeDiagnosticTask = resume;
+        BeginDiagnosticRun(resume);
+        _isPaused = false;
+        _pauseRequested = false;
+        _activeTask = ActiveTask.DailyFreeBoost;
+        _runCancellation = new CancellationTokenSource();
+        UpdateRunUi();
+        try
+        {
+            WindowState = WindowState.Minimized;
+            await Task.Delay(250, _runCancellation.Token);
+            await RunDailyFreeBoostCoreAsync(_runCancellation.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            AppendLog(_pauseRequested ? "每日免费加速已暂停。" : "每日免费加速已停止。");
+        }
+        catch (Exception exception)
+        {
+            AppendLog("每日免费加速错误：" + exception.Message);
+            CaptureOnAutoStop("dailyFreeBoost");
+        }
+        finally
+        {
+            FinishRunSession();
+        }
+    }
+
     private async Task StartPipelineAsync()
     {
         if (_runCancellation is not null) return;
@@ -921,6 +1189,16 @@ public partial class MainWindow : Window
                 else if (id == "dailyFreeGift" && config.DailyFreeGiftTaskEnabled)
                     _pipelineQueue.Add(id);
                 else if (id == "dailyExercises" && config.DailyExercisesTaskEnabled)
+                    _pipelineQueue.Add(id);
+                else if (id == "dailySimulationTower" && config.DailySimulationTowerTaskEnabled)
+                    _pipelineQueue.Add(id);
+                else if (id == "dailyMissions" && config.DailyMissionsTaskEnabled)
+                    _pipelineQueue.Add(id);
+                else if (id == "dailyCircle" && config.DailyCircleTaskEnabled)
+                    _pipelineQueue.Add(id);
+                else if (id == "dailyHarvest" && config.DailyHarvestTaskEnabled)
+                    _pipelineQueue.Add(id);
+                else if (id == "dailyFreeBoost" && config.DailyFreeBoostTaskEnabled)
                     _pipelineQueue.Add(id);
             }
 
@@ -954,19 +1232,44 @@ public partial class MainWindow : Window
                 AppendLog($"一条龙：开始 {PipelineTaskDisplayName(id)}（{_pipelineIndex + 1}/{_pipelineQueue.Count}）。");
                 try
                 {
-                    if (id == "maze")
-                        await RunMazeCoreAsync(_runCancellation.Token);
-                    else if (id == "hardMainQuest")
-                        await RunHardMainQuestCoreAsync(_runCancellation.Token);
-                    else if (id == "dailyShop")
-                        await RunDailyShopCoreAsync(_runCancellation.Token);
-                    else if (id == "dailyFreeGift")
-                        await RunDailyFreeGiftCoreAsync(_runCancellation.Token);
-                    else if (id == "dailyExercises")
-                        await RunDailyExercisesCoreAsync(_runCancellation.Token);
+                    TaskRunResult result = await RunPipelineTaskOnceAsync(id, _runCancellation.Token);
+                    if (!result.Ok)
+                    {
+                        AppendLog($"一条龙：{PipelineTaskDisplayName(id)} 首次未成功 — {result.Detail ?? "失败"}，进入失败处理并重试一次。");
+                        CaptureOnAutoStop(id + "-fail1");
+                        bool homeOk = await new TaskFailureHandler(ConfigStore.Load(), AppendLog)
+                            .RecoverToHomeAsync(PipelineTaskDisplayName(id), _runCancellation.Token);
+                        if (!homeOk)
+                        {
+                            SetPipelineResultHint(id, PipelineHintState.Failure, result.Detail);
+                            AppendLog("一条龙：失败处理后无法回到主界面，停止一条龙。");
+                            CaptureOnAutoStop("pipeline-no-home");
+                            break;
+                        }
+
+                        result = await RunPipelineTaskOnceAsync(id, _runCancellation.Token);
+                        if (!result.Ok)
+                        {
+                            AppendLog($"一条龙：{PipelineTaskDisplayName(id)} 重试仍失败 — {result.Detail ?? "失败"}");
+                            SetPipelineResultHint(id, PipelineHintState.Failure, result.Detail);
+                            CaptureOnAutoStop(id);
+                            homeOk = await new TaskFailureHandler(ConfigStore.Load(), AppendLog)
+                                .RecoverToHomeAsync(PipelineTaskDisplayName(id), _runCancellation.Token);
+                            if (!homeOk)
+                            {
+                                AppendLog("一条龙：最终失败后无法回到主界面，停止一条龙。");
+                                CaptureOnAutoStop("pipeline-no-home");
+                                break;
+                            }
+                        }
+                        else
+                        {
+                            AppendLog($"一条龙：{PipelineTaskDisplayName(id)} 失败处理后重试成功。");
+                            SetPipelineResultHint(id, PipelineHintState.Success, result.Detail);
+                        }
+                    }
                     else
-                        await RunMainQuestCoreAsync(_runCancellation.Token);
-                    SetPipelineResultHint(id, PipelineHintState.Success);
+                        SetPipelineResultHint(id, PipelineHintState.Success, result.Detail);
                 }
                 catch (OperationCanceledException)
                 {
@@ -984,9 +1287,65 @@ public partial class MainWindow : Window
                 }
                 catch (Exception taskEx)
                 {
-                    SetPipelineResultHint(id, PipelineHintState.Failure, taskEx.Message);
-                    AppendLog($"一条龙：{PipelineTaskDisplayName(id)} 出错，继续下一项 — {taskEx.Message}");
-                    CaptureOnAutoStop(id);
+                    AppendLog($"一条龙：{PipelineTaskDisplayName(id)} 出错 — {taskEx.Message}，进入失败处理并重试一次。");
+                    CaptureOnAutoStop(id + "-ex1");
+                    try
+                    {
+                        bool homeOk = await new TaskFailureHandler(ConfigStore.Load(), AppendLog)
+                            .RecoverToHomeAsync(PipelineTaskDisplayName(id), _runCancellation.Token);
+                        if (!homeOk)
+                        {
+                            SetPipelineResultHint(id, PipelineHintState.Failure, taskEx.Message);
+                            AppendLog("一条龙：异常后无法回到主界面，停止一条龙。");
+                            CaptureOnAutoStop("pipeline-no-home");
+                            break;
+                        }
+
+                        TaskRunResult retry = await RunPipelineTaskOnceAsync(id, _runCancellation.Token);
+                        if (retry.Ok)
+                        {
+                            AppendLog($"一条龙：{PipelineTaskDisplayName(id)} 异常后重试成功。");
+                            SetPipelineResultHint(id, PipelineHintState.Success, retry.Detail);
+                        }
+                        else
+                        {
+                            SetPipelineResultHint(id, PipelineHintState.Failure, retry.Detail ?? taskEx.Message);
+                            AppendLog($"一条龙：{PipelineTaskDisplayName(id)} 重试仍失败 — {retry.Detail ?? taskEx.Message}");
+                            CaptureOnAutoStop(id);
+                            homeOk = await new TaskFailureHandler(ConfigStore.Load(), AppendLog)
+                                .RecoverToHomeAsync(PipelineTaskDisplayName(id), _runCancellation.Token);
+                            if (!homeOk)
+                            {
+                                AppendLog("一条龙：最终失败后无法回到主界面，停止一条龙。");
+                                CaptureOnAutoStop("pipeline-no-home");
+                                break;
+                            }
+                        }
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        throw;
+                    }
+                    catch (Exception retryEx)
+                    {
+                        SetPipelineResultHint(id, PipelineHintState.Failure, retryEx.Message);
+                        AppendLog($"一条龙：{PipelineTaskDisplayName(id)} 重试出错 — {retryEx.Message}");
+                        CaptureOnAutoStop(id);
+                        bool homeOk = false;
+                        try
+                        {
+                            homeOk = await new TaskFailureHandler(ConfigStore.Load(), AppendLog)
+                                .RecoverToHomeAsync(PipelineTaskDisplayName(id), CancellationToken.None);
+                        }
+                        catch { /* ignore */ }
+
+                        if (!homeOk)
+                        {
+                            AppendLog("一条龙：最终失败后无法回到主界面，停止一条龙。");
+                            CaptureOnAutoStop("pipeline-no-home");
+                            break;
+                        }
+                    }
                 }
 
                 _pipelineIndex++;
@@ -1029,6 +1388,11 @@ public partial class MainWindow : Window
         yield return DailyShopPipelineResultText;
         yield return DailyFreeGiftPipelineResultText;
         yield return DailyExercisesPipelineResultText;
+        yield return DailySimulationTowerPipelineResultText;
+        yield return DailyMissionsPipelineResultText;
+        yield return DailyCirclePipelineResultText;
+        yield return DailyHarvestPipelineResultText;
+        yield return DailyFreeBoostPipelineResultText;
     }
 
     private TextBlock? PipelineResultTipFor(string id) => id switch
@@ -1039,6 +1403,11 @@ public partial class MainWindow : Window
         "dailyShop" => DailyShopPipelineResultText,
         "dailyFreeGift" => DailyFreeGiftPipelineResultText,
         "dailyExercises" => DailyExercisesPipelineResultText,
+        "dailySimulationTower" => DailySimulationTowerPipelineResultText,
+        "dailyMissions" => DailyMissionsPipelineResultText,
+        "dailyCircle" => DailyCirclePipelineResultText,
+        "dailyHarvest" => DailyHarvestPipelineResultText,
+        "dailyFreeBoost" => DailyFreeBoostPipelineResultText,
         _ => null
     };
 
@@ -1080,6 +1449,11 @@ public partial class MainWindow : Window
         config.DailyShopTaskEnabled = DailyShopPipelineToggle.IsChecked == true;
         config.DailyFreeGiftTaskEnabled = DailyFreeGiftPipelineToggle.IsChecked == true;
         config.DailyExercisesTaskEnabled = DailyExercisesPipelineToggle.IsChecked == true;
+        config.DailySimulationTowerTaskEnabled = DailySimulationTowerPipelineToggle.IsChecked == true;
+        config.DailyMissionsTaskEnabled = DailyMissionsPipelineToggle.IsChecked == true;
+        config.DailyCircleTaskEnabled = DailyCirclePipelineToggle.IsChecked == true;
+        config.DailyHarvestTaskEnabled = DailyHarvestPipelineToggle.IsChecked == true;
+        config.DailyFreeBoostTaskEnabled = DailyFreeBoostPipelineToggle.IsChecked == true;
         config.PipelineTaskOrder = TaskListPanel.Children
             .OfType<FrameworkElement>()
             .Select(card => card.Tag as string)
@@ -1089,41 +1463,94 @@ public partial class MainWindow : Window
         ConfigStore.Save(config);
     }
 
-    private Task RunMazeCoreAsync(CancellationToken cancellationToken)
+    private Task<TaskRunResult> RunPipelineTaskOnceAsync(string id, CancellationToken cancellationToken) => id switch
+    {
+        "maze" => RunMazeCoreAsync(cancellationToken),
+        "hardMainQuest" => RunHardMainQuestCoreAsync(cancellationToken),
+        "dailyShop" => RunDailyShopCoreAsync(cancellationToken),
+        "dailyFreeGift" => RunDailyFreeGiftCoreAsync(cancellationToken),
+        "dailyExercises" => RunDailyExercisesCoreAsync(cancellationToken),
+        "dailySimulationTower" => RunDailySimulationTowerCoreAsync(cancellationToken),
+        "dailyMissions" => RunDailyMissionsCoreAsync(cancellationToken),
+        "dailyCircle" => RunDailyCircleCoreAsync(cancellationToken),
+        "dailyHarvest" => RunDailyHarvestCoreAsync(cancellationToken),
+        "dailyFreeBoost" => RunDailyFreeBoostCoreAsync(cancellationToken),
+        _ => RunMainQuestCoreAsync(cancellationToken),
+    };
+
+    private async Task<TaskRunResult> RunMazeCoreAsync(CancellationToken cancellationToken)
     {
         var automation = new MazeAutomation(PrepareDiagnosticTask("maze"), AppendLog);
-        return automation.RunOnceAsync(cancellationToken);
+        await automation.RunOnceAsync(cancellationToken);
+        return TaskRunResult.Success();
     }
 
-    private Task RunMainQuestCoreAsync(CancellationToken cancellationToken)
+    private async Task<TaskRunResult> RunMainQuestCoreAsync(CancellationToken cancellationToken)
     {
         var automation = new MainQuestAutomation(PrepareDiagnosticTask("mainQuest"), AppendLog);
-        return automation.RunOnceAsync(cancellationToken);
+        await automation.RunOnceAsync(cancellationToken);
+        return TaskRunResult.Success();
     }
 
-    private Task RunHardMainQuestCoreAsync(CancellationToken cancellationToken)
+    private async Task<TaskRunResult> RunHardMainQuestCoreAsync(CancellationToken cancellationToken)
     {
         var automation = new HardMainQuestAutomation(PrepareDiagnosticTask("hardMainQuest"), AppendLog);
-        return automation.RunOnceAsync(cancellationToken);
+        await automation.RunOnceAsync(cancellationToken);
+        return TaskRunResult.Success();
     }
 
-    private Task RunDailyShopCoreAsync(CancellationToken cancellationToken)
+    private Task<TaskRunResult> RunDailyShopCoreAsync(CancellationToken cancellationToken)
     {
         var automation = new DailyShopAutomation(PrepareDiagnosticTask("dailyShop"), AppendLog);
         return automation.RunOnceAsync(cancellationToken);
     }
 
-    private Task RunDailyFreeGiftCoreAsync(CancellationToken cancellationToken)
+    private Task<TaskRunResult> RunDailyFreeGiftCoreAsync(CancellationToken cancellationToken)
     {
         var automation = new DailyFreeGiftAutomation(PrepareDiagnosticTask("dailyFreeGift"), AppendLog);
         return automation.RunOnceAsync(cancellationToken);
     }
 
-    private Task RunDailyExercisesCoreAsync(CancellationToken cancellationToken)
+    private async Task<TaskRunResult> RunDailyExercisesCoreAsync(CancellationToken cancellationToken)
     {
         var automation = new DailyExercisesAutomation(PrepareDiagnosticTask("dailyExercises"), AppendLog);
+        await automation.RunOnceAsync(cancellationToken);
+        return TaskRunResult.Success();
+    }
+
+    private async Task<TaskRunResult> RunDailySimulationTowerCoreAsync(CancellationToken cancellationToken)
+    {
+        var automation = new DailySimulationTowerAutomation(PrepareDiagnosticTask("dailySimulationTower"), AppendLog);
+        await automation.RunOnceAsync(cancellationToken);
+        return TaskRunResult.Success();
+    }
+
+    private Task<TaskRunResult> RunDailyMissionsCoreAsync(CancellationToken cancellationToken)
+    {
+        var automation = new DailyMissionsAutomation(PrepareDiagnosticTask("dailyMissions"), AppendLog);
         return automation.RunOnceAsync(cancellationToken);
     }
+
+    private async Task<TaskRunResult> RunDailyCircleCoreAsync(CancellationToken cancellationToken)
+    {
+        var automation = new DailyCircleAutomation(PrepareDiagnosticTask("dailyCircle"), AppendLog);
+        await automation.RunOnceAsync(cancellationToken);
+        return TaskRunResult.Success();
+    }
+
+    private Task<TaskRunResult> RunDailyHarvestCoreAsync(CancellationToken cancellationToken)
+    {
+        var automation = new DailyHarvestAutomation(PrepareDiagnosticTask("dailyHarvest"), AppendLog);
+        return automation.RunOnceAsync(cancellationToken);
+    }
+
+    private async Task<TaskRunResult> RunDailyFreeBoostCoreAsync(CancellationToken cancellationToken)
+    {
+        var automation = new DailyFreeBoostAutomation(PrepareDiagnosticTask("dailyFreeBoost"), AppendLog);
+        await automation.RunOnceAsync(cancellationToken);
+        return TaskRunResult.Success();
+    }
+
 
     private void BeginDiagnosticRun(bool resume)
     {
@@ -1207,6 +1634,11 @@ public partial class MainWindow : Window
         "dailyShop" => "每日商店",
         "dailyFreeGift" => "每日免费礼包",
         "dailyExercises" => "每日演习",
+        "dailySimulationTower" => "每日模拟战斗爬塔",
+        "dailyMissions" => "每日任务",
+        "dailyCircle" => "每日社团",
+        "dailyHarvest" => "每日收菜",
+        "dailyFreeBoost" => "每日免费加速",
         "redeem" => "兑换码",
         _ => "自动主线任务"
     };
@@ -1227,6 +1659,16 @@ public partial class MainWindow : Window
                 _ = StartDailyFreeGiftAsync();
             else if (_activeTask == ActiveTask.DailyExercises)
                 _ = StartDailyExercisesAsync();
+            else if (_activeTask == ActiveTask.DailySimulationTower)
+                _ = StartDailySimulationTowerAsync();
+            else if (_activeTask == ActiveTask.DailyMissions)
+                _ = StartDailyMissionsAsync();
+            else if (_activeTask == ActiveTask.DailyCircle)
+                _ = StartDailyCircleAsync();
+            else if (_activeTask == ActiveTask.DailyHarvest)
+                _ = StartDailyHarvestAsync();
+            else if (_activeTask == ActiveTask.DailyFreeBoost)
+                _ = StartDailyFreeBoostAsync();
             else
                 _ = StartMazeAsync();
             return;
@@ -1241,6 +1683,11 @@ public partial class MainWindow : Window
             RunDailyShopButton.IsEnabled = false;
             RunDailyFreeGiftButton.IsEnabled = false;
             RunDailyExercisesButton.IsEnabled = false;
+            RunDailySimulationTowerButton.IsEnabled = false;
+            RunDailyMissionsButton.IsEnabled = false;
+            RunDailyCircleButton.IsEnabled = false;
+            RunDailyHarvestButton.IsEnabled = false;
+            RunDailyFreeBoostButton.IsEnabled = false;
             RunPipelineButton.IsEnabled = false;
             _runCancellation.Cancel();
         }
@@ -1259,6 +1706,11 @@ public partial class MainWindow : Window
         StopDailyShopButton.IsEnabled = false;
         StopDailyFreeGiftButton.IsEnabled = false;
         StopDailyExercisesButton.IsEnabled = false;
+        StopDailySimulationTowerButton.IsEnabled = false;
+        StopDailyMissionsButton.IsEnabled = false;
+        StopDailyCircleButton.IsEnabled = false;
+        StopDailyHarvestButton.IsEnabled = false;
+        StopDailyFreeBoostButton.IsEnabled = false;
         StopPipelineButton.IsEnabled = false;
         _runCancellation?.Cancel();
         if (_runCancellation is null) UpdateRunUi();
@@ -1274,6 +1726,11 @@ public partial class MainWindow : Window
         bool dailyShopUi = _activeTask == ActiveTask.DailyShop;
         bool dailyFreeGiftUi = _activeTask == ActiveTask.DailyFreeGift;
         bool dailyExercisesUi = _activeTask == ActiveTask.DailyExercises;
+        bool dailySimulationTowerUi = _activeTask == ActiveTask.DailySimulationTower;
+        bool dailyMissionsUi = _activeTask == ActiveTask.DailyMissions;
+        bool dailyCircleUi = _activeTask == ActiveTask.DailyCircle;
+        bool dailyHarvestUi = _activeTask == ActiveTask.DailyHarvest;
+        bool dailyFreeBoostUi = _activeTask == ActiveTask.DailyFreeBoost;
         bool redeemUi = _activeTask == ActiveTask.Redeem;
         bool pipelineUi = _activeTask == ActiveTask.Pipeline;
         bool idle = !running && !_isPaused;
@@ -1284,6 +1741,11 @@ public partial class MainWindow : Window
         RunDailyShopButton.IsEnabled = idle || dailyShopUi;
         RunDailyFreeGiftButton.IsEnabled = idle || dailyFreeGiftUi;
         RunDailyExercisesButton.IsEnabled = idle || dailyExercisesUi;
+        RunDailySimulationTowerButton.IsEnabled = idle || dailySimulationTowerUi;
+        RunDailyMissionsButton.IsEnabled = idle || dailyMissionsUi;
+        RunDailyCircleButton.IsEnabled = idle || dailyCircleUi;
+        RunDailyHarvestButton.IsEnabled = idle || dailyHarvestUi;
+        RunDailyFreeBoostButton.IsEnabled = idle || dailyFreeBoostUi;
         RunPipelineButton.IsEnabled = idle || pipelineUi;
         MazePipelineToggle.IsEnabled = idle;
         MainQuestPipelineToggle.IsEnabled = idle;
@@ -1291,6 +1753,11 @@ public partial class MainWindow : Window
         DailyShopPipelineToggle.IsEnabled = idle;
         DailyFreeGiftPipelineToggle.IsEnabled = idle;
         DailyExercisesPipelineToggle.IsEnabled = idle;
+        DailySimulationTowerPipelineToggle.IsEnabled = idle;
+        DailyMissionsPipelineToggle.IsEnabled = idle;
+        DailyCirclePipelineToggle.IsEnabled = idle;
+        DailyHarvestPipelineToggle.IsEnabled = idle;
+        DailyFreeBoostPipelineToggle.IsEnabled = idle;
 
         // 独立暂停键隐藏；运行键兼任暂停/继续，旁边保留停止键。
         PauseResumeButton.Visibility = Visibility.Collapsed;
@@ -1299,6 +1766,10 @@ public partial class MainWindow : Window
         PauseDailyShopButton.Visibility = Visibility.Collapsed;
         PauseDailyFreeGiftButton.Visibility = Visibility.Collapsed;
         PauseDailyExercisesButton.Visibility = Visibility.Collapsed;
+        PauseDailyMissionsButton.Visibility = Visibility.Collapsed;
+        PauseDailyCircleButton.Visibility = Visibility.Collapsed;
+        PauseDailyHarvestButton.Visibility = Visibility.Collapsed;
+        PauseDailyFreeBoostButton.Visibility = Visibility.Collapsed;
         PausePipelineButton.Visibility = Visibility.Collapsed;
 
         StopButton.Visibility = showControls && mazeUi ? Visibility.Visible : Visibility.Collapsed;
@@ -1307,6 +1778,11 @@ public partial class MainWindow : Window
         StopDailyShopButton.Visibility = showControls && dailyShopUi ? Visibility.Visible : Visibility.Collapsed;
         StopDailyFreeGiftButton.Visibility = showControls && dailyFreeGiftUi ? Visibility.Visible : Visibility.Collapsed;
         StopDailyExercisesButton.Visibility = showControls && dailyExercisesUi ? Visibility.Visible : Visibility.Collapsed;
+        StopDailySimulationTowerButton.Visibility = showControls && dailySimulationTowerUi ? Visibility.Visible : Visibility.Collapsed;
+        StopDailyMissionsButton.Visibility = showControls && dailyMissionsUi ? Visibility.Visible : Visibility.Collapsed;
+        StopDailyCircleButton.Visibility = showControls && dailyCircleUi ? Visibility.Visible : Visibility.Collapsed;
+        StopDailyHarvestButton.Visibility = showControls && dailyHarvestUi ? Visibility.Visible : Visibility.Collapsed;
+        StopDailyFreeBoostButton.Visibility = showControls && dailyFreeBoostUi ? Visibility.Visible : Visibility.Collapsed;
         StopPipelineButton.Visibility = showControls && (pipelineUi || redeemUi) ? Visibility.Visible : Visibility.Collapsed;
         RunPipelineButton.Visibility = Visibility.Visible;
 
@@ -1318,12 +1794,22 @@ public partial class MainWindow : Window
         RunDailyShopButton.Content = dailyShopUi && showControls ? runGlyph : FluentPlay;
         RunDailyFreeGiftButton.Content = dailyFreeGiftUi && showControls ? runGlyph : FluentPlay;
         RunDailyExercisesButton.Content = dailyExercisesUi && showControls ? runGlyph : FluentPlay;
+        RunDailySimulationTowerButton.Content = dailySimulationTowerUi && showControls ? runGlyph : FluentPlay;
+        RunDailyMissionsButton.Content = dailyMissionsUi && showControls ? runGlyph : FluentPlay;
+        RunDailyCircleButton.Content = dailyCircleUi && showControls ? runGlyph : FluentPlay;
+        RunDailyHarvestButton.Content = dailyHarvestUi && showControls ? runGlyph : FluentPlay;
+        RunDailyFreeBoostButton.Content = dailyFreeBoostUi && showControls ? runGlyph : FluentPlay;
         RunMazeButton.ToolTip = mazeUi && running ? "暂停" : mazeUi && _isPaused ? "继续" : "运行";
         RunMainQuestButton.ToolTip = mainQuestUi && running ? "暂停" : mainQuestUi && _isPaused ? "继续" : "运行";
         RunHardMainQuestButton.ToolTip = hardMainQuestUi && running ? "暂停" : hardMainQuestUi && _isPaused ? "继续" : "运行";
         RunDailyShopButton.ToolTip = dailyShopUi && running ? "暂停" : dailyShopUi && _isPaused ? "继续" : "运行";
         RunDailyFreeGiftButton.ToolTip = dailyFreeGiftUi && running ? "暂停" : dailyFreeGiftUi && _isPaused ? "继续" : "运行";
         RunDailyExercisesButton.ToolTip = dailyExercisesUi && running ? "暂停" : dailyExercisesUi && _isPaused ? "继续" : "运行";
+        RunDailySimulationTowerButton.ToolTip = dailySimulationTowerUi && running ? "暂停" : dailySimulationTowerUi && _isPaused ? "继续" : "运行";
+        RunDailyMissionsButton.ToolTip = dailyMissionsUi && running ? "暂停" : dailyMissionsUi && _isPaused ? "继续" : "运行";
+        RunDailyCircleButton.ToolTip = dailyCircleUi && running ? "暂停" : dailyCircleUi && _isPaused ? "继续" : "运行";
+        RunDailyHarvestButton.ToolTip = dailyHarvestUi && running ? "暂停" : dailyHarvestUi && _isPaused ? "继续" : "运行";
+        RunDailyFreeBoostButton.ToolTip = dailyFreeBoostUi && running ? "暂停" : dailyFreeBoostUi && _isPaused ? "继续" : "运行";
         RunPipelineButton.Content = pipelineUi && running ? "暂停"
             : pipelineUi && _isPaused ? "继续"
             : "运行";
@@ -1334,6 +1820,11 @@ public partial class MainWindow : Window
         StopDailyShopButton.Content = FluentStop;
         StopDailyFreeGiftButton.Content = FluentStop;
         StopDailyExercisesButton.Content = FluentStop;
+        StopDailySimulationTowerButton.Content = FluentStop;
+        StopDailyMissionsButton.Content = FluentStop;
+        StopDailyCircleButton.Content = FluentStop;
+        StopDailyHarvestButton.Content = FluentStop;
+        StopDailyFreeBoostButton.Content = FluentStop;
         StopPipelineButton.Content = FluentStop;
         StopButton.ToolTip = "停止";
         StopMainQuestButton.ToolTip = "停止";
@@ -1341,6 +1832,11 @@ public partial class MainWindow : Window
         StopDailyShopButton.ToolTip = "停止";
         StopDailyFreeGiftButton.ToolTip = "停止";
         StopDailyExercisesButton.ToolTip = "停止";
+        StopDailySimulationTowerButton.ToolTip = "停止";
+        StopDailyMissionsButton.ToolTip = "停止";
+        StopDailyCircleButton.ToolTip = "停止";
+        StopDailyHarvestButton.ToolTip = "停止";
+        StopDailyFreeBoostButton.ToolTip = "停止";
         StopPipelineButton.ToolTip = "停止";
         StopButton.IsEnabled = true;
         StopMainQuestButton.IsEnabled = true;
@@ -1348,6 +1844,11 @@ public partial class MainWindow : Window
         StopDailyShopButton.IsEnabled = true;
         StopDailyFreeGiftButton.IsEnabled = true;
         StopDailyExercisesButton.IsEnabled = true;
+        StopDailySimulationTowerButton.IsEnabled = true;
+        StopDailyMissionsButton.IsEnabled = true;
+        StopDailyCircleButton.IsEnabled = true;
+        StopDailyHarvestButton.IsEnabled = true;
+        StopDailyFreeBoostButton.IsEnabled = true;
         StopPipelineButton.IsEnabled = true;
 
         MazeStatusText.Text = mazeUi && running ? "迷宫探索运行中。"
@@ -1368,6 +1869,27 @@ public partial class MainWindow : Window
         DailyExercisesStatusText.Text = dailyExercisesUi && running ? "每日演习运行中。"
             : dailyExercisesUi && _isPaused ? "每日演习已暂停。"
             : "";
+        DailySimulationTowerStatusText.Text = dailySimulationTowerUi && running ? "每日模拟战斗爬塔运行中。"
+            : dailySimulationTowerUi && _isPaused ? "每日模拟战斗爬塔已暂停。"
+            : "";
+        DailyMissionsStatusText.Text = dailyMissionsUi && running ? "每日任务运行中。"
+            : dailyMissionsUi && _isPaused ? "每日任务已暂停。"
+            : "";
+        DailyCircleStatusText.Text = dailyCircleUi && running ? "每日社团运行中。"
+            : dailyCircleUi && _isPaused ? "每日社团已暂停。"
+            : "";
+        DailyHarvestStatusText.Text = dailyHarvestUi && running ? "每日收菜运行中。"
+            : dailyHarvestUi && _isPaused ? "每日收菜已暂停。"
+            : "";
+        DailyHarvestStatusText.Visibility = string.IsNullOrEmpty(DailyHarvestStatusText.Text)
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+        DailyFreeBoostStatusText.Text = dailyFreeBoostUi && running ? "每日免费加速运行中。"
+            : dailyFreeBoostUi && _isPaused ? "每日免费加速已暂停。"
+            : "";
+        DailyFreeBoostStatusText.Visibility = string.IsNullOrEmpty(DailyFreeBoostStatusText.Text)
+            ? Visibility.Collapsed
+            : Visibility.Visible;
     }
 
     private void LoadSettings()
@@ -1399,6 +1921,11 @@ public partial class MainWindow : Window
         DailyShopPipelineToggle.IsChecked = config.DailyShopTaskEnabled;
         DailyFreeGiftPipelineToggle.IsChecked = config.DailyFreeGiftTaskEnabled;
         DailyExercisesPipelineToggle.IsChecked = config.DailyExercisesTaskEnabled;
+        DailySimulationTowerPipelineToggle.IsChecked = config.DailySimulationTowerTaskEnabled;
+        DailyMissionsPipelineToggle.IsChecked = config.DailyMissionsTaskEnabled;
+        DailyCirclePipelineToggle.IsChecked = config.DailyCircleTaskEnabled;
+        DailyHarvestPipelineToggle.IsChecked = config.DailyHarvestTaskEnabled;
+        DailyFreeBoostPipelineToggle.IsChecked = config.DailyFreeBoostTaskEnabled;
         _suppressPipelineToggle = false;
         ApplyTaskListOrder(config.PipelineTaskOrder);
         UpdateCaptureUi();
@@ -1415,6 +1942,11 @@ public partial class MainWindow : Window
         config.DailyShopTaskEnabled = DailyShopPipelineToggle.IsChecked == true;
         config.DailyFreeGiftTaskEnabled = DailyFreeGiftPipelineToggle.IsChecked == true;
         config.DailyExercisesTaskEnabled = DailyExercisesPipelineToggle.IsChecked == true;
+        config.DailySimulationTowerTaskEnabled = DailySimulationTowerPipelineToggle.IsChecked == true;
+        config.DailyMissionsTaskEnabled = DailyMissionsPipelineToggle.IsChecked == true;
+        config.DailyCircleTaskEnabled = DailyCirclePipelineToggle.IsChecked == true;
+        config.DailyHarvestTaskEnabled = DailyHarvestPipelineToggle.IsChecked == true;
+        config.DailyFreeBoostTaskEnabled = DailyFreeBoostPipelineToggle.IsChecked == true;
         ConfigStore.Save(config);
     }
 
@@ -1596,7 +2128,12 @@ public partial class MainWindow : Window
             ["hardMainQuest"] = HardMainQuestTaskCard,
             ["dailyShop"] = DailyShopTaskCard,
             ["dailyFreeGift"] = DailyFreeGiftTaskCard,
-            ["dailyExercises"] = DailyExercisesTaskCard
+            ["dailyExercises"] = DailyExercisesTaskCard,
+            ["dailySimulationTower"] = DailySimulationTowerTaskCard,
+            ["dailyMissions"] = DailyMissionsTaskCard,
+            ["dailyCircle"] = DailyCircleTaskCard,
+            ["dailyHarvest"] = DailyHarvestTaskCard,
+            ["dailyFreeBoost"] = DailyFreeBoostTaskCard
         };
         TaskListPanel.Children.Clear();
         foreach (string id in AutomationConfig.NormalizePipelineTaskOrder(order))
@@ -1880,7 +2417,7 @@ public partial class MainWindow : Window
 
         if (!Dispatcher.CheckAccess())
         {
-            Dispatcher.Invoke(() => AppendLogToUi(line));
+            Dispatcher.BeginInvoke(() => AppendLogToUi(line));
             return;
         }
         AppendLogToUi(line);

@@ -8,8 +8,8 @@ namespace BetterMuv.Core;
 public sealed class HudHomeReturn
 {
     private const int AfterClickDelayMs = 500;
+    /// <summary>须明显高于误检；曾降到 0.66 会在无主页钮时点到 0.68 假阳性。</summary>
     private const double HomeButtonThreshold = 0.78;
-    // 浏览器客户区宽高可变；右上角锚点使用较宽的参考区域兜底搜索。
     private static readonly ConfigPoint TopRightAnchorTopLeft = new(1420, 0);
     private static readonly ConfigSize TopRightAnchorSize = new(500, 260);
 
@@ -17,6 +17,7 @@ public sealed class HudHomeReturn
     private readonly ScreenAutomation _screen;
     private readonly TemplateMatcher _matcher;
     private readonly Action<string> _log;
+    private readonly PromoPopupDismisser _promo;
 
     public HudHomeReturn(AutomationConfig config, ScreenAutomation screen, Action<string> log)
     {
@@ -24,12 +25,23 @@ public sealed class HudHomeReturn
         _screen = screen;
         _log = log;
         _matcher = TemplateAssets.Load("hud-home.png");
+        _promo = new PromoPopupDismisser(config, screen, log);
     }
 
     public async Task<bool> TryAsync(GameWindow window, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         window = _screen.Refresh(window);
+
+        // お知らせ等弹窗挡住时先清；清不掉则不要误点背后的主页钮。
+        await _promo.DismissAllAsync(window, cancellationToken);
+        window = _screen.Refresh(window);
+        if (await _promo.IsOshiraseVisibleAsync(window, cancellationToken))
+        {
+            _log("お知らせ仍在，跳过点击主页按钮。");
+            return false;
+        }
+
         TemplateProbeResult probe = await _screen.ProbeAsync(
             window,
             _matcher,

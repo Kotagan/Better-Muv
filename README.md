@@ -19,6 +19,10 @@ English | **中文** | 繁體中文 | 日本語
 - **每日商店**：日常兑换（如 100% OFF 等）
 - **每日免费礼包**：商店 → お得パック → デイリー無料パック
 - **每日演习**：クエスト → 戦術演習（出撃準備 → 出撃 → SKIP/次へ，最多 5 次/日）
+- **每日任务**：主页 → ミッション → 只领奖（一括受取），不购买
+- **每日社团**：サークル → ミッション → 只领已完成奖励（一括受取），不做任务、不购买
+- **每日收菜**：主页采矿小人 → 採掘 →「受取」
+- **每日免费加速**：主页采矿小人 → 採掘 → 反复点「0時短受取」（仅费用为 0）
 - **一条龙**：按任务页开关与顺序依次执行
 
 ### 兑换码
@@ -39,7 +43,7 @@ English | **中文** | 繁體中文 | 日本語
 ### Todolist
 
 1. 迷宫目前主要针对高难度区域调参，低等级场景可能需再适配
-2. 社团等周边自动化仍待完善
+2. 每日任务/社团领奖模板可按实机再补强（当前已有基础裁图）
 
 ---
 
@@ -151,10 +155,10 @@ dotnet publish Better-Muv.csproj -c Release -r win-x64 --self-contained true -o 
 打包可安装程序（需先安装 [Inno Setup 6](https://jrsoftware.org/isinfo.php)）：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\pack-installer.ps1 -Version 1.2.2
+powershell -ExecutionPolicy Bypass -File scripts\pack-installer.ps1 -Version 1.3.0
 ```
 
-生成物：`dist\Better-Muv-Setup-1.2.2.exe`。
+生成物：`dist\Better-Muv-Setup-1.3.0.exe`。
 
 ---
 

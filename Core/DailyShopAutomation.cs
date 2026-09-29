@@ -15,15 +15,16 @@ public sealed class DailyShopAutomation
     private const int AfterScrollDelayMs = 600;
     private const int AfterOkDelayMs = 700;
     private const int RecognizeTimeoutMs = 10000;
-    private const double OffThreshold = 0.85;
-    private const double ExchangeThreshold = 0.72;
-    private const double HallThreshold = 0.72;
-    private const double TicketThreshold = 0.72;
-    private const double OkThreshold = 0.72;
+    private const double OffThreshold = 0.75;
+    private const double ExchangeThreshold = 0.70;
+    private const double HallThreshold = 0.68;
+    private const double TicketThreshold = 0.65;
+    private const double OkThreshold = 0.70;
 
     private readonly AutomationConfig _config;
     private readonly ScreenAutomation _screen;
     private readonly Action<string> _log;
+    private readonly PromoPopupDismisser _promo;
     private readonly TemplateMatcher _hallMatcher;
     private readonly TemplateMatcher _offMatcher;
     private readonly TemplateMatcher _ticketMatcher;
@@ -35,6 +36,7 @@ public sealed class DailyShopAutomation
         _config = config;
         _log = log;
         _screen = new ScreenAutomation(config, log);
+        _promo = new PromoPopupDismisser(config, _screen, log);
         _hallMatcher = TemplateAssets.Load("daily-shop-exchange-hall.png");
         _offMatcher = TemplateAssets.Load("daily-shop-100off.png");
         _ticketMatcher = TemplateAssets.Load("daily-shop-ticket-2500.png");
@@ -42,7 +44,7 @@ public sealed class DailyShopAutomation
         _okMatcher = TemplateAssets.Load("daily-shop-ok.png");
     }
 
-    public async Task RunOnceAsync(CancellationToken cancellationToken)
+    public async Task<TaskRunResult> RunOnceAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         GameWindow window = _screen.FindWindow(_config.WindowTitleKeyword);
@@ -50,25 +52,55 @@ public sealed class DailyShopAutomation
         if (!await _screen.FocusAsync(window.Handle, cancellationToken))
         {
             _log("未能将游戏置于前台，请先手动点一下游戏窗口。");
-            return;
+            return TaskRunResult.Fail("未能将游戏置于前台");
         }
 
         await Task.Delay(200, cancellationToken);
         window = await _screen.EnsurePreferredClientAsync(window, cancellationToken);
         _log($"每日商店：客户区 {window.ClientRect.Width}×{window.ClientRect.Height}");
 
-        await new HudHomeReturn(_config, _screen, _log).TryAsync(window, cancellationToken);
+        var home = new HomePresence(_config, _screen, _log);
+        (window, bool onHome) = await home.EnsureAsync(window, "每日商店", cancellationToken);
+        if (!onHome)
+            return TaskRunResult.Fail("未能回到主界面");
+
         await Task.Delay(AfterHomeDelayMs, cancellationToken);
+        window = _screen.Refresh(window);
+        await _promo.DismissAllAsync(window, cancellationToken);
         window = _screen.Refresh(window);
 
         _log($"每日商店：点击商店入口（{_config.DailyShopEntryClick.X},{_config.DailyShopEntryClick.Y}）。");
         window = await _screen.ClickAsync(window, _config.DailyShopEntryClick, "商店入口", cancellationToken);
         await Task.Delay(AfterShopOpenDelayMs, cancellationToken);
         window = _screen.Refresh(window);
+        // お知らせ常挡交換所；多轮清弹窗后再进。
+        for (int i = 0; i < 4; i++)
+        {
+            int closed = await _promo.DismissAllAsync(window, cancellationToken);
+            window = _screen.Refresh(window);
+            if (closed == 0)
+                break;
+            await Task.Delay(400, cancellationToken);
+        }
 
         window = await ClickExchangeHallAsync(window, cancellationToken);
         await Task.Delay(AfterHallOpenDelayMs, cancellationToken);
         window = _screen.Refresh(window);
+        await _promo.DismissAllAsync(window, cancellationToken);
+        window = _screen.Refresh(window);
+
+        // 点交換所后若仍像主页（还能看到クエスト），说明没进店，再点一次商店入口。
+        if (await home.IsHomeAsync(window, cancellationToken))
+        {
+            _log("每日商店：点交換所后仍在主页，重试商店入口。");
+            window = await _screen.ClickAsync(window, _config.DailyShopEntryClick, "商店入口重试", cancellationToken);
+            await Task.Delay(AfterShopOpenDelayMs, cancellationToken);
+            window = _screen.Refresh(window);
+            await _promo.DismissAllAsync(window, cancellationToken);
+            window = await ClickExchangeHallAsync(window, cancellationToken);
+            await Task.Delay(AfterHallOpenDelayMs, cancellationToken);
+            window = _screen.Refresh(window);
+        }
 
         // 1) 100%OFF → 交換 → OK；未识别则跳过，直接滚轮。
         window = await TryBuyFreeOffAsync(window, cancellationToken);
@@ -83,8 +115,10 @@ public sealed class DailyShopAutomation
             cancellationToken);
         await Task.Delay(AfterScrollDelayMs, cancellationToken);
         window = _screen.Refresh(window);
+        await _promo.DismissAllAsync(window, cancellationToken);
+        window = _screen.Refresh(window);
 
-        // 3) 左下角 2500 ×2；首次未识别则回主页结束。
+        // 3) 左下角 2500 ×2；首次未识别则关弹窗再试一次，仍失败回主页结束。
         ConfigPoint? ticketClick = null;
         for (int i = 1; i <= 2; i++)
         {
@@ -93,16 +127,30 @@ public sealed class DailyShopAutomation
                 await TryBuyTicket2500Async(window, ticketClick, cancellationToken);
             if (!bought)
             {
-                _log("每日商店：未识别到 2500，返回主页并结束任务。");
+                _log("每日商店：未识别到 2500，先关弹窗再试一次。");
+                await _promo.DismissAllAsync(window, cancellationToken);
+                window = _screen.Refresh(window);
+                (window, ticketClick, bought) =
+                    await TryBuyTicket2500Async(window, ticketClick, cancellationToken);
+            }
+
+            if (!bought)
+            {
+                _log("每日商店：未识别到 2500，清弹窗后返回主页并结束任务。");
+                await _promo.DismissAllAsync(window, cancellationToken);
+                window = _screen.Refresh(window);
                 await new HudHomeReturn(_config, _screen, _log).TryAsync(window, cancellationToken);
                 _log("每日商店：结束。");
-                return;
+                return TaskRunResult.Fail("未识别到 2500 票券");
             }
         }
 
         _log("每日商店：完成，返回主页。");
+        await _promo.DismissAllAsync(window, cancellationToken);
+        window = _screen.Refresh(window);
         await new HudHomeReturn(_config, _screen, _log).TryAsync(window, cancellationToken);
         _log("每日商店：结束。");
+        return TaskRunResult.Success();
     }
 
     private async Task<GameWindow> ClickExchangeHallAsync(GameWindow window, CancellationToken cancellationToken)
@@ -139,6 +187,21 @@ public sealed class DailyShopAutomation
             matchThreshold: OffThreshold);
         if (!off.IsMatch)
         {
+            _log($"每日商店：未识别到「100%OFF」（最高 {off.Score:F4}），尝试关弹窗后重试。");
+            await _promo.DismissAllAsync(window, cancellationToken);
+            window = _screen.Refresh(window);
+            off = await _screen.WaitForProbeAsync(
+                window,
+                _offMatcher,
+                _config.DailyShopFreeOffTopLeft,
+                _config.DailyShopFreeOffSize,
+                cancellationToken,
+                timeoutMs: RecognizeTimeoutMs / 2,
+                matchThreshold: OffThreshold);
+        }
+
+        if (!off.IsMatch)
+        {
             _log($"每日商店：未识别到「100%OFF」（最高 {off.Score:F4}），跳过零元购，进入滚轮。");
             return window;
         }
@@ -166,11 +229,17 @@ public sealed class DailyShopAutomation
         else
         {
             _log($"每日商店：等待识别「2500」票价，最多 {RecognizeTimeoutMs / 1000} 秒。");
+            var ticketTopLeft = new ConfigPoint(
+                Math.Max(0, _config.DailyShopTicketTopLeft.X - 60),
+                Math.Max(0, _config.DailyShopTicketTopLeft.Y - 40));
+            var ticketSize = new ConfigSize(
+                Math.Max(_config.DailyShopTicketSize.Width + 120, 600),
+                Math.Max(_config.DailyShopTicketSize.Height + 80, 360));
             TemplateProbeResult ticket = await _screen.WaitForProbeAsync(
                 window,
                 _ticketMatcher,
-                _config.DailyShopTicketTopLeft,
-                _config.DailyShopTicketSize,
+                ticketTopLeft,
+                ticketSize,
                 cancellationToken,
                 timeoutMs: RecognizeTimeoutMs,
                 matchThreshold: TicketThreshold);

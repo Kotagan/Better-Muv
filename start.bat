@@ -41,9 +41,9 @@ goto wait_kill
 echo Cleaning Debug outputs (bin + obj)...
 dotnet clean "%PROJ%" -c Debug -nologo --verbosity quiet >nul 2>&1
 powershell -NoProfile -Command ^
-  "foreach($p in @('%OUTDIR%','%OBJDIR%')){ if(Test-Path -LiteralPath $p){ Remove-Item -LiteralPath $p -Recurse -Force -ErrorAction Stop } }"
+  "$ErrorActionPreference='Stop'; function Clear-Tree([string]$root){ if(-not (Test-Path -LiteralPath $root)){ return }; $empty=Join-Path $env:TEMP ('bm-empty-'+[guid]::NewGuid().ToString('n')); New-Item -ItemType Directory -Path $empty -Force|Out-Null; & robocopy $empty $root /MIR /R:1 /W:1 /NFL /NDL /NJH /NJS /nc /ns /np | Out-Null; Remove-Item -LiteralPath $empty -Recurse -Force -ErrorAction SilentlyContinue; cmd /c ('rmdir /s /q \"\\?\'+$root+'\"') | Out-Null; if(Test-Path -LiteralPath $root){ throw \"still locked: $root\" } }; foreach($p in @('%OUTDIR%','%OBJDIR%')){ Clear-Tree $p }"
 if errorlevel 1 (
-  echo Clean failed: output folders still locked. Close Better-Muv / VS / antivirus lock and retry.
+  echo Clean failed: output folders still locked or path too long. Close Better-Muv / VS / antivirus and retry.
   pause
   exit /b 1
 )

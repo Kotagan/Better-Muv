@@ -126,6 +126,32 @@ public class CaptureGeometryTests
 public class AutomationConfigTests
 {
     [Fact]
+    public void LoadMigratesLegacyMiningEntryGeometry()
+    {
+        string path = Path.GetTempFileName();
+        try
+        {
+            File.WriteAllText(path, """
+                {
+                  "miningEntryClick": { "x": 1462, "y": 774 },
+                  "miningEntryTopLeft": { "x": 1340, "y": 650 },
+                  "miningEntrySize": { "width": 260, "height": 260 }
+                }
+                """);
+
+            AutomationConfig config = AutomationConfig.Load(path);
+
+            Assert.Equal(new ConfigPoint(1740, 774), config.MiningEntryClick);
+            Assert.Equal(new ConfigPoint(1580, 650), config.MiningEntryTopLeft);
+            Assert.Equal(new ConfigSize(340, 260), config.MiningEntrySize);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void ExecutionDefaultsUseSeparatePauseAndStopHotkeys()
     {
         var config = new AutomationConfig();
@@ -134,8 +160,8 @@ public class AutomationConfigTests
         Assert.Equal("F10", config.PauseHotkey);
         Assert.Equal("F11", config.StopHotkey);
         Assert.Equal(90, config.GameLaunchTimeoutSeconds);
-        Assert.Equal(["maze", "mainQuest", "hardMainQuest", "dailyShop", "dailyFreeGift", "dailyExercises"], AutomationConfig.NormalizePipelineTaskOrder(null));
-        Assert.Equal(["mainQuest", "maze", "hardMainQuest", "dailyShop", "dailyFreeGift", "dailyExercises"], AutomationConfig.NormalizePipelineTaskOrder(["mainQuest", "maze", "unknown"]));
+        Assert.Equal(["maze", "mainQuest", "hardMainQuest", "dailyShop", "dailyFreeGift", "dailyExercises", "dailySimulationTower", "dailyMissions", "dailyCircle", "dailyHarvest", "dailyFreeBoost"], AutomationConfig.NormalizePipelineTaskOrder(null));
+        Assert.Equal(["mainQuest", "maze", "hardMainQuest", "dailyShop", "dailyFreeGift", "dailyExercises", "dailySimulationTower", "dailyMissions", "dailyCircle", "dailyHarvest", "dailyFreeBoost"], AutomationConfig.NormalizePipelineTaskOrder(["mainQuest", "maze", "unknown"]));
         Assert.Equal(new ConfigPoint(1780, 965), new AutomationConfig().DailyShopEntryClick);
         Assert.Equal(new ConfigPoint(1611, 473), new AutomationConfig().SecondClick);
         Assert.Equal(new ConfigPoint(1080, 950), new AutomationConfig().SearchTopLeft);
@@ -148,6 +174,19 @@ public class AutomationConfigTests
         Assert.Equal(new ConfigSize(340, 130), new AutomationConfig().QuestExercisesSize);
         Assert.Equal(new ConfigPoint(1410, 820), new AutomationConfig().QuestActivityTopLeft);
         Assert.Equal(new ConfigSize(340, 130), new AutomationConfig().QuestActivitySize);
+        Assert.Equal(new ConfigPoint(500, 635), new AutomationConfig().DailySimulationTowerClicks["fire"]);
+        Assert.Equal(new ConfigPoint(1420, 635), new AutomationConfig().DailySimulationTowerClicks["water"]);
+        Assert.Equal(new ConfigPoint(1420, 835), new AutomationConfig().DailySimulationTowerClicks["earth"]);
+        Assert.Equal(new ConfigPoint(500, 835), new AutomationConfig().DailySimulationTowerClicks["wood"]);
+        Assert.Equal(new ConfigPoint(1500, 900), new AutomationConfig().DailySimulationPrepareTopLeft);
+        Assert.Equal(new ConfigSize(420, 180), new AutomationConfig().DailySimulationPrepareSize);
+        Assert.Equal(new ConfigPoint(1740, 1020), new AutomationConfig().DailySimulationPrepareClick);
+        Assert.Equal(new ConfigPoint(100, 0), new AutomationConfig().DailySimulationTitleTopLeft);
+        Assert.Equal(new ConfigSize(450, 110), new AutomationConfig().DailySimulationTitleSize);
+        Assert.Equal(new ConfigPoint(1600, 100), new AutomationConfig().DailySimulationListTopLeft);
+        Assert.Equal(new ConfigSize(320, 140), new AutomationConfig().DailySimulationListSize);
+        Assert.Equal(new ConfigPoint(1600, 900), new AutomationConfig().DailySimulationRemainingTopLeft);
+        Assert.Equal(new ConfigSize(320, 100), new AutomationConfig().DailySimulationRemainingSize);
         Assert.Equal(new ConfigPoint(0, 0), new AutomationConfig().NavBackTopLeft);
         Assert.Equal(new ConfigSize(160, 130), new AutomationConfig().NavBackSize);
         Assert.Equal("muv_luv_girlsgardenx_cl.exe", GamePathLocator.ExecutableName);
@@ -447,14 +486,14 @@ public class DigitOcrParseTests
     }
 
     [Theory]
-    [InlineData("本日の購入回数：0/4", 4)]
-    [InlineData("本日の購入回数：18/24", 6)]
-    [InlineData("購入回数：4／4", 0)]
-    [InlineData("18/24", 6)]
-    [InlineData("0 / 4", 4)]
-    [InlineData("回 : 1 8 / 24", 6)]
-    [InlineData("本 日 の 購 入 回 数 : 0 / 4", 4)]
-    public void TryParseDailyPurchaseRemainingUsesMaxMinusUsed(string text, int expected)
+    [InlineData("本日の購入回数：0/4", 0)]
+    [InlineData("本日の購入回数：18/24", 18)]
+    [InlineData("購入回数：4／4", 4)]
+    [InlineData("18/24", 18)]
+    [InlineData("0 / 4", 0)]
+    [InlineData("回 : 1 8 / 24", 18)]
+    [InlineData("本 日 の 購 入 回 数 : 24 / 24", 24)]
+    public void TryParseDailyPurchaseRemainingUsesLeftSide(string text, int expected)
     {
         Assert.Equal(expected, DigitOcrService.TryParseDailyPurchaseRemaining(text));
     }
@@ -503,5 +542,31 @@ public class TemplateMatcherTests
         Assert.True(match.Score > 0.99);
         Assert.Equal(7, match.X);
         Assert.Equal(4, match.Y);
+    }
+}
+
+public class DailySimulationTowerTests
+{
+    [Theory]
+    [InlineData(DayOfWeek.Monday, "fire")]
+    [InlineData(DayOfWeek.Tuesday, "water")]
+    [InlineData(DayOfWeek.Wednesday, "earth")]
+    [InlineData(DayOfWeek.Thursday, "wood")]
+    [InlineData(DayOfWeek.Friday, "water,fire")]
+    [InlineData(DayOfWeek.Saturday, "earth,wood")]
+    [InlineData(DayOfWeek.Sunday, "fire,water,earth,wood")]
+    public void WeekdaySelectsExpectedTowers(DayOfWeek day, string expected)
+    {
+        Assert.Equal(expected.Split(','), DailySimulationTowerAutomation.TowerKeysFor(day));
+    }
+
+    [Theory]
+    [InlineData("fire", 500, 635)]
+    [InlineData("water", 1420, 635)]
+    [InlineData("wood", 500, 835)]
+    [InlineData("earth", 1420, 835)]
+    public void TowerUsesConfirmedFixedCardCenter(string key, int x, int y)
+    {
+        Assert.Equal(new ConfigPoint(x, y), DailySimulationTowerAutomation.TowerPointFor(key));
     }
 }

@@ -9,9 +9,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>1.2.2</Version>
-    <AssemblyVersion>1.2.2.0</AssemblyVersion>
-    <FileVersion>1.2.2.0</FileVersion>
+    <Version>1.3.0</Version>
+    <AssemblyVersion>1.3.0.0</AssemblyVersion>
+    <FileVersion>1.3.0.0</FileVersion>
     <Product>Better-Muv</Product>
     <Company>Kotagan</Company>
     <Authors>Kotagan</Authors>
@@ -41,9 +41,12 @@
     <Content Include="Assets\Templates\battle-skip.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\popup-close.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\achievement-close.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\oshirase-title.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\event-choice.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\event-choice-mg-arm.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\event-rest.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\maze-craft-title.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\maze-craft-end.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\settlement-complete.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\lv-max.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\buy-disabled.png" CopyToOutputDirectory="PreserveNewest" />
@@ -135,7 +138,24 @@
     <Content Include="Assets\Templates\daily-free-gift-title.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\exercises-prepare.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\exercises-remaining-zero.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\simulation-title.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\simulation-tower-list-ranking.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\simulation-prepare.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\simulation-remaining-zero.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\mission-entry.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\mission-title.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\mission-tab-daily.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\mission-daily-cleared.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\mission-claim-all.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\circle-title.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\circle-mission-entry.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\nav-circle.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\shop-purchase.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\mining-home-entry.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\mining-title.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\mining-claim.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\mining-boost-free.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\mining-boost-execute.png" CopyToOutputDirectory="PreserveNewest" />
     <None Include="config.json">
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </None>
@@ -152,7 +172,7 @@
     <Content Remove="_logtmp\**\*" />
   </ItemGroup>
 
-  <!-- 仅首次复制默认配置，避免重建覆盖运行目录中已改过的 config.json；正式读写在 %LocalAppData%\Better-Muv\ -->
+  <!-- ??????????????????????????config.json?????? %LocalAppData%\Better-Muv\ -->
   <Target Name="CopyBundledConfigIfMissing" AfterTargets="Build">
     <Copy SourceFiles="config.json"
           DestinationFiles="$(OutputPath)config.json"

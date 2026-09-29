@@ -25,7 +25,8 @@ internal static class FlowCatalog
                 "扫迷宫内界面（third/fourth/treasure/route/...）",
                 "未命中 → QuestFromHomeEntry → SecondClick",
                 "难度 OCR（失败仍点探索準備）→ 探索",
-                "循环：next > battle > rest > event > partner > settlement > treasure > route",
+                "循环：next > craft > battle > rest > event > partner > settlement > treasure > route",
+                "合成关：识别クラフト标题 → 点クラフト終了离开（暂不自动配方）",
                 "结算商店 SettlementShopRunner；宣传弹窗 PromoPopupDismisser"
             ]),
             Flow("mainQuest", "自动主线", "Core/MainQuestAutomation.cs", "mainquest",
@@ -45,7 +46,7 @@ internal static class FlowCatalog
             ]),
             Flow("pipeline", "一条龙", "MainWindow.xaml.cs", null,
             [
-                "按 PipelineTaskOrder 串行 maze / mainQuest / hardMainQuest / dailyShop / dailyFreeGift / dailyExercises",
+                "按 PipelineTaskOrder 串行 maze / mainQuest / hardMainQuest / dailyShop / dailyFreeGift / dailyExercises / dailyMissions / dailyCircle / dailyHarvest / dailyFreeBoost",
                 "共享 DiagnosticTaskSession 诊断目录"
             ]),
             Flow("dailyShop", "每日商店", "Core/DailyShopAutomation.cs", null,
@@ -64,12 +65,37 @@ internal static class FlowCatalog
             [
                 "QuestFromHomeEntry → 戦術演習",
                 "循环：出撃準備 → 出撃 → SKIP/次へ（最多 5 次）",
-                "识别 本日あと0回 或次数用尽后写完成日；每天 5:00 刷新"
+                "不读次数；每座塔循环出击直到点不出「出撃開始」；每天 5:00 刷新"
+            ]),
+            Flow("dailyMissions", "每日任务", "Core/DailyMissionsAutomation.cs", null,
+            [
+                "主页 → ミッション → デイリー",
+                "只领奖：一括受取 → OK；识别已清完则记日",
+                "不购买、不点挑戦"
+            ]),
+            Flow("dailyCircle", "每日社团", "Core/DailyCircleAutomation.cs", null,
+            [
+                "主页 → サークル → ミッション",
+                "只领已完成：一括受取 → OK；无可领则不记日",
+                "不做任务、不购买、不点挑戦"
+            ]),
+            Flow("dailyHarvest", "每日收菜", "Core/DailyHarvestAutomation.cs", null,
+            [
+                "HudHomeReturn → 主页采矿小人 → 採掘",
+                "识别「受取」→ 点击 → OK；无钮视为已收",
+                "每天 5:00 刷新"
+            ]),
+            Flow("dailyFreeBoost", "每日免费加速", "Core/DailyFreeBoostAutomation.cs", null,
+            [
+                "HudHomeReturn → 主页采矿小人 → 採掘",
+                "反复点「0時短受取」（只匹配费用 0）直到无免费次数",
+                "每天 5:00 刷新"
             ])
         },
         ["helperModules"] = new[]
         {
             "Core/HudHomeReturn.cs",
+            "Core/MiningPopupAccess.cs",
             "Core/PromoPopupDismisser.cs",
             "Core/ScreenAutomation.cs",
             "Core/CaptureGeometry.cs",

@@ -158,6 +158,21 @@ public sealed class MouseInputService
         await Task.Delay(60, cancellationToken);
     }
 
+    /// <summary>向已聚焦的游戏窗口发送 Esc（关弹窗/退一层）。</summary>
+    public async Task SendEscapeAsync(nint windowHandle, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!IsWindow(windowHandle))
+            throw new InvalidOperationException("按键前发现游戏窗口已经关闭。");
+
+        EnsureForeground(windowHandle);
+        await Task.Delay(40, cancellationToken);
+        SendKey(VkEscape, KeyDown);
+        await Task.Delay(40, cancellationToken);
+        SendKey(VkEscape, KeyUp);
+        await Task.Delay(60, cancellationToken);
+    }
+
     private async Task SendChordAsync(
         nint windowHandle, ushort modifier, ushort key, CancellationToken cancellationToken)
     {
