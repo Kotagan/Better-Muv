@@ -33,7 +33,11 @@ public sealed class HudHomeReturn
         cancellationToken.ThrowIfCancellationRequested();
         window = _screen.Refresh(window);
 
-        // お知らせ等弹窗挡住时先清；清不掉则不要误点背后的主页钮。
+        TemplateProbeResult probe = await ProbeHomeButtonAsync(window, cancellationToken);
+        if (probe.IsMatch)
+            return await ClickHomeAsync(window, probe, cancellationToken);
+
+        // 快路径未发现主页钮时才清弹窗，避免正常任务结束时承担完整弹窗扫描。
         await _promo.DismissAllAsync(window, cancellationToken);
         window = _screen.Refresh(window);
         if (await _promo.IsOshiraseVisibleAsync(window, cancellationToken))
@@ -42,13 +46,22 @@ public sealed class HudHomeReturn
             return false;
         }
 
+        probe = await ProbeHomeButtonAsync(window, cancellationToken);
+        if (!probe.IsMatch)
+        {
+            _log($"未发现主界面按钮（{probe.Score:F2}），跳过返回。");
+            return false;
+        }
+
+        return await ClickHomeAsync(window, probe, cancellationToken);
+    }
+
+    private async Task<TemplateProbeResult> ProbeHomeButtonAsync(
+        GameWindow window, CancellationToken cancellationToken)
+    {
         TemplateProbeResult probe = await _screen.ProbeAsync(
-            window,
-            _matcher,
-            _config.HudHomeTopLeft,
-            _config.HudHomeSize,
-            cancellationToken,
-            HomeButtonThreshold);
+            window, _matcher, _config.HudHomeTopLeft, _config.HudHomeSize,
+            cancellationToken, HomeButtonThreshold);
         if (!probe.IsMatch &&
             (_config.HudHomeTopLeft != TopRightAnchorTopLeft ||
              _config.HudHomeSize != TopRightAnchorSize))
@@ -63,13 +76,12 @@ public sealed class HudHomeReturn
             if (anchorProbe.Score > probe.Score)
                 probe = anchorProbe;
         }
+        return probe;
+    }
 
-        if (!probe.IsMatch)
-        {
-            _log($"未发现主界面按钮（{probe.Score:F2}），跳过返回。");
-            return false;
-        }
-
+    private async Task<bool> ClickHomeAsync(
+        GameWindow window, TemplateProbeResult probe, CancellationToken cancellationToken)
+    {
         _log($"发现主界面按钮 {probe.Score:F3}，点击返回主页。");
         await _screen.ClickScreenAsync(window, probe.Center, cancellationToken);
         await Task.Delay(AfterClickDelayMs, cancellationToken);

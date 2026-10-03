@@ -9,7 +9,6 @@ namespace BetterMuv.Core;
 public sealed class DailyFreeGiftAutomation
 {
     private const int AfterHomeDelayMs = 700;
-    private const int AfterShopOpenDelayMs = 1000;
     private const int AfterTabDelayMs = 900;
     private const int AfterItemClickDelayMs = 900;
     private const int AfterPurchaseDelayMs = 900;
@@ -74,21 +73,17 @@ public sealed class DailyFreeGiftAutomation
 
         await Task.Delay(AfterHomeDelayMs, cancellationToken);
         window = _screen.Refresh(window);
-        await new PromoPopupDismisser(_config, _screen, _log).DismissAllAsync(window, cancellationToken);
-        window = _screen.Refresh(window);
-
-        _log($"每日免费礼包：点击商店入口（{_config.DailyShopEntryClick.X},{_config.DailyShopEntryClick.Y}）。");
-        window = await _screen.ClickAsync(window, _config.DailyShopEntryClick, "商店入口", cancellationToken);
-        await Task.Delay(AfterShopOpenDelayMs, cancellationToken);
-        window = _screen.Refresh(window);
-        for (int i = 0; i < 3; i++)
-        {
-            int closed = await new PromoPopupDismisser(_config, _screen, _log).DismissAllAsync(window, cancellationToken);
-            window = _screen.Refresh(window);
-            if (closed == 0)
-                break;
-            await Task.Delay(350, cancellationToken);
-        }
+        (window, bool shopOpened) = await new ShopEntryAccess(_config, _screen, _log).OpenAsync(
+            window,
+            "每日免费礼包",
+            _otokuMatcher,
+            _config.DailyFreeGiftOtokuTopLeft,
+            _config.DailyFreeGiftOtokuSize,
+            OtokuThreshold,
+            cancellationToken,
+            _config.DailyFreeGiftShopPortalClick);
+        if (!shopOpened)
+            return TaskRunResult.Fail("未能进入商店");
 
         window = await ClickOtokuPackAsync(window, cancellationToken);
         await Task.Delay(AfterTabDelayMs, cancellationToken);

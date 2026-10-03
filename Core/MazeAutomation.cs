@@ -1113,13 +1113,58 @@ public sealed class MazeAutomation
             TemplateProbeResult eventChoiceProbe = mgArmEvent.Score > normalEvent.Score ? mgArmEvent : normalEvent;
             if (eventChoiceProbe.IsMatch)
             {
-                if (!eventChoiceHandled)
+                if (eventChoiceHandled)
+                {
+                    // 上一轮点击后事件界面仍存在，允许重新点击，避免 handled 标记导致永久空转。
+                    _log($"事件选择界面仍在（{eventChoiceProbe.Score:F4}），重新点击第二选项。");
+                }
+                else
                 {
                     _log($"{EventChoiceTaskName}识别成功（{eventChoiceProbe.Score:F4}），默认选择第二选项。");
-                    window = await _screen.ClickAsync(
-                        window, _config.EventChoiceSecondOption, "事件第二选项", cancellationToken);
-                    eventChoiceHandled = true;
                 }
+
+                window = await _screen.ClickAsync(
+                    window, _config.EventChoiceSecondOption, "事件第二选项", cancellationToken);
+                eventChoiceHandled = true;
+                await Task.Delay(500, cancellationToken);
+
+                TemplateProbeResult normalEventAfter = await _screen.ProbeAsync(
+                    window, _eventChoiceMatcher, _config.EventChoiceTopLeft,
+                    _config.EventChoiceSize, cancellationToken, MazePresenceThreshold);
+                TemplateProbeResult mgArmEventAfter = await _screen.ProbeAsync(
+                    window, _eventChoiceMgArmMatcher, _config.EventChoiceTopLeft,
+                    _config.EventChoiceSize, cancellationToken, MazePresenceThreshold);
+                TemplateProbeResult eventAfter =
+                    mgArmEventAfter.Score > normalEventAfter.Score ? mgArmEventAfter : normalEventAfter;
+                if (!eventAfter.IsMatch)
+                {
+                    eventChoiceHandled = false;
+                    _log("事件选择界面已消失，继续探索。");
+                    return State(true);
+                }
+
+                _log($"事件选择界面点击后仍在（{eventAfter.Score:F3}），补点第二选项。");
+                window = await _screen.ClickAsync(
+                    window, _config.EventChoiceSecondOption, "事件第二选项(补点)", cancellationToken);
+                await Task.Delay(500, cancellationToken);
+
+                normalEventAfter = await _screen.ProbeAsync(
+                    window, _eventChoiceMatcher, _config.EventChoiceTopLeft,
+                    _config.EventChoiceSize, cancellationToken, MazePresenceThreshold);
+                mgArmEventAfter = await _screen.ProbeAsync(
+                    window, _eventChoiceMgArmMatcher, _config.EventChoiceTopLeft,
+                    _config.EventChoiceSize, cancellationToken, MazePresenceThreshold);
+                eventAfter = mgArmEventAfter.Score > normalEventAfter.Score
+                    ? mgArmEventAfter
+                    : normalEventAfter;
+                eventChoiceHandled = false;
+                if (eventAfter.IsMatch)
+                {
+                    _log($"事件选择界面补点后仍在（{eventAfter.Score:F3}），本轮计无进度。");
+                    return State(false);
+                }
+
+                _log("事件选择界面补点后已消失，继续探索。");
                 return State(true);
             }
             if (screen is not null)

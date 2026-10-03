@@ -4,14 +4,14 @@ namespace BetterMuv.Core;
 
 /// <summary>
 /// 每日模拟战斗爬塔：主页 → 战斗 → 模拟战斗 → 当日属性塔 → 通用出击/SKIP/次へ。
-/// 不读次数、不计数；每座塔循环出击直到点不出「出撃開始」。
+/// 每座塔循环出击；识别到「本日あと0回」仅结束本次运行，禁止持久化完成标记。
 /// </summary>
 public sealed class DailySimulationTowerAutomation
 {
     /// <summary>单塔最长墙钟，仅防死挂；不作次数配额。</summary>
     private static readonly TimeSpan TowerWallClockLimit = TimeSpan.FromMinutes(90);
-    /// <summary>点完出撃準備后，出撃開始认不出则判定该塔打满/不可出击。</summary>
-    private const int SortieMissTimeoutMs = 4000;
+    private const int SortieMissTimeoutMs = 8000;
+    private const double RemainingZeroStrongThreshold = 0.98;
 
     private readonly AutomationConfig _config;
     private readonly ScreenAutomation _screen;
@@ -20,6 +20,7 @@ public sealed class DailySimulationTowerAutomation
     private readonly TemplateMatcher _title = TemplateAssets.Load("simulation-title.png");
     private readonly TemplateMatcher _towerList = TemplateAssets.Load("simulation-tower-list-ranking.png");
     private readonly TemplateMatcher _prepare = TemplateAssets.Load("simulation-prepare.png");
+    private readonly TemplateMatcher _remainingZero = TemplateAssets.Load("simulation-remaining-zero.png");
     private readonly TemplateMatcher _sortie = TemplateAssets.Load("main-quest-sortie.png");
     private readonly TemplateMatcher _skip = TemplateAssets.Load("battle-skip.png");
     private readonly TemplateMatcher _skipAlt = TemplateAssets.Load("main-quest-skip.png");
@@ -32,7 +33,7 @@ public sealed class DailySimulationTowerAutomation
     public static IReadOnlyList<string> TowerKeysFor(DayOfWeek day) => day switch
     {
         DayOfWeek.Monday => ["fire"], DayOfWeek.Tuesday => ["water"],
-        DayOfWeek.Wednesday => ["earth"], DayOfWeek.Thursday => ["wood"],
+        DayOfWeek.Wednesday => ["wood"], DayOfWeek.Thursday => ["earth"],
         DayOfWeek.Friday => ["water", "fire"], DayOfWeek.Saturday => ["earth", "wood"],
         _ => ["fire", "water", "earth", "wood"]
     };
@@ -52,13 +53,9 @@ public sealed class DailySimulationTowerAutomation
         _ => new ConfigPoint(960, 540)
     };
 
-    public async Task RunOnceAsync(CancellationToken cancellationToken)
+    public async Task<TaskRunResult> RunOnceAsync(CancellationToken cancellationToken)
     {
         DateTime now = DateTime.Now;
-        string dayKey = DailyExercisesAutomation.CurrentExercisesDayKey(now);
-        if (string.Equals(_config.LastDailySimulationTowerStableLoopDay, dayKey, StringComparison.Ordinal))
-        { _log("每日模拟战斗：今日已完成。"); return; }
-
         GameWindow window = _screen.FindWindow(_config.WindowTitleKeyword);
         if (!await _screen.FocusAsync(window.Handle, cancellationToken))
             throw new InvalidOperationException("未能将游戏置于前台");
@@ -89,7 +86,7 @@ public sealed class DailySimulationTowerAutomation
             string key = towerKeys[towerIndex];
             string name = TowerNameFor(key);
             ConfigPoint point = TowerPointFor(key);
-            _log($"每日模拟战斗：选择{name}（{point.X},{point.Y}），打到点不出撃为止。");
+            _log($"每日模拟战斗：选择{name}（{point.X},{point.Y}），持续出击直到确认今日剩余 0 次。");
             window = await _screen.ClickAsync(_screen.Refresh(window), point, name, cancellationToken);
             await Task.Delay(1200, cancellationToken);
 
@@ -101,7 +98,7 @@ public sealed class DailySimulationTowerAutomation
             }
 
             finishedTowers++;
-            _log($"每日模拟战斗：{name}已推到点不下。");
+            _log($"每日模拟战斗：{name}已确认今日剩余 0 次，本次不再出击。");
 
             if (towerIndex + 1 < towerKeys.Count)
             {
@@ -121,17 +118,16 @@ public sealed class DailySimulationTowerAutomation
 
         if (finishedTowers == towerKeys.Count)
         {
-            _config.LastDailySimulationTowerDay = dayKey;
-            _config.LastDailySimulationTowerTenRunDay = dayKey;
-            _config.LastDailySimulationTowerStableLoopDay = dayKey;
-            ConfigStore.Save(_config);
-            _log($"每日模拟战斗：今日 {finishedTowers} 座塔均已推完，记录今日完成。");
+            _log($"每日模拟战斗：今日 {finishedTowers} 座塔均已确认剩余 0 次；不写任何完成标记。");
+            await new HudHomeReturn(_config, _screen, _log).TryAsync(_screen.Refresh(window), cancellationToken);
+            return TaskRunResult.Success();
         }
-        else _log($"每日模拟战斗：完成 {finishedTowers}/{towerKeys.Count} 座塔，不写完成标记。");
+        _log($"每日模拟战斗：完成 {finishedTowers}/{towerKeys.Count} 座塔，不写完成标记。");
         await new HudHomeReturn(_config, _screen, _log).TryAsync(_screen.Refresh(window), cancellationToken);
+        return TaskRunResult.Fail($"仅完成 {finishedTowers}/{towerKeys.Count} 座塔");
     }
 
-    /// <summary>循环出击直到点不出「出撃開始」；不读剩余次数、不累计战次。</summary>
+    /// <summary>循环出击，只有明确读到今日剩余 0 次才返回完成。</summary>
     private async Task<bool> PushTowerUntilCannotSortieAsync(
         GameWindow window, string name, CancellationToken cancellationToken)
     {
@@ -141,13 +137,41 @@ public sealed class DailySimulationTowerAutomation
             cancellationToken.ThrowIfCancellationRequested();
             window = _screen.Refresh(window);
 
+            if (await IsRemainingZeroAsync(window, cancellationToken))
+            {
+                _log($"每日模拟战斗：{name}已确认「本日あと0回」。");
+                return true;
+            }
+
             TemplateProbeResult prepare = await _screen.WaitForProbeAsync(window, _prepare,
                 _config.DailySimulationPrepareTopLeft, _config.DailySimulationPrepareSize,
-                cancellationToken, timeoutMs: 2500, matchThreshold: 0.70);
+                cancellationToken, timeoutMs: 6000, matchThreshold: 0.70);
             if (!prepare.IsMatch)
             {
-                window = await _screen.ClickAsync(window, _config.DailySimulationPrepareClick,
-                    "模拟战斗 出撃準備（固定位置）", cancellationToken);
+                // 当前游戏版本的出撃準備按钮视觉已变化。只有确认已离开塔列表、
+                // 且模拟战斗标题仍在时，才允许点经过实机校准的固定位置。
+                TemplateProbeResult listStill = await _screen.ProbeAsync(
+                    window, _towerList,
+                    _config.DailySimulationListTopLeft, _config.DailySimulationListSize,
+                    cancellationToken, 0.72);
+                TemplateProbeResult stageTitle = await _screen.ProbeAsync(
+                    window, _title,
+                    _config.DailySimulationTitleTopLeft, _config.DailySimulationTitleSize,
+                    cancellationToken, 0.72);
+                if (listStill.IsMatch || !stageTitle.IsMatch)
+                {
+                    _log($"每日模拟战斗：{name}未识别到「出撃準備」（最高 {prepare.Score:F3}），" +
+                         $"关卡页复核失败（塔列表 {listStill.Score:F3} / 标题 {stageTitle.Score:F3}），停止且不记完成。");
+                    return false;
+                }
+
+                _log($"每日模拟战斗：{name}按钮模板未命中（最高 {prepare.Score:F3}），" +
+                     "但已确认进入关卡页，点击校准后的「出撃準備」位置。");
+                window = await _screen.ClickAsync(
+                    window,
+                    _config.DailySimulationPrepareClick,
+                    "模拟战斗 出撃準備（关卡页确认后兜底）",
+                    cancellationToken);
                 await Task.Delay(1200, cancellationToken);
             }
             else
@@ -158,8 +182,9 @@ public sealed class DailySimulationTowerAutomation
                 cancellationToken, timeoutMs: SortieMissTimeoutMs, matchThreshold: 0.70);
             if (!sortie.IsMatch)
             {
-                _log($"每日模拟战斗：{name} {SortieMissTimeoutMs / 1000}s 内点不出「出撃開始」（最高 {sortie.Score:F3}），该塔结束。");
-                return true;
+                _log($"每日模拟战斗：{name} {SortieMissTimeoutMs / 1000}s 内未识别「出撃開始」" +
+                     $"（最高 {sortie.Score:F3}），停止且不记完成。");
+                return false;
             }
 
             await _screen.ClickProbeAsync(window, sortie, "模拟战斗 出撃開始", cancellationToken, 1400);
@@ -173,8 +198,47 @@ public sealed class DailySimulationTowerAutomation
         }
 
         _log($"每日模拟战斗：{name}已跑满 {TowerWallClockLimit.TotalMinutes:0} 分钟墙钟，停止该塔。");
-        return true;
+        return false;
     }
+
+    private async Task<bool> IsRemainingZeroAsync(GameWindow window, CancellationToken cancellationToken)
+    {
+        TemplateProbeResult zero = await _screen.ProbeAsync(
+            window,
+            _remainingZero,
+            _config.DailySimulationRemainingTopLeft,
+            _config.DailySimulationRemainingSize,
+            cancellationToken,
+            0.78);
+        if (!zero.IsMatch)
+            return false;
+
+        // 「本日あとN回」中只有一个数字不同，整句模板会把 9/8 等高分误配成 0。
+        // 模板仅作快速候选；最终必须由 OCR 明确读到整数 0。
+        RegionCapture remainingRegion = _screen.CaptureRegion(
+            window,
+            _config.DailySimulationRemainingTopLeft,
+            _config.DailySimulationRemainingSize);
+        string? text = await DigitOcrService.TryReadTextAsync(remainingRegion.Image, cancellationToken);
+        int? remaining = DigitOcrService.TryParseNonNegativeInt(text);
+        if (remaining is int value)
+        {
+            _log($"每日模拟战斗：剩余次数候选模板 {zero.Score:F4}，OCR「{text}」→ {value}。");
+            return value == 0;
+        }
+
+        if (IsStrongZeroMatch(zero.Score, remaining))
+        {
+            _log($"每日模拟战斗：剩余次数模板强命中 {zero.Score:F4}，OCR 未读出数字，按 0 次处理。");
+            return true;
+        }
+
+        _log($"每日模拟战斗：剩余次数候选模板 {zero.Score:F4}，但 OCR 无法确认 0 次，继续运行。");
+        return false;
+    }
+
+    public static bool IsStrongZeroMatch(double templateScore, int? ocrRemaining) =>
+        ocrRemaining is null && templateScore >= RemainingZeroStrongThreshold;
 
     private async Task<bool> RunBattleAsync(GameWindow window, CancellationToken cancellationToken)
     {

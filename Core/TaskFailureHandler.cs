@@ -4,7 +4,7 @@ using BetterMuv.Services;
 namespace BetterMuv.Core;
 
 /// <summary>
-/// 任务失败后的统一恢复：关弹窗 → Esc 退层 → 回主页，并用「クエスト」确认是否真的回到主界面。
+/// 任务失败后的统一恢复：关弹窗 → Esc 退层 → 回主页，并确认底栏入口存在且右上返回主页按钮消失。
 /// </summary>
 public sealed class TaskFailureHandler
 {
@@ -13,12 +13,16 @@ public sealed class TaskFailureHandler
     private const int AfterHomeMs = 400;
     private const int HomeConfirmTimeoutMs = 4000;
     private const double QuestPresenceThreshold = 0.80;
+    private const double HudHomeThreshold = 0.78;
+    private static readonly ConfigPoint HudHomeTopLeft = new(1420, 0);
+    private static readonly ConfigSize HudHomeSize = new(500, 260);
 
     private readonly AutomationConfig _config;
     private readonly ScreenAutomation _screen;
     private readonly Action<string> _log;
     private readonly PromoPopupDismisser _promo;
     private readonly TemplateMatcher _questMatcher;
+    private readonly TemplateMatcher _hudHomeMatcher;
 
     public TaskFailureHandler(AutomationConfig config, Action<string> log)
     {
@@ -27,10 +31,11 @@ public sealed class TaskFailureHandler
         _screen = new ScreenAutomation(config, log);
         _promo = new PromoPopupDismisser(config, _screen, log);
         _questMatcher = TemplateAssets.Load("quest.png");
+        _hudHomeMatcher = TemplateAssets.Load("hud-home.png");
     }
 
     /// <summary>
-    /// 尝试拉回主页。返回 true 表示已识别到底栏「クエスト」（确认在主界面）。
+    /// 尝试拉回主页。返回 true 表示已确认底栏入口存在且右上返回主页按钮消失。
     /// </summary>
     public async Task<bool> RecoverToHomeAsync(string taskName, CancellationToken cancellationToken)
     {
@@ -47,7 +52,7 @@ public sealed class TaskFailureHandler
             window = await _screen.EnsurePreferredClientAsync(window, cancellationToken);
 
             // 已在主页则立刻返回，避免多余 Esc / 点主页。
-            if (await IsQuestVisibleAsync(window, cancellationToken))
+            if (await IsHomeVisibleAsync(window, cancellationToken))
             {
                 _log($"失败处理：{taskName} — 已在主界面，跳过恢复。");
                 return true;
@@ -57,7 +62,7 @@ public sealed class TaskFailureHandler
             {
                 int closed = await _promo.DismissAllAsync(window, cancellationToken);
                 window = _screen.Refresh(window);
-                if (await IsQuestVisibleAsync(window, cancellationToken))
+                if (await IsHomeVisibleAsync(window, cancellationToken))
                 {
                     _log($"失败处理：{taskName} — 清弹窗后已在主界面。");
                     return true;
@@ -74,9 +79,7 @@ public sealed class TaskFailureHandler
                 await _screen.Mouse.SendEscapeAsync(window.Handle, cancellationToken);
                 await Task.Delay(AfterEscapeMs, cancellationToken);
                 window = _screen.Refresh(window);
-                await _promo.DismissAllAsync(window, cancellationToken);
-                window = _screen.Refresh(window);
-                if (await IsQuestVisibleAsync(window, cancellationToken))
+                if (await IsHomeVisibleAsync(window, cancellationToken))
                 {
                     _log($"失败处理：{taskName} — Esc 后已确认主界面。");
                     return true;
@@ -89,10 +92,10 @@ public sealed class TaskFailureHandler
             await _promo.DismissAllAsync(window, cancellationToken);
             window = _screen.Refresh(window);
 
-            TemplateProbeResult quest = await WaitForQuestAsync(window, cancellationToken);
+            TemplateProbeResult quest = await WaitForHomeAsync(window, cancellationToken);
             if (quest.IsMatch)
             {
-                _log($"失败处理：{taskName} — 已确认主界面（クエスト {quest.Score:F3}）。");
+                _log($"失败处理：{taskName} — 已确认主界面（クエスト {quest.Score:F3}，无返回主页按钮）。");
                 return true;
             }
 
@@ -110,16 +113,22 @@ public sealed class TaskFailureHandler
         }
     }
 
-    private async Task<bool> IsQuestVisibleAsync(GameWindow window, CancellationToken cancellationToken)
+    private async Task<bool> IsHomeVisibleAsync(GameWindow window, CancellationToken cancellationToken)
     {
         ConfigSize size = ScreenAutomation.EnsureFitsTemplate(_config.FirstSearchSize, _questMatcher);
         TemplateProbeResult quest = await _screen.ProbeAsync(
             window, _questMatcher, _config.SearchTopLeft, size,
             cancellationToken, QuestPresenceThreshold);
-        return quest.IsMatch;
+        if (!quest.IsMatch)
+            return false;
+
+        TemplateProbeResult hudHome = await _screen.ProbeAsync(
+            window, _hudHomeMatcher, HudHomeTopLeft, HudHomeSize,
+            cancellationToken, HudHomeThreshold);
+        return !hudHome.IsMatch;
     }
 
-    private async Task<TemplateProbeResult> WaitForQuestAsync(
+    private async Task<TemplateProbeResult> WaitForHomeAsync(
         GameWindow window, CancellationToken cancellationToken)
     {
         ConfigSize size = ScreenAutomation.EnsureFitsTemplate(_config.FirstSearchSize, _questMatcher);
@@ -141,7 +150,7 @@ public sealed class TaskFailureHandler
                 cancellationToken, QuestPresenceThreshold);
             if (probe.Score > best.Score)
                 best = probe;
-            if (probe.IsMatch)
+            if (probe.IsMatch && await IsHomeVisibleAsync(window, cancellationToken))
                 return probe;
 
             if (timer.ElapsedMilliseconds < HomeConfirmTimeoutMs)

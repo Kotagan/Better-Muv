@@ -193,13 +193,12 @@ public sealed class AutomationConfig
     /// <summary>一条龙任务顺序，项为 maze / mainQuest / hardMainQuest / dailyShop / dailyFreeGift / dailyExercises / dailyMissions / dailyCircle / dailyHarvest / dailyFreeBoost。</summary>
     public List<string> PipelineTaskOrder { get; set; } =
         ["maze", "mainQuest", "hardMainQuest", "dailyShop", "dailyFreeGift", "dailyExercises", "dailySimulationTower", "dailyMissions", "dailyCircle", "dailyHarvest", "dailyFreeBoost"];
-    // 每日商店连点（1080p）；注释为 4K 客户区坐标（÷2）。
-    // 4K (3560,1930)
-    public ConfigPoint DailyShopEntryClick { get; set; } = new(1780, 965);
+    // 每日商店入口兜底坐标（1080p）；4K 为 (3620,2080)。正常流程优先识别图标。
+    public ConfigPoint DailyShopEntryClick { get; set; } = new(1810, 1040);
     /// <summary>商店内「交換所」入口点击中心（1080p）。</summary>
-    public ConfigPoint DailyShopExchangeHallClick { get; set; } = new(1263, 790);
-    public ConfigPoint DailyShopExchangeHallTopLeft { get; set; } = new(1100, 700);
-    public ConfigSize DailyShopExchangeHallSize { get; set; } = new(350, 200);
+    public ConfigPoint DailyShopExchangeHallClick { get; set; } = new(1540, 790);
+    public ConfigPoint DailyShopExchangeHallTopLeft { get; set; } = new(1200, 620);
+    public ConfigSize DailyShopExchangeHallSize { get; set; } = new(680, 360);
     // 4K (2822,1416)
     public ConfigPoint DailyShopTabClick { get; set; } = new(1411, 708);
     // 4K (924,1362)
@@ -223,6 +222,8 @@ public sealed class AutomationConfig
     public int DailyShopScrollWheelNotches { get; set; } = -8;
     /// <summary>商店左栏「お得パック」固定点击（1080p）。</summary>
     public ConfigPoint DailyFreeGiftOtokuClick { get; set; } = new(130, 380);
+    /// <summary>主页商店选择层中央「期間限定」商店入口（1080p）。</summary>
+    public ConfigPoint DailyFreeGiftShopPortalClick { get; set; } = new(950, 550);
     public ConfigPoint DailyFreeGiftOtokuTopLeft { get; set; } = new(40, 250);
     public ConfigSize DailyFreeGiftOtokuSize { get; set; } = new(220, 450);
     /// <summary>「デイリー無料パック」标题搜索区（1080p）。</summary>
@@ -270,14 +271,19 @@ public sealed class AutomationConfig
     public ConfigPoint DailyMissionsTitleTopLeft { get; set; } = new(80, 10);
     public ConfigSize DailyMissionsTitleSize { get; set; } = new(360, 100);
     public ConfigPoint DailyMissionsDailyTabClick { get; set; } = new(70, 280);
+    /// <summary>ミッション左侧「ウィークリー」页签点击（1080p）。</summary>
+    public ConfigPoint DailyMissionsWeeklyTabClick { get; set; } = new(70, 545);
+    /// <summary>ミッション左侧「ウィークリー」紧搜索区，避免误命中下方「実績」。</summary>
+    public ConfigPoint DailyMissionsTabTopLeft { get; set; } = new(0, 480);
+    public ConfigSize DailyMissionsTabSize { get; set; } = new(160, 180);
+    /// <summary>ミッション左侧「実績」页签中心（1080p）。</summary>
+    public ConfigPoint DailyMissionsAchievementTabClick { get; set; } = new(70, 690);
     public ConfigPoint DailyMissionsClearedTopLeft { get; set; } = new(600, 450);
     public ConfigSize DailyMissionsClearedSize { get; set; } = new(900, 350);
     public ConfigPoint DailyMissionsClaimTopLeft { get; set; } = new(1450, 900);
     public ConfigSize DailyMissionsClaimSize { get; set; } = new(420, 160);
     public ConfigPoint DailyMissionsOkTopLeft { get; set; } = new(700, 820);
     public ConfigSize DailyMissionsOkSize { get; set; } = new(520, 200);
-    /// <summary>每日任务上次领完日（每天 5:00 刷新）。</summary>
-    public string? LastDailyMissionsDay { get; set; }
     /// <summary>底栏「サークル」点击中心（1080p）。</summary>
     public ConfigPoint DailyCircleNavClick { get; set; } = new(850, 1025);
     public ConfigPoint DailyCircleNavTopLeft { get; set; } = new(700, 960);
@@ -287,8 +293,13 @@ public sealed class AutomationConfig
     public ConfigPoint DailyCircleMissionEntryClick { get; set; } = new(1512, 182);
     public ConfigPoint DailyCircleMissionEntryTopLeft { get; set; } = new(1300, 120);
     public ConfigSize DailyCircleMissionEntrySize { get; set; } = new(420, 120);
-    /// <summary>每日社团任务上次领完日（每天 5:00 刷新）。</summary>
-    public string? LastDailyCircleDay { get; set; }
+    /// <summary>社团ミッション「デイリー」页签点击（1080p）。</summary>
+    public ConfigPoint DailyCircleDailyTabClick { get; set; } = new(70, 485);
+    /// <summary>社团ミッション「ウィークリー」页签点击（1080p）。</summary>
+    public ConfigPoint DailyCircleWeeklyTabClick { get; set; } = new(70, 605);
+    /// <summary>社团ミッション左侧页签搜索区（1080p）。</summary>
+    public ConfigPoint DailyCircleTabTopLeft { get; set; } = new(0, 350);
+    public ConfigSize DailyCircleTabSize { get; set; } = new(160, 500);
     /// <summary>主页采矿小人/矿车入口（1080p）。</summary>
     public ConfigPoint MiningEntryClick { get; set; } = new(1740, 774);
     public ConfigPoint MiningEntryTopLeft { get; set; } = new(1580, 650);
@@ -387,10 +398,10 @@ public sealed class AutomationConfig
     /// <summary>发现 GameKee 新兑换码时是否弹窗询问游戏内兑换。</summary>
     public bool RedeemPromptOnNewCodes { get; set; } = true;
     public string ToggleHotkey { get; set; } = "F10";
-    /// <summary>全局暂停/继续快捷键。</summary>
-    public string PauseHotkey { get; set; } = "F10";
+    /// <summary>全局启动快捷键；空字符串表示不注册，由用户自行设置。</summary>
+    public string PauseHotkey { get; set; } = "";
     /// <summary>全局停止快捷键。</summary>
-    public string StopHotkey { get; set; } = "F11";
+    public string StopHotkey { get; set; } = "F10";
     /// <summary>是否已确认过首次运行提示弹窗。</summary>
     public bool FirstRunNoticeAccepted { get; set; }
     /// <summary>首次迷宫时「商店未配置」提示是否已点过「继续」。</summary>
@@ -483,8 +494,8 @@ public sealed class AutomationConfig
             DailyExercisesPrepareSize, DailyExercisesRemainingSize, DailySimulationPrepareSize,
             DailySimulationTitleSize, DailySimulationListSize, DailySimulationRemainingSize,
             DailyMissionsEntrySize, DailyMissionsTitleSize, DailyMissionsClearedSize,
-            DailyMissionsClaimSize, DailyMissionsOkSize,
-            DailyCircleNavSize, DailyCircleTitleSize, DailyCircleMissionEntrySize,
+            DailyMissionsClaimSize, DailyMissionsOkSize, DailyMissionsTabSize,
+            DailyCircleNavSize, DailyCircleTitleSize, DailyCircleMissionEntrySize, DailyCircleTabSize,
             MiningEntrySize, MiningTitleSize, MiningClaimSize, MiningBoostSize, MiningBoostExecuteSize, MiningOkSize
         ];
         if (requiredSizes.Any(s => s.Width <= 0 || s.Height <= 0))
@@ -510,10 +521,12 @@ public sealed class AutomationConfig
         if (ToggleHotkey is not ("F1" or "F2" or "F3" or "F4" or "F5" or "F6" or "F7" or
                                  "F8" or "F9" or "F10" or "F11" or "F12"))
             throw new InvalidDataException("toggleHotkey 仅支持 F1 至 F12。");
-        if (!IsSupportedFunctionKey(PauseHotkey) || !IsSupportedFunctionKey(StopHotkey))
-            throw new InvalidDataException("暂停和停止快捷键仅支持 F1 至 F12。");
-        if (PauseHotkey.Equals(StopHotkey, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidDataException("暂停和停止快捷键不能相同。");
+        if ((!string.IsNullOrWhiteSpace(PauseHotkey) && !IsSupportedFunctionKey(PauseHotkey)) ||
+            !IsSupportedFunctionKey(StopHotkey))
+            throw new InvalidDataException("启动和停止快捷键仅支持 F1 至 F12；启动快捷键可以留空。");
+        if (!string.IsNullOrWhiteSpace(PauseHotkey) &&
+            PauseHotkey.Equals(StopHotkey, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("启动和停止快捷键不能相同。");
         if (GameLaunchTimeoutSeconds is < 5 or > 600)
             throw new InvalidDataException("gameLaunchTimeoutSeconds 必须在 5–600 秒。");
         NormalizeSettlementPurchases();

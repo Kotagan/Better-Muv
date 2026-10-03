@@ -157,12 +157,16 @@ public class AutomationConfigTests
         var config = new AutomationConfig();
 
         Assert.False(config.LaunchGameWithCapture);
-        Assert.Equal("F10", config.PauseHotkey);
-        Assert.Equal("F11", config.StopHotkey);
+        Assert.Equal("", config.PauseHotkey);
+        Assert.Equal("F10", config.StopHotkey);
         Assert.Equal(90, config.GameLaunchTimeoutSeconds);
         Assert.Equal(["maze", "mainQuest", "hardMainQuest", "dailyShop", "dailyFreeGift", "dailyExercises", "dailySimulationTower", "dailyMissions", "dailyCircle", "dailyHarvest", "dailyFreeBoost"], AutomationConfig.NormalizePipelineTaskOrder(null));
         Assert.Equal(["mainQuest", "maze", "hardMainQuest", "dailyShop", "dailyFreeGift", "dailyExercises", "dailySimulationTower", "dailyMissions", "dailyCircle", "dailyHarvest", "dailyFreeBoost"], AutomationConfig.NormalizePipelineTaskOrder(["mainQuest", "maze", "unknown"]));
-        Assert.Equal(new ConfigPoint(1780, 965), new AutomationConfig().DailyShopEntryClick);
+        Assert.Equal(new ConfigPoint(1810, 1040), new AutomationConfig().DailyShopEntryClick);
+        Assert.Equal(new ConfigPoint(1540, 790), new AutomationConfig().DailyShopExchangeHallClick);
+        Assert.Equal(new ConfigPoint(1200, 620), new AutomationConfig().DailyShopExchangeHallTopLeft);
+        Assert.Equal(new ConfigSize(680, 360), new AutomationConfig().DailyShopExchangeHallSize);
+        Assert.Equal(new ConfigPoint(950, 550), new AutomationConfig().DailyFreeGiftShopPortalClick);
         Assert.Equal(new ConfigPoint(1611, 473), new AutomationConfig().SecondClick);
         Assert.Equal(new ConfigPoint(1080, 950), new AutomationConfig().SearchTopLeft);
         Assert.Equal(new ConfigSize(150, 110), new AutomationConfig().FirstSearchSize);
@@ -187,6 +191,9 @@ public class AutomationConfigTests
         Assert.Equal(new ConfigSize(320, 140), new AutomationConfig().DailySimulationListSize);
         Assert.Equal(new ConfigPoint(1600, 900), new AutomationConfig().DailySimulationRemainingTopLeft);
         Assert.Equal(new ConfigSize(320, 100), new AutomationConfig().DailySimulationRemainingSize);
+        Assert.Equal(new ConfigPoint(0, 480), new AutomationConfig().DailyMissionsTabTopLeft);
+        Assert.Equal(new ConfigSize(160, 180), new AutomationConfig().DailyMissionsTabSize);
+        Assert.Equal(new ConfigPoint(70, 690), new AutomationConfig().DailyMissionsAchievementTabClick);
         Assert.Equal(new ConfigPoint(0, 0), new AutomationConfig().NavBackTopLeft);
         Assert.Equal(new ConfigSize(160, 130), new AutomationConfig().NavBackSize);
         Assert.Equal("muv_luv_girlsgardenx_cl.exe", GamePathLocator.ExecutableName);
@@ -195,6 +202,17 @@ public class AutomationConfigTests
         Assert.False(GamePathLocator.IsValid(@"C:\Windows\System32\schtasks.exe"));
         Assert.Null(GamePathLocator.TryNormalize(@"C:\Windows\System32\schtasks.exe", out string rejectReason));
         Assert.Contains("不是游戏程序", rejectReason);
+    }
+
+    [Theory]
+    [InlineData(0.9926, null, true)]
+    [InlineData(0.9799, null, false)]
+    [InlineData(0.9990, 1, false)]
+    public void SimulationZeroStrongMatchOnlyFillsMissingOcr(
+        double score, int? ocrRemaining, bool expected)
+    {
+        Assert.Equal(expected,
+            DailySimulationTowerAutomation.IsStrongZeroMatch(score, ocrRemaining));
     }
 
     [Fact]
@@ -550,8 +568,8 @@ public class DailySimulationTowerTests
     [Theory]
     [InlineData(DayOfWeek.Monday, "fire")]
     [InlineData(DayOfWeek.Tuesday, "water")]
-    [InlineData(DayOfWeek.Wednesday, "earth")]
-    [InlineData(DayOfWeek.Thursday, "wood")]
+    [InlineData(DayOfWeek.Wednesday, "wood")]
+    [InlineData(DayOfWeek.Thursday, "earth")]
     [InlineData(DayOfWeek.Friday, "water,fire")]
     [InlineData(DayOfWeek.Saturday, "earth,wood")]
     [InlineData(DayOfWeek.Sunday, "fire,water,earth,wood")]

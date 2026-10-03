@@ -87,6 +87,14 @@ public sealed class PromoPopupDismisser
         if (DateTime.UtcNow < _suppressUntilUtc)
             return false;
 
+        // 宣传层最常见且关闭钮 ROI 最小，优先探测可避免先跑多次大区域匹配。
+        TemplateProbeResult probe = await _screen.ProbeAsync(
+            window, _closeMatcher,
+            _config.PopupCloseTopLeft, _config.PopupCloseSize,
+            cancellationToken, CloseThreshold);
+        if (probe.IsMatch)
+            return await DismissPromoCloseAsync(window, probe, cancellationToken);
+
         // お知らせ优先：标题或閉じる任一命中即关，避免挡住クエスト。
         if (await TryDismissOshiraseOrTojiruAsync(window, cancellationToken))
             return true;
@@ -94,16 +102,13 @@ public sealed class PromoPopupDismisser
         if (await TryDismissRewardOkAsync(window, cancellationToken))
             return true;
 
-        TemplateProbeResult probe = await _screen.ProbeAsync(
-            window, _closeMatcher,
-            _config.PopupCloseTopLeft, _config.PopupCloseSize,
-            cancellationToken, CloseThreshold);
-        if (!probe.IsMatch)
-        {
-            _failedBursts = 0;
-            return false;
-        }
+        _failedBursts = 0;
+        return false;
+    }
 
+    private async Task<bool> DismissPromoCloseAsync(
+        GameWindow window, TemplateProbeResult probe, CancellationToken cancellationToken)
+    {
         _log($"检测到宣传弹窗关闭钮（{probe.Score:F3}），点击关闭。");
         await _screen.ClickScreenAsync(window, probe.Center, cancellationToken);
         await Task.Delay(400, cancellationToken);

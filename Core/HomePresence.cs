@@ -4,18 +4,22 @@ using BetterMuv.Services;
 namespace BetterMuv.Core;
 
 /// <summary>
-/// 确认已在主界面（底栏「クエスト」可见）；否则清弹窗 / Esc / 点主页钮后重试。
+/// 确认已在主界面（底栏「クエスト」可见且不存在右上返回主页按钮）；否则清弹窗 / Esc / 点主页钮后重试。
 /// </summary>
 public sealed class HomePresence
 {
     private const double QuestThreshold = 0.80;
+    private const double HudHomeThreshold = 0.78;
     private const int ConfirmTimeoutMs = 2500;
+    private static readonly ConfigPoint HudHomeTopLeft = new(1420, 0);
+    private static readonly ConfigSize HudHomeSize = new(500, 260);
 
     private readonly AutomationConfig _config;
     private readonly ScreenAutomation _screen;
     private readonly Action<string> _log;
     private readonly PromoPopupDismisser _promo;
     private readonly TemplateMatcher _questMatcher;
+    private readonly TemplateMatcher _hudHomeMatcher;
 
     public HomePresence(AutomationConfig config, ScreenAutomation screen, Action<string> log)
     {
@@ -24,14 +28,20 @@ public sealed class HomePresence
         _log = log;
         _promo = new PromoPopupDismisser(config, screen, log);
         _questMatcher = TemplateAssets.Load("quest.png");
+        _hudHomeMatcher = TemplateAssets.Load("hud-home.png");
     }
 
     public async Task<bool> IsHomeAsync(GameWindow window, CancellationToken cancellationToken)
     {
-        ConfigSize size = ScreenAutomation.EnsureFitsTemplate(_config.FirstSearchSize, _questMatcher);
+        ConfigSize questSize = ScreenAutomation.EnsureFitsTemplate(_config.FirstSearchSize, _questMatcher);
         TemplateProbeResult quest = await _screen.ProbeAsync(
-            window, _questMatcher, _config.SearchTopLeft, size, cancellationToken, QuestThreshold);
-        return quest.IsMatch;
+            window, _questMatcher, _config.SearchTopLeft, questSize, cancellationToken, QuestThreshold);
+        if (!quest.IsMatch)
+            return false;
+
+        TemplateProbeResult hudHome = await _screen.ProbeAsync(
+            window, _hudHomeMatcher, HudHomeTopLeft, HudHomeSize, cancellationToken, HudHomeThreshold);
+        return !hudHome.IsMatch;
     }
 
     /// <summary>若已在主页直接 true；否则轻清弹窗 / 恢复后再确认。</summary>
@@ -72,13 +82,10 @@ public sealed class HomePresence
 
     private async Task<bool> WaitForHomeAsync(GameWindow window, CancellationToken cancellationToken)
     {
-        ConfigSize size = ScreenAutomation.EnsureFitsTemplate(_config.FirstSearchSize, _questMatcher);
         var timer = Stopwatch.StartNew();
         do
         {
-            TemplateProbeResult quest = await _screen.ProbeAsync(
-                window, _questMatcher, _config.SearchTopLeft, size, cancellationToken, QuestThreshold);
-            if (quest.IsMatch)
+            if (await IsHomeAsync(window, cancellationToken))
                 return true;
             if (timer.ElapsedMilliseconds < ConfirmTimeoutMs)
                 await Task.Delay(_config.DetectionPollIntervalMs, cancellationToken);

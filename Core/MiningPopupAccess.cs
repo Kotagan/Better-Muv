@@ -11,15 +11,18 @@ internal sealed class MiningPopupAccess
     private const double EntryThreshold = 0.52;
     private const double TitleThreshold = 0.55;
     private const double ClaimOpenThreshold = 0.62;
+    private const double CloseThreshold = 0.72;
+    private static readonly ConfigPoint CloseTopLeft = new(700, 880);
+    private static readonly ConfigSize CloseSize = new(520, 180);
 
     private readonly AutomationConfig _config;
     private readonly ScreenAutomation _screen;
     private readonly Action<string> _log;
     private readonly string _taskName;
-    private readonly PromoPopupDismisser _promo;
     private readonly TemplateMatcher _entryMatcher;
     private readonly TemplateMatcher _titleMatcher;
     private readonly TemplateMatcher _claimMatcher;
+    private readonly TemplateMatcher _closeMatcher;
 
     public MiningPopupAccess(AutomationConfig config, ScreenAutomation screen, Action<string> log, string taskName)
     {
@@ -27,10 +30,10 @@ internal sealed class MiningPopupAccess
         _screen = screen;
         _log = log;
         _taskName = taskName;
-        _promo = new PromoPopupDismisser(config, screen, log);
         _entryMatcher = TemplateAssets.Load("mining-home-entry.png");
         _titleMatcher = TemplateAssets.Load("mining-title.png");
         _claimMatcher = TemplateAssets.Load("mining-claim.png");
+        _closeMatcher = TemplateAssets.Load("achievement-close.png");
     }
 
     public async Task<(GameWindow Window, bool Opened)> EnsureHomeAndOpenAsync(CancellationToken cancellationToken)
@@ -47,11 +50,10 @@ internal sealed class MiningPopupAccess
         window = await _screen.EnsurePreferredClientAsync(window, cancellationToken);
         _log($"{_taskName}：客户区 {window.ClientRect.Width}×{window.ClientRect.Height}");
 
-        await _promo.DismissAllAsync(window, cancellationToken);
-        window = _screen.Refresh(window);
-
-        // 若已在採掘弹窗，直接继续。
-        if (await IsMiningOpenAsync(window, cancellationToken))
+        // 启动阶段只做一次快速探测，避免明明在主页却为两个不存在的模板
+        // 分别等待完整超时；真正点击入口后仍使用完整等待确认。
+        _log($"{_taskName}：快速检查当前是否已在採掘弹窗。");
+        if (await IsMiningOpenAsync(window, cancellationToken, titleTimeoutMs: 0, claimTimeoutMs: 0))
         {
             _log($"{_taskName}：当前已在採掘弹窗。");
             return (_screen.Refresh(window), true);
@@ -67,8 +69,6 @@ internal sealed class MiningPopupAccess
 
         await Task.Delay(AfterHomeDelayMs, cancellationToken);
         window = _screen.Refresh(window);
-        await _promo.DismissAllAsync(window, cancellationToken);
-        window = _screen.Refresh(window);
 
         return await OpenAsync(window, cancellationToken);
     }
@@ -78,7 +78,6 @@ internal sealed class MiningPopupAccess
         for (int attempt = 1; attempt <= 3; attempt++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            await _promo.DismissAllAsync(window, cancellationToken);
             window = _screen.Refresh(window);
 
             // 扩大入口搜索区，小人位置会漂。
@@ -110,8 +109,6 @@ internal sealed class MiningPopupAccess
 
             await Task.Delay(AfterOpenDelayMs, cancellationToken);
             window = _screen.Refresh(window);
-            await _promo.DismissAllAsync(window, cancellationToken);
-            window = _screen.Refresh(window);
 
             if (await IsMiningOpenAsync(window, cancellationToken))
             {
@@ -123,6 +120,9 @@ internal sealed class MiningPopupAccess
             if (attempt < 3)
             {
                 _log($"{_taskName}：回主页后重试打开。");
+                // 显式尝试识别并点击右上主页按钮；已在主页时不会命中，也不会点击。
+                await new HudHomeReturn(_config, _screen, _log).TryAsync(window, cancellationToken);
+                window = _screen.Refresh(window);
                 var home = new HomePresence(_config, _screen, _log);
                 (window, bool onHome) = await home.EnsureAsync(window, _taskName, cancellationToken);
                 if (!onHome)
@@ -135,7 +135,32 @@ internal sealed class MiningPopupAccess
         return (_screen.Refresh(window), false);
     }
 
-    private async Task<bool> IsMiningOpenAsync(GameWindow window, CancellationToken cancellationToken)
+    /// <summary>关闭採掘弹窗后即回到主页；只在识别到「閉じる」时点击。</summary>
+    public async Task<bool> CloseAsync(GameWindow window, CancellationToken cancellationToken)
+    {
+        TemplateProbeResult close = await _screen.ProbeAsync(
+            window,
+            _closeMatcher,
+            CloseTopLeft,
+            CloseSize,
+            cancellationToken,
+            CloseThreshold);
+        if (!close.IsMatch)
+        {
+            _log($"{_taskName}：未识别採掘「閉じる」（最高 {close.Score:F4}），不点击。");
+            return false;
+        }
+
+        _log($"{_taskName}：点击採掘「閉じる」（{close.Score:F4}），关闭后即为主页。");
+        await _screen.ClickProbeAsync(window, close, "採掘 閉じる", cancellationToken, settleDelayMs: 300);
+        return true;
+    }
+
+    private async Task<bool> IsMiningOpenAsync(
+        GameWindow window,
+        CancellationToken cancellationToken,
+        int titleTimeoutMs = 2500,
+        int claimTimeoutMs = 2000)
     {
         TemplateProbeResult title = await _screen.WaitForProbeAsync(
             window,
@@ -143,7 +168,7 @@ internal sealed class MiningPopupAccess
             _config.MiningTitleTopLeft,
             _config.MiningTitleSize,
             cancellationToken,
-            timeoutMs: 2500,
+            timeoutMs: titleTimeoutMs,
             matchThreshold: TitleThreshold);
         if (title.IsMatch)
         {
@@ -158,7 +183,7 @@ internal sealed class MiningPopupAccess
             _config.MiningClaimTopLeft,
             _config.MiningClaimSize,
             cancellationToken,
-            timeoutMs: 2000,
+            timeoutMs: claimTimeoutMs,
             matchThreshold: ClaimOpenThreshold);
         if (claim.IsMatch)
         {

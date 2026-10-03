@@ -1518,11 +1518,10 @@ public partial class MainWindow : Window
         return TaskRunResult.Success();
     }
 
-    private async Task<TaskRunResult> RunDailySimulationTowerCoreAsync(CancellationToken cancellationToken)
+    private Task<TaskRunResult> RunDailySimulationTowerCoreAsync(CancellationToken cancellationToken)
     {
         var automation = new DailySimulationTowerAutomation(PrepareDiagnosticTask("dailySimulationTower"), AppendLog);
-        await automation.RunOnceAsync(cancellationToken);
-        return TaskRunResult.Success();
+        return automation.RunOnceAsync(cancellationToken);
     }
 
     private Task<TaskRunResult> RunDailyMissionsCoreAsync(CancellationToken cancellationToken)
@@ -1531,11 +1530,10 @@ public partial class MainWindow : Window
         return automation.RunOnceAsync(cancellationToken);
     }
 
-    private async Task<TaskRunResult> RunDailyCircleCoreAsync(CancellationToken cancellationToken)
+    private Task<TaskRunResult> RunDailyCircleCoreAsync(CancellationToken cancellationToken)
     {
         var automation = new DailyCircleAutomation(PrepareDiagnosticTask("dailyCircle"), AppendLog);
-        await automation.RunOnceAsync(cancellationToken);
-        return TaskRunResult.Success();
+        return automation.RunOnceAsync(cancellationToken);
     }
 
     private Task<TaskRunResult> RunDailyHarvestCoreAsync(CancellationToken cancellationToken)
@@ -2323,9 +2321,11 @@ public partial class MainWindow : Window
     {
         string pause = PauseHotkeyBox.Text.Trim().ToUpperInvariant();
         string stop = StopHotkeyBox.Text.Trim().ToUpperInvariant();
-        if (!AutomationConfig.IsSupportedFunctionKey(pause) || !AutomationConfig.IsSupportedFunctionKey(stop) || pause == stop)
+        if ((!string.IsNullOrWhiteSpace(pause) && !AutomationConfig.IsSupportedFunctionKey(pause)) ||
+            !AutomationConfig.IsSupportedFunctionKey(stop) ||
+            (!string.IsNullOrWhiteSpace(pause) && pause == stop))
         {
-            AppendLog("快捷键须为不同的 F1–F12。已恢复原设置。");
+            AppendLog("启动键可留空；已填写的快捷键须为不同的 F1–F12。已恢复原设置。");
             LoadSettings();
             return;
         }

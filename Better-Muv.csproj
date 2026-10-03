@@ -136,6 +136,7 @@
     <Content Include="Assets\Templates\serial-code-already-used.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\shop-otoku-pack.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\daily-free-gift-title.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\daily-shop-icon.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\exercises-prepare.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\exercises-remaining-zero.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\simulation-title.png" CopyToOutputDirectory="PreserveNewest" />
@@ -145,10 +146,12 @@
     <Content Include="Assets\Templates\mission-entry.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\mission-title.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\mission-tab-daily.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\mission-tab-weekly.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\mission-daily-cleared.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\mission-claim-all.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\circle-title.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\circle-mission-entry.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\circle-mission-tab-weekly.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\nav-circle.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\shop-purchase.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\mining-home-entry.png" CopyToOutputDirectory="PreserveNewest" />

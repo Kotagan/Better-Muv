@@ -17,16 +17,13 @@ public sealed class SettlementShopRunner
     private enum BuySlotVisual
     {
         Available,
-        AtLimit,
-        /// <summary>日常購入钮变暗：存矿不足或本格不可买。</summary>
-        DailyDark
+        AtLimit
     }
 
     private readonly AutomationConfig _config;
     private readonly ScreenAutomation _screen;
     private readonly TemplateMatcher _settlementMatcher;
     private readonly TemplateMatcher _lvMaxMatcher;
-    private readonly TemplateMatcher _buyDisabledMatcher;
     private readonly TemplateMatcher _dailyLimitTipMatcher;
     private readonly TemplateMatcher _greenDoneMatcher;
     private readonly TemplateMatcher _confirmMatcher;
@@ -62,7 +59,6 @@ public sealed class SettlementShopRunner
         _log = log;
         _settlementMatcher = TemplateAssets.Load(templateDirectory, "settlement-complete.png");
         _lvMaxMatcher = TemplateAssets.Load(templateDirectory, "shop-orange-limit.png");
-        _buyDisabledMatcher = TemplateAssets.Load(templateDirectory, "shop-daily-dark.png");
         _dailyLimitTipMatcher = TemplateAssets.Load(templateDirectory, "shop-daily-limit-tip.png");
         _greenDoneMatcher = TemplateAssets.Load(templateDirectory, "shop-green-done.png");
         _confirmMatcher = TemplateAssets.Load(templateDirectory, "settlement-confirm.png");
@@ -132,7 +128,7 @@ public sealed class SettlementShopRunner
 
             if (!_sessionBuyDone && purchases.Daily.HasAny())
             {
-                // 四个日常小类各自读取左下「本日の購入回数」；按钮暗色与提示仅作兜底。
+                // 四个日常小类各自读取左下「本日の購入回数」；上限提示/绿色提示作兜底。
                 DateTime now = DateTime.Now;
                 bool dailyOk = await RunDailyAsync(window, purchases.Daily, cancellationToken);
                 if (!_sessionBuyDone && dailyOk)
@@ -356,7 +352,7 @@ public sealed class SettlementShopRunner
         string subName = SettlementShopCatalog.SubcategoryDisplayName("daily", subcategoryKey);
 
         // 不再用「今天已确认完成」整类跳过：次数 OCR 曾把 N/N 误当成买完，整天清零跳过。
-        // 每个小类每次结算都按配置再买；买不动（暗色/上限）即停。
+        // 每个小类每次结算都按配置再买；买不动靠上限提示/左下次数停。
         await RefreshCurrencySkipFlagAsync(window, cancellationToken);
         if (_sessionBuyDone)
         {
@@ -485,7 +481,7 @@ public sealed class SettlementShopRunner
         _log($"购买 {scope}：开始，计划 {plan}");
         ConfigPoint tab = _config.SettlementSubcategoryTabs[tabIndex];
         string matcherKey = $"{category}/{subcategoryKey}";
-        // 日常小类即使已选中也再点一次，避免切大类后内容未刷新就读格（曾误判技能书1木为暗色）。
+        // 日常小类即使已选中也再点一次，避免切大类后内容未刷新就读格。
         bool forceSubClick = category.Equals("daily", StringComparison.OrdinalIgnoreCase);
         if (_subcategoryOn.TryGetValue(matcherKey, out TemplateMatcher? selectedMatcher))
         {
@@ -506,7 +502,7 @@ public sealed class SettlementShopRunner
             }
         }
 
-        await Task.Delay(forceSubClick ? 280 : 150, cancellationToken);
+        await Task.Delay(forceSubClick ? 450 : 150, cancellationToken);
 
         if (category.Equals("daily", StringComparison.OrdinalIgnoreCase))
         {
@@ -532,7 +528,7 @@ public sealed class SettlementShopRunner
             if (purchaseLeft is int left)
                 _log($"购买 {scope}：左下角确认本小类剩余 {left}。");
             else
-                _log($"购买 {scope}：左下角暂未读出，降级使用暗色按钮/上限提示，且不写已验证完成。");
+                _log($"购买 {scope}：左下角暂未读出，降级使用上限提示，且不写已验证完成。");
         }
 
         bool ok = await BuySlotsAsync(window, category, subcategoryKey, quantities, cancellationToken, purchaseLeft);
@@ -677,12 +673,6 @@ public sealed class SettlementShopRunner
                 DisableSlotInConfig(category, subcategory, quantities, i, scope);
                 continue;
             }
-            if (visualBefore == BuySlotVisual.DailyDark)
-            {
-                if (await StopOnDailyDarkAsync(window, slotTag, dailyPurchaseLeft, cancellationToken))
-                    return false;
-                continue;
-            }
 
             // 日常“全买”直接使用 MAX 点击一次。左下次数是最终依据：归零即结束本小类，
             // 未归零则继续下一个配置商品；不再对同一商品降到 ×10 / ×1 重复扫档。
@@ -719,9 +709,6 @@ public sealed class SettlementShopRunner
                 BuySlotVisual visualAfterMax = await ReadBuySlotVisualAsync(window, button, cancellationToken);
                 if (visualAfterMax == BuySlotVisual.AtLimit)
                     DisableSlotInConfig(category, subcategory, quantities, i, scope);
-                else if (visualAfterMax == BuySlotVisual.DailyDark &&
-                         await StopOnDailyDarkAsync(window, slotTag, leftAfterMax, cancellationToken))
-                    return false;
 
                 if (await DetectGreenDoneAsync(window, cancellationToken))
                     return false;
@@ -783,18 +770,10 @@ public sealed class SettlementShopRunner
                             return true;
                         }
 
-                        // 点前再认暗色：存矿不足时钮会变暗，禁止继续点空钱包。
                         BuySlotVisual preClick = await ReadBuySlotVisualAsync(window, button, cancellationToken);
                         if (preClick == BuySlotVisual.AtLimit)
                         {
                             DisableSlotInConfig(category, subcategory, quantities, i, scope);
-                            slotFinished = true;
-                            break;
-                        }
-                        if (preClick == BuySlotVisual.DailyDark)
-                        {
-                            if (await StopOnDailyDarkAsync(window, slotTag, leftBeforeTier ?? dailyPurchaseLeft, cancellationToken))
-                                return false;
                             slotFinished = true;
                             break;
                         }
@@ -819,13 +798,6 @@ public sealed class SettlementShopRunner
                         if (afterClick == BuySlotVisual.AtLimit)
                         {
                             DisableSlotInConfig(category, subcategory, quantities, i, scope);
-                            slotFinished = true;
-                            break;
-                        }
-                        if (afterClick == BuySlotVisual.DailyDark)
-                        {
-                            if (await StopOnDailyDarkAsync(window, slotTag, leftBeforeTier ?? dailyPurchaseLeft, cancellationToken))
-                                return false;
                             slotFinished = true;
                             break;
                         }
@@ -890,13 +862,6 @@ public sealed class SettlementShopRunner
                             ones = 0;
                             break;
                         }
-                        if (preClick == BuySlotVisual.DailyDark)
-                        {
-                            if (await StopOnDailyDarkAsync(window, slotTag, dailyPurchaseLeft, cancellationToken))
-                                return false;
-                            ones = 0;
-                            break;
-                        }
 
                         window = await _screen.ClickAsync(
                             window, button, $"购买 {slotTag} ×10 ({n + 1}/{tens})", cancellationToken);
@@ -914,13 +879,6 @@ public sealed class SettlementShopRunner
                         if (afterClick == BuySlotVisual.AtLimit)
                         {
                             DisableSlotInConfig(category, subcategory, quantities, i, scope);
-                            ones = 0;
-                            break;
-                        }
-                        if (afterClick == BuySlotVisual.DailyDark)
-                        {
-                            if (await StopOnDailyDarkAsync(window, slotTag, dailyPurchaseLeft, cancellationToken))
-                                return false;
                             ones = 0;
                             break;
                         }
@@ -960,12 +918,6 @@ public sealed class SettlementShopRunner
                             DisableSlotInConfig(category, subcategory, quantities, i, scope);
                             break;
                         }
-                        if (preClick == BuySlotVisual.DailyDark)
-                        {
-                            if (await StopOnDailyDarkAsync(window, slotTag, dailyPurchaseLeft, cancellationToken))
-                                return false;
-                            break;
-                        }
 
                         window = await _screen.ClickAsync(
                             window, button, $"购买 {slotTag} ×1 ({n + 1}/{ones})", cancellationToken);
@@ -984,12 +936,6 @@ public sealed class SettlementShopRunner
                             DisableSlotInConfig(category, subcategory, quantities, i, scope);
                             break;
                         }
-                        if (afterClick == BuySlotVisual.DailyDark)
-                        {
-                            if (await StopOnDailyDarkAsync(window, slotTag, dailyPurchaseLeft, cancellationToken))
-                                return false;
-                            break;
-                        }
 
                         if (await DetectGreenDoneAsync(window, cancellationToken))
                             return false;
@@ -1006,30 +952,6 @@ public sealed class SettlementShopRunner
         }
 
         return !_sessionBuyDone;
-    }
-
-    /// <summary>
-    /// 日常購入钮变暗需结合左下次数判断：次数仍大于 0 表示额度未满但当前买不了，判定矿不足并退出；
-    /// 次数为 0 表示小类已完成；次数未知时不据此退出整店。
-    /// </summary>
-    private async Task<bool> StopOnDailyDarkAsync(
-        GameWindow window, string slotTag, int? purchaseLeftHint, CancellationToken cancellationToken)
-    {
-        int? left = purchaseLeftHint ?? await TryReadPurchaseCountLeftAsync(window, cancellationToken);
-        if (left is > 0)
-        {
-            _sessionBuyDone = true;
-            _sessionBuyDoneReason =
-                $"购买 {slotTag}：左下角仍剩 {left} 次但購入钮暗色，判定当前货币不足，结束本次商店。";
-            _log(_sessionBuyDoneReason);
-            return true;
-        }
-
-        if (left is 0)
-            _log($"购买 {slotTag}：左下角剩余 0，本小类已完成。");
-        else
-            _log($"购买 {slotTag}：左下角未稳定读出且購入钮暗色，仅跳过当前商品。");
-        return false;
     }
 
     private static string FormatMultiplier(MultiplierState state) => state switch
@@ -1145,10 +1067,9 @@ public sealed class SettlementShopRunner
         GameWindow window, ConfigPoint button, CancellationToken cancellationToken)
     {
         ConfigPoint inset = _config.SettlementBuyButtonSearchInset;
-        // 模板 shop-orange-limit≈330×94（4K），shop-daily-dark 覆盖暗色購入钮。
+        // 只认 LvMAX / 橙色已购完；不再用暗色購入钮跳过。
         ConfigSize size = ScreenAutomation.EnsureFitsTemplate(
-            ScreenAutomation.EnsureFitsTemplate(_config.SettlementBuyButtonSearchSize, _lvMaxMatcher),
-            _buyDisabledMatcher);
+            _config.SettlementBuyButtonSearchSize, _lvMaxMatcher);
         var topLeft = new ConfigPoint(
             Math.Max(0, button.X - inset.X),
             Math.Max(0, button.Y - inset.Y));
@@ -1158,33 +1079,21 @@ public sealed class SettlementShopRunner
         BitmapSource image = region.Image;
         image.Freeze();
 
-        TemplateMatchResult[] matches = await Task.Run(() =>
-        {
-            var results = new TemplateMatchResult[2];
-            Parallel.Invoke(
-                () => results[0] = _screen.Match(
-                    _lvMaxMatcher, image, region.LogicalWidth, region.LogicalHeight),
-                () => results[1] = _screen.Match(
-                    _buyDisabledMatcher, image, region.LogicalWidth, region.LogicalHeight));
-            return results;
-        }, cancellationToken);
+        TemplateMatchResult lvMax = await Task.Run(
+            () => _screen.Match(_lvMaxMatcher, image, region.LogicalWidth, region.LogicalHeight),
+            cancellationToken);
 
-        double lvMaxScore = matches[0].Score;
-        double darkScore = matches[1].Score;
+        double lvMaxScore = lvMax.Score;
         const double lvMaxThreshold = 0.80;
         bool lvMaxHit = lvMaxScore >= lvMaxThreshold;
-        bool darkHit = darkScore >= 0.55;
         bool orangeHint = OrangeLimitFraction(image) >= 0.08;
 
         if (lvMaxHit || (orangeHint && lvMaxScore >= 0.55))
         {
             if (!lvMaxHit)
-                _log($"格子已购完(橙色兜底)：LvMAX={lvMaxScore:F2} 暗色={darkScore:F2}");
+                _log($"格子已购完(橙色兜底)：LvMAX={lvMaxScore:F2}");
             return BuySlotVisual.AtLimit;
         }
-
-        if (darkHit)
-            return BuySlotVisual.DailyDark;
 
         return BuySlotVisual.Available;
     }

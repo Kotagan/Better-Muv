@@ -411,8 +411,8 @@
     "mainQuestRunLimit":  10,
     "mainQuestTaskEnabled":  true,
     "toggleHotkey":  "F10",
-    "pauseHotkey":  "F10",
-    "stopHotkey":  "F11",
+    "pauseHotkey":  "",
+    "stopHotkey":  "F10",
     "firstRunNoticeAccepted":  false,
     "lastDailyShopDay":  null
 }

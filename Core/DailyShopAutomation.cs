@@ -9,7 +9,6 @@ namespace BetterMuv.Core;
 public sealed class DailyShopAutomation
 {
     private const int AfterHomeDelayMs = 700;
-    private const int AfterShopOpenDelayMs = 1000;
     private const int AfterHallOpenDelayMs = 1000;
     private const int AfterItemClickDelayMs = 800;
     private const int AfterScrollDelayMs = 600;
@@ -66,41 +65,22 @@ public sealed class DailyShopAutomation
 
         await Task.Delay(AfterHomeDelayMs, cancellationToken);
         window = _screen.Refresh(window);
-        await _promo.DismissAllAsync(window, cancellationToken);
-        window = _screen.Refresh(window);
-
-        _log($"每日商店：点击商店入口（{_config.DailyShopEntryClick.X},{_config.DailyShopEntryClick.Y}）。");
-        window = await _screen.ClickAsync(window, _config.DailyShopEntryClick, "商店入口", cancellationToken);
-        await Task.Delay(AfterShopOpenDelayMs, cancellationToken);
-        window = _screen.Refresh(window);
-        // お知らせ常挡交換所；多轮清弹窗后再进。
-        for (int i = 0; i < 4; i++)
-        {
-            int closed = await _promo.DismissAllAsync(window, cancellationToken);
-            window = _screen.Refresh(window);
-            if (closed == 0)
-                break;
-            await Task.Delay(400, cancellationToken);
-        }
+        (window, bool shopOpened) = await new ShopEntryAccess(_config, _screen, _log).OpenAsync(
+            window,
+            "每日商店",
+            _hallMatcher,
+            _config.DailyShopExchangeHallTopLeft,
+            _config.DailyShopExchangeHallSize,
+            HallThreshold,
+            cancellationToken);
+        if (!shopOpened)
+            return TaskRunResult.Fail("未能进入商店");
 
         window = await ClickExchangeHallAsync(window, cancellationToken);
         await Task.Delay(AfterHallOpenDelayMs, cancellationToken);
         window = _screen.Refresh(window);
         await _promo.DismissAllAsync(window, cancellationToken);
         window = _screen.Refresh(window);
-
-        // 点交換所后若仍像主页（还能看到クエスト），说明没进店，再点一次商店入口。
-        if (await home.IsHomeAsync(window, cancellationToken))
-        {
-            _log("每日商店：点交換所后仍在主页，重试商店入口。");
-            window = await _screen.ClickAsync(window, _config.DailyShopEntryClick, "商店入口重试", cancellationToken);
-            await Task.Delay(AfterShopOpenDelayMs, cancellationToken);
-            window = _screen.Refresh(window);
-            await _promo.DismissAllAsync(window, cancellationToken);
-            window = await ClickExchangeHallAsync(window, cancellationToken);
-            await Task.Delay(AfterHallOpenDelayMs, cancellationToken);
-            window = _screen.Refresh(window);
-        }
 
         // 1) 100%OFF → 交換 → OK；未识别则跳过，直接滚轮。
         window = await TryBuyFreeOffAsync(window, cancellationToken);

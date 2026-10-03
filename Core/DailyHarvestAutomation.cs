@@ -67,8 +67,8 @@ public sealed class DailyHarvestAutomation
             _log("每日收菜：已打开採掘但未点到「受取」，不记今日完成。");
         }
 
-        _log("每日收菜：返回主页。");
-        await new HudHomeReturn(_config, _screen, _log).TryAsync(window, cancellationToken);
+        _log("每日收菜：关闭採掘弹窗（关闭后即为主页）。");
+        await mining.CloseAsync(window, cancellationToken);
         _log("每日收菜：结束。");
         return claimed
             ? TaskRunResult.Success()

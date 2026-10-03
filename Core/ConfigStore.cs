@@ -47,10 +47,24 @@ public static class ConfigStore
             config.RouteSelectionTopLeft = new ConfigPoint(1500, 880);
             config.RouteSelectionSize = new ConfigSize(360, 180);
         }
-        if (MigrateTreasureRecognitionDefaults(config) || MigrateExecutionDefaults(config) ||
+        // 使用非短路 OR，确保一次启动会执行全部迁移，而非首个变更后跳过其余迁移。
+        if (MigrateShopEntryDefaults(config) | MigrateTreasureRecognitionDefaults(config) | MigrateExecutionDefaults(config) |
             MigrateDiagnosticDirectory(config))
             Save(config);
         return config;
+    }
+
+    private static bool MigrateShopEntryDefaults(AutomationConfig config)
+    {
+        if (config.DailyShopExchangeHallClick != new ConfigPoint(1263, 790) ||
+            config.DailyShopExchangeHallTopLeft != new ConfigPoint(1100, 700) ||
+            config.DailyShopExchangeHallSize != new ConfigSize(350, 200))
+            return false;
+
+        config.DailyShopExchangeHallClick = new ConfigPoint(1540, 790);
+        config.DailyShopExchangeHallTopLeft = new ConfigPoint(1200, 620);
+        config.DailyShopExchangeHallSize = new ConfigSize(680, 360);
+        return true;
     }
 
     /// <summary>
@@ -133,21 +147,56 @@ public static class ConfigStore
     private static bool MigrateExecutionDefaults(AutomationConfig config)
     {
         bool changed = false;
-        if (!AutomationConfig.IsSupportedFunctionKey(config.PauseHotkey))
+        // 旧默认 F10 启动/停止 + F11 停止，迁移为“启动未设置 + F10 仅停止”。
+        if (config.PauseHotkey == "F10" && config.StopHotkey == "F11")
         {
-            config.PauseHotkey = AutomationConfig.IsSupportedFunctionKey(config.ToggleHotkey)
-                ? config.ToggleHotkey : "F10";
+            config.PauseHotkey = "";
+            config.StopHotkey = "F10";
             changed = true;
         }
-        if (!AutomationConfig.IsSupportedFunctionKey(config.StopHotkey) ||
+        if (!string.IsNullOrWhiteSpace(config.PauseHotkey) &&
+            !AutomationConfig.IsSupportedFunctionKey(config.PauseHotkey))
+        {
+            config.PauseHotkey = "";
+            changed = true;
+        }
+        if (!AutomationConfig.IsSupportedFunctionKey(config.StopHotkey))
+        {
+            config.StopHotkey = "F10";
+            changed = true;
+        }
+        if (!string.IsNullOrWhiteSpace(config.PauseHotkey) &&
             config.StopHotkey.Equals(config.PauseHotkey, StringComparison.OrdinalIgnoreCase))
         {
-            config.StopHotkey = config.PauseHotkey == "F11" ? "F10" : "F11";
+            config.PauseHotkey = "";
             changed = true;
         }
         if (config.GameLaunchTimeoutSeconds is < 5 or > 600)
         {
             config.GameLaunchTimeoutSeconds = 90;
+            changed = true;
+        }
+        // 旧坐标落在 4K 主页商店按钮上方，导致商店和免费礼包流程一直停在主页。
+        if (config.DailyShopEntryClick is { X: 1780, Y: 965 })
+        {
+            config.DailyShopEntryClick = new ConfigPoint(1810, 1040);
+            changed = true;
+        }
+        // 每日爬塔禁止持久化完成状态；清除所有旧版本遗留标记。
+        if (!string.IsNullOrWhiteSpace(config.LastDailySimulationTowerDay) ||
+            !string.IsNullOrWhiteSpace(config.LastDailySimulationTowerTenRunDay) ||
+            !string.IsNullOrWhiteSpace(config.LastDailySimulationTowerStableLoopDay))
+        {
+            config.LastDailySimulationTowerDay = null;
+            config.LastDailySimulationTowerTenRunDay = null;
+            config.LastDailySimulationTowerStableLoopDay = null;
+            changed = true;
+        }
+        if (config.DailyMissionsTabTopLeft == new ConfigPoint(0, 200) &&
+            config.DailyMissionsTabSize == new ConfigSize(160, 600))
+        {
+            config.DailyMissionsTabTopLeft = new ConfigPoint(0, 480);
+            config.DailyMissionsTabSize = new ConfigSize(160, 180);
             changed = true;
         }
         // 余矿 OK/取消：旧默认偏上，按 4K 实机截图校正到按钮中心。
