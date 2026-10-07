@@ -3,16 +3,18 @@ using BetterMuv.Services;
 namespace BetterMuv.Core;
 
 /// <summary>
-/// 从主页可靠进入商店。主页商店按钮贴近底边，固定旧坐标容易点到按钮上方；
-/// 因此优先识别图标，并在点击后用目标商店页的模板确认确实完成了跳转。
+/// 从主页进入商店：只靠模板定位点击，不使用固定坐标兜底。
+/// 底栏购物车 →（可选）枢纽内目标入口 → 用落地模板确认。
 /// </summary>
 internal sealed class ShopEntryAccess
 {
-    private const double EntryThreshold = 0.68;
+    /// <summary>购物车图标含红点时分会掉；0.60 仍高于底栏其它图标误检。</summary>
+    private const double EntryThreshold = 0.60;
     private const int LandingTimeoutMs = 4000;
     private const int AfterEntryClickMs = 700;
-    private static readonly ConfigPoint EntryTopLeft = new(1680, 900);
-    private static readonly ConfigSize EntrySize = new(240, 180);
+    /// <summary>底栏「ショップ」购物车一带（1080p；含红点偏移）。</summary>
+    private static readonly ConfigPoint EntryTopLeft = new(1720, 930);
+    private static readonly ConfigSize EntrySize = new(220, 160);
 
     private readonly AutomationConfig _config;
     private readonly ScreenAutomation _screen;
@@ -37,7 +39,10 @@ internal sealed class ShopEntryAccess
         ConfigSize landingSize,
         double landingThreshold,
         CancellationToken cancellationToken,
-        ConfigPoint? shopMenuClick = null)
+        TemplateMatcher? portalMatcher = null,
+        ConfigPoint? portalTopLeft = null,
+        ConfigSize? portalSize = null,
+        double portalThreshold = 0.65)
     {
         for (int attempt = 1; attempt <= 2; attempt++)
         {
@@ -56,26 +61,32 @@ internal sealed class ShopEntryAccess
             TemplateProbeResult entry = await _screen.ProbeAsync(
                 window, _entryMatcher, EntryTopLeft, EntrySize,
                 cancellationToken, EntryThreshold);
-            if (entry.IsMatch)
+            if (!entry.IsMatch)
             {
-                _log($"{taskName}：已识别主页商店图标（{entry.Score:F4}），点击匹配中心（第 {attempt}/2 次）。");
-                await _screen.ClickProbeAsync(window, entry, "商店入口", cancellationToken, settleDelayMs: 150);
-            }
-            else
-            {
-                _log($"{taskName}：商店图标未命中（最高 {entry.Score:F4}），点击校正后的兜底坐标 " +
-                     $"（{_config.DailyShopEntryClick.X},{_config.DailyShopEntryClick.Y}，第 {attempt}/2 次）。");
-                window = await _screen.ClickAsync(
-                    window, _config.DailyShopEntryClick, "商店入口兜底", cancellationToken);
+                _log($"{taskName}：商店图标未命中（最高 {entry.Score:F4}），不点击（第 {attempt}/2 次）。");
+                await _promo.DismissAllAsync(window, cancellationToken);
+                continue;
             }
 
+            _log($"{taskName}：已识别主页商店图标（{entry.Score:F4}），点击匹配中心（第 {attempt}/2 次）。");
+            await _screen.ClickProbeAsync(window, entry, "商店入口", cancellationToken, settleDelayMs: 150);
             await Task.Delay(AfterEntryClickMs, cancellationToken);
             window = _screen.Refresh(window);
-            if (shopMenuClick is ConfigPoint menuClick)
+
+            if (portalMatcher is not null && portalTopLeft is { } pTl && portalSize is { } pSz)
             {
-                _log($"{taskName}：商店选择层已打开，点击目标商店入口（{menuClick.X},{menuClick.Y}）。");
-                window = await _screen.ClickAsync(
-                    window, menuClick, "商店选择层目标入口", cancellationToken);
+                TemplateProbeResult portal = await _screen.WaitForProbeAsync(
+                    window, portalMatcher, pTl, pSz,
+                    cancellationToken, timeoutMs: 3500, matchThreshold: portalThreshold);
+                if (!portal.IsMatch)
+                {
+                    _log($"{taskName}：商店枢纽目标入口未命中（最高 {portal.Score:F4}），不点击。");
+                    await _promo.DismissAllAsync(window, cancellationToken);
+                    continue;
+                }
+
+                _log($"{taskName}：已识别商店枢纽目标入口（{portal.Score:F4}），点击匹配中心。");
+                await _screen.ClickProbeAsync(window, portal, "商店枢纽目标入口", cancellationToken, settleDelayMs: 200);
                 await Task.Delay(AfterEntryClickMs, cancellationToken);
                 window = _screen.Refresh(window);
             }

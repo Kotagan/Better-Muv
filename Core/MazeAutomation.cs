@@ -121,7 +121,7 @@ public sealed class MazeAutomation
         };
     }
 
-    public async Task RunOnceAsync(CancellationToken cancellationToken)
+    public async Task<TaskRunResult> RunOnceAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         GameWindow window = _screen.FindWindow(_config.WindowTitleKeyword);
@@ -131,7 +131,7 @@ public sealed class MazeAutomation
         if (!focused)
         {
             _log("未能将游戏置于前台（可能已最小化）。请先手动点一下游戏窗口恢复完整全屏后再启动。");
-            return;
+            return TaskRunResult.Fail("未能将游戏置于前台");
         }
         _log("游戏已置于前台，等待界面稳定后再截图识别。");
         await Task.Delay(600, cancellationToken);
@@ -206,7 +206,9 @@ public sealed class MazeAutomation
             if (!entered)
             {
                 _log("识别流程已停止，结束本次运行。");
-                return;
+                return completedRuns > 0
+                    ? TaskRunResult.Fail($"已完成 {completedRuns} 轮后识别停止")
+                    : TaskRunResult.Fail("识别流程已停止");
             }
             completedRuns++;
             _log($"第 {completedRuns} 轮迷宫已结算完成。");
@@ -214,7 +216,7 @@ public sealed class MazeAutomation
             if (_config.MazeRunLimit > 0 && completedRuns >= _config.MazeRunLimit)
             {
                 _log($"已达到配置次数 {_config.MazeRunLimit}，停止。");
-                return;
+                return TaskRunResult.Success();
             }
 
             _log(_config.MazeRunLimit == 0
@@ -387,11 +389,14 @@ public sealed class MazeAutomation
         if (await RunFromThirdTaskAsync(window, cancellationToken, waitTimeoutMs: 5000))
             return true;
 
-        _log("连点后未认出迷宫开始页或层数，停止本轮进关（不盲点探索準備）。");
+        _log("连点后未能完成进关（开始页/探索準備/探索按钮），停止本轮。");
         return false;
     }
 
-    /// <summary>识别到层数并完成难度调整后，按「探索準備」模板中心点击。</summary>
+    /// <summary>
+    /// 识别到层数并完成难度调整后：在右下定位带内模板寻「探索準備」，点击识别中心。
+    /// 仅在完全找不到可用匹配时才退回 <see cref="AutomationConfig.ThirdClick"/>。
+    /// </summary>
     private async Task<bool> TryClickExplorePrepAsync(
         GameWindow window, CancellationToken cancellationToken)
     {
@@ -450,16 +455,39 @@ public sealed class MazeAutomation
             return false;
         }
 
+        // 右下大带内模板定位 → 点匹配中心（不是写死坐标）。
         TemplateProbeResult button = await _screen.ProbeAsync(
             window, _thirdMatcher, _config.ThirdSearchTopLeft, _config.ThirdSearchSize,
             cancellationToken, ThirdPresenceThreshold);
-        if (!button.IsMatch)
+        if (button.IsMatch)
         {
-            _log($"未识别到探索準備按钮（{button.Score:F4} < {ThirdPresenceThreshold:F2}），禁止盲点。");
+            _log($"探索準備定位成功（{button.Score:F3}），点击识别中心。");
+            await _screen.ClickProbeAsync(window, button, "探索準備", cancellationToken);
+            return true;
+        }
+
+        bool pageConfirmed = MazeDifficultyRunner.RequiresRecognizedFloor(difficultyMode)
+            || await _difficulty.TryReadTrustedFloorAsync(window, cancellationToken) is not null;
+        // 层数/区域已确认时：弱命中仍点识别中心（阈值下最佳匹配点），避免气泡区假高峰。
+        const double softLocateThreshold = 0.48;
+        if (pageConfirmed && button.Score >= softLocateThreshold)
+        {
+            _log($"探索準備弱定位（{button.Score:F3} ≥ {softLocateThreshold:F2}），仍点击识别中心 " +
+                 $"({button.Center.X:F0},{button.Center.Y:F0})。");
+            await _screen.ClickScreenAsync(window, button.Center, cancellationToken);
+            await Task.Delay(400, cancellationToken);
+            return true;
+        }
+
+        if (!pageConfirmed)
+        {
+            _log($"未识别到探索準備（最高 {button.Score:F4} < {ThirdPresenceThreshold:F2}），禁止盲点。");
             return false;
         }
 
-        await _screen.ClickProbeAsync(window, button, "探索準備", cancellationToken);
+        _log($"探索準備定位失败（最高 {button.Score:F4}），改点固定坐标 ThirdClick " +
+             $"（{_config.ThirdClick.X},{_config.ThirdClick.Y}）。");
+        await _screen.ClickAsync(window, _config.ThirdClick, "探索準備(固定坐标)", cancellationToken);
         return true;
     }
 

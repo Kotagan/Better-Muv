@@ -141,9 +141,9 @@ public class AutomationConfigTests
 
             AutomationConfig config = AutomationConfig.Load(path);
 
-            Assert.Equal(new ConfigPoint(1740, 774), config.MiningEntryClick);
-            Assert.Equal(new ConfigPoint(1580, 650), config.MiningEntryTopLeft);
-            Assert.Equal(new ConfigSize(340, 260), config.MiningEntrySize);
+            Assert.Equal(new ConfigPoint(1420, 780), config.MiningEntryClick);
+            Assert.Equal(new ConfigPoint(1280, 640), config.MiningEntryTopLeft);
+            Assert.Equal(new ConfigSize(360, 360), config.MiningEntrySize);
         }
         finally
         {
@@ -162,10 +162,12 @@ public class AutomationConfigTests
         Assert.Equal(90, config.GameLaunchTimeoutSeconds);
         Assert.Equal(["maze", "mainQuest", "hardMainQuest", "dailyShop", "dailyFreeGift", "dailyExercises", "dailySimulationTower", "dailyMissions", "dailyCircle", "dailyHarvest", "dailyFreeBoost"], AutomationConfig.NormalizePipelineTaskOrder(null));
         Assert.Equal(["mainQuest", "maze", "hardMainQuest", "dailyShop", "dailyFreeGift", "dailyExercises", "dailySimulationTower", "dailyMissions", "dailyCircle", "dailyHarvest", "dailyFreeBoost"], AutomationConfig.NormalizePipelineTaskOrder(["mainQuest", "maze", "unknown"]));
-        Assert.Equal(new ConfigPoint(1810, 1040), new AutomationConfig().DailyShopEntryClick);
-        Assert.Equal(new ConfigPoint(1540, 790), new AutomationConfig().DailyShopExchangeHallClick);
-        Assert.Equal(new ConfigPoint(1200, 620), new AutomationConfig().DailyShopExchangeHallTopLeft);
-        Assert.Equal(new ConfigSize(680, 360), new AutomationConfig().DailyShopExchangeHallSize);
+        Assert.Equal(new ConfigPoint(1840, 1025), new AutomationConfig().DailyShopEntryClick);
+        Assert.Equal(new ConfigPoint(1420, 800), new AutomationConfig().DailyShopExchangeHallClick);
+        Assert.Equal(new ConfigPoint(300, 240), new AutomationConfig().DailyFreeGiftTitleTopLeft);
+        Assert.Equal(new ConfigPoint(20, 140), new AutomationConfig().DailyShopExchangeHallTopLeft);
+        Assert.Equal(new ConfigSize(300, 180), new AutomationConfig().DailyShopExchangeHallSize);
+        Assert.Equal(new ConfigPoint(1420, 780), new AutomationConfig().MiningEntryClick);
         Assert.Equal(new ConfigPoint(950, 550), new AutomationConfig().DailyFreeGiftShopPortalClick);
         Assert.Equal(new ConfigPoint(1611, 473), new AutomationConfig().SecondClick);
         Assert.Equal(new ConfigPoint(1080, 950), new AutomationConfig().SearchTopLeft);
@@ -438,6 +440,25 @@ public class AutomationConfigTests
     }
 
     [Fact]
+    public void IgnoredUpdateMajorRoundTripsThroughJson()
+    {
+        string path = Path.Combine(Path.GetTempPath(), $"better-muv-ignore-major-{Guid.NewGuid():N}.json");
+        try
+        {
+            var config = new AutomationConfig { IgnoredUpdateMajor = 1 };
+            config.Save(path);
+
+            AutomationConfig loaded = AutomationConfig.Load(path);
+            Assert.Equal(1, loaded.IgnoredUpdateMajor);
+        }
+        finally
+        {
+            if (File.Exists(path))
+                File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void SelectedWindowRoundTripsThroughJson()
     {
         string path = Path.Combine(Path.GetTempPath(), $"better-muv-window-{Guid.NewGuid():N}.json");
@@ -486,6 +507,39 @@ public class AutomationConfigTests
             new ConfigPoint(661, 243), new ConfigSize(209, 554));
 
         Assert.Equal(new ScreenRect(661, 243, 209, 554), result);
+    }
+}
+
+public class AppVersionTests
+{
+    [Theory]
+    [InlineData("v1.3.0", 1, 3, 0)]
+    [InlineData("1.3.1", 1, 3, 1)]
+    [InlineData("2.0", 2, 0, 0)]
+    [InlineData("1.4.2+local-20261008", 1, 4, 2)]
+    [InlineData("v1.5.0-beta", 1, 5, 0)]
+    public void TryParseAcceptsCommonReleaseTags(string raw, int major, int minor, int patch)
+    {
+        Assert.True(AppVersion.TryParse(raw, out AppVersion version));
+        Assert.Equal(new AppVersion(major, minor, patch), version);
+    }
+
+    [Fact]
+    public void CompareDetectsNewerPatchAndMajor()
+    {
+        Assert.True(new AppVersion(1, 3, 1) > new AppVersion(1, 3, 0));
+        Assert.True(new AppVersion(2, 0, 0) > new AppVersion(1, 9, 9));
+        Assert.False(new AppVersion(1, 3, 0) > new AppVersion(1, 3, 0));
+    }
+
+    [Fact]
+    public void IsSuppressedUntilHigherMajor()
+    {
+        var config = new AutomationConfig { IgnoredUpdateMajor = 1 };
+        Assert.True(AppUpdateService.IsSuppressed(config, new AppVersion(1, 4, 0)));
+        Assert.True(AppUpdateService.IsSuppressed(config, new AppVersion(1, 9, 9)));
+        Assert.False(AppUpdateService.IsSuppressed(config, new AppVersion(2, 0, 0)));
+        Assert.False(AppUpdateService.IsSuppressed(new AutomationConfig(), new AppVersion(1, 4, 0)));
     }
 }
 

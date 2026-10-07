@@ -93,11 +93,8 @@ public sealed class GameCaptureSession
             UseShellExecute = true
         });
 
-        // 启动后先等客户端完成加载，再开始找窗口。
-        const int launchSettleSeconds = 30;
-        _log($"游戏已拉起，等待 {launchSettleSeconds} 秒后再检测窗口…");
-        await Task.Delay(TimeSpan.FromSeconds(launchSettleSeconds), cancellationToken);
-
+        // 拉起后立刻轮询找窗口；只有「还没找到窗口」时才继续等，不再写死空等几十秒。
+        _log($"游戏已拉起，等待出现窗口（最多 {config.GameLaunchTimeoutSeconds} 秒）…");
         var timeout = Stopwatch.StartNew();
         while (timeout.Elapsed.TotalSeconds < config.GameLaunchTimeoutSeconds)
         {
@@ -105,7 +102,7 @@ public sealed class GameCaptureSession
             try
             {
                 _ = screen.FindWindow(config.WindowTitleKeyword);
-                _log("已检测到游戏窗口，继续启动截图器。");
+                _log($"已检测到游戏窗口（{timeout.Elapsed.TotalSeconds:0.0}s），继续启动截图器。");
                 return;
             }
             catch (InvalidOperationException)

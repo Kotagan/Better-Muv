@@ -25,10 +25,14 @@ public sealed class DailyShopAutomation
     private readonly Action<string> _log;
     private readonly PromoPopupDismisser _promo;
     private readonly TemplateMatcher _hallMatcher;
+    private readonly TemplateMatcher _hubExchangeMatcher;
     private readonly TemplateMatcher _offMatcher;
     private readonly TemplateMatcher _ticketMatcher;
     private readonly TemplateMatcher _exchangeMatcher;
     private readonly TemplateMatcher _okMatcher;
+    /// <summary>LIMITED SHOP 枢纽内「交換所」卡片搜索区（1080p）。</summary>
+    private static readonly ConfigPoint HubExchangeTopLeft = new(1200, 620);
+    private static readonly ConfigSize HubExchangeSize = new(560, 360);
 
     public DailyShopAutomation(AutomationConfig config, Action<string> log)
     {
@@ -37,6 +41,7 @@ public sealed class DailyShopAutomation
         _screen = new ScreenAutomation(config, log);
         _promo = new PromoPopupDismisser(config, _screen, log);
         _hallMatcher = TemplateAssets.Load("daily-shop-exchange-hall.png");
+        _hubExchangeMatcher = TemplateAssets.Load("daily-shop-hub-exchange.png");
         _offMatcher = TemplateAssets.Load("daily-shop-100off.png");
         _ticketMatcher = TemplateAssets.Load("daily-shop-ticket-2500.png");
         _exchangeMatcher = TemplateAssets.Load("daily-shop-exchange.png");
@@ -65,6 +70,7 @@ public sealed class DailyShopAutomation
 
         await Task.Delay(AfterHomeDelayMs, cancellationToken);
         window = _screen.Refresh(window);
+        // 底栏ショップ → 枢纽「交換所」卡片（模板定位）→ 左页签确认落地。
         (window, bool shopOpened) = await new ShopEntryAccess(_config, _screen, _log).OpenAsync(
             window,
             "每日商店",
@@ -72,10 +78,15 @@ public sealed class DailyShopAutomation
             _config.DailyShopExchangeHallTopLeft,
             _config.DailyShopExchangeHallSize,
             HallThreshold,
-            cancellationToken);
+            cancellationToken,
+            _hubExchangeMatcher,
+            HubExchangeTopLeft,
+            HubExchangeSize,
+            portalThreshold: 0.62);
         if (!shopOpened)
             return TaskRunResult.Fail("未能进入商店");
 
+        // 若落地模板已确认在交換所，此处再认一次仅作补充点击（未命中则不点）。
         window = await ClickExchangeHallAsync(window, cancellationToken);
         await Task.Delay(AfterHallOpenDelayMs, cancellationToken);
         window = _screen.Refresh(window);
@@ -135,7 +146,6 @@ public sealed class DailyShopAutomation
 
     private async Task<GameWindow> ClickExchangeHallAsync(GameWindow window, CancellationToken cancellationToken)
     {
-        _log($"每日商店：点击「交換所」（{_config.DailyShopExchangeHallClick.X},{_config.DailyShopExchangeHallClick.Y}）。");
         TemplateProbeResult hall = await _screen.ProbeAsync(
             window,
             _hallMatcher,
@@ -143,15 +153,15 @@ public sealed class DailyShopAutomation
             _config.DailyShopExchangeHallSize,
             cancellationToken,
             HallThreshold);
-        if (hall.IsMatch)
+        if (!hall.IsMatch)
         {
-            _log($"每日商店：已识别「交換所」（{hall.Score:F4}），点击匹配中心。");
-            await _screen.ClickProbeAsync(window, hall, "交換所", cancellationToken, settleDelayMs: 200);
-            return _screen.Refresh(window);
+            _log($"每日商店：补充识别「交換所」未命中（最高 {hall.Score:F4}），跳过。");
+            return window;
         }
 
-        return await _screen.ClickAsync(
-            window, _config.DailyShopExchangeHallClick, "交換所", cancellationToken);
+        _log($"每日商店：已识别「交換所」（{hall.Score:F4}），点击匹配中心。");
+        await _screen.ClickProbeAsync(window, hall, "交換所", cancellationToken, settleDelayMs: 200);
+        return _screen.Refresh(window);
     }
 
     private async Task<GameWindow> TryBuyFreeOffAsync(GameWindow window, CancellationToken cancellationToken)

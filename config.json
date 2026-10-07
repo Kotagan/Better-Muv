@@ -1,418 +1,466 @@
-﻿{
-    "windowTitleKeyword":  "マブラヴ",
-    "launchGameWithCapture":  false,
-    "gameExecutablePath":  "",
-    "gameLaunchArguments":  "",
-    "gameLaunchTimeoutSeconds":  90,
-    "matchThreshold":  0.78,
-    "saveDiagnostics":  false,
-    "diagnosticDirectory":  "diagnostics",
-    "referenceWidth":  1920,
-    "referenceHeight":  1080,
-    "searchTopLeft":  {
-                          "x":  1080,
-                          "y":  950
-                      },
-    "firstSearchSize":  {
-                            "width":  150,
-                            "height":  110
-                        },
-    "secondSearchTopLeft":  {
-                                  "x":  1470,
-                                  "y":  410
-                            },
-    "secondSearchSize":  {
-                             "width":  340,
-                             "height":  120
-                         },
-    "thirdSearchTopLeft":  {
-                               "x":  1560,
-                               "y":  840
-                           },
-    "thirdSearchSize":  {
-                            "width":  280,
-                            "height":  120
-                        },
-    "fourthSearchTopLeft":  {
-                                "x":  1540,
-                                "y":  940
-                            },
-    "fourthSearchSize":  {
-                             "width":  380,
-                             "height":  140
-                         },
-    "fifthSearchTopLeft":  {
-                               "x":  1621,
-                               "y":  927
-                           },
-    "fifthSearchSize":  {
-                            "width":  103,
-                            "height":  64
-                        },
-    "partnerSelectionTopLeft":  {
-                                    "x":  1540,
-                                    "y":  930
-                                },
-    "partnerSelectionSize":  {
-                                 "width":  360,
-                                 "height":  130
-                             },
-    "battleSkipTopLeft":  {
-                              "x":  1720,
-                              "y":  20
-                          },
-    "battleSkipSize":  {
-                           "width":  180,
-                           "height":  80
-                       },
-    "eventChoiceTopLeft":  {
-                               "x":  1018,
-                               "y":  628
-                           },
-    "eventChoiceSize":  {
-                            "width":  814,
-                            "height":  367
-                        },
-    "eventChoiceFirstOption":  {
-                                   "x":  1300,
-                                   "y":  700
-                               },
-    "eventChoiceSecondOption":  {
-                                    "x":  1300,
-                                    "y":  825
-                                },
-    "eventRestTopLeft":  {
-                             "x":  900,
-                             "y":  640
-                         },
-    "eventRestSize":  {
-                          "width":  980,
-                          "height":  160
-                      },
-    "settlementTopLeft":  {
-                              "x":  1674,
-                              "y":  948
-                          },
-    "settlementSearchTopLeft":  {
-                                    "x":  1626,
-                                    "y":  917
-                                },
-    "settlementSearchSize":  {
-                                 "width":  97,
-                                 "height":  62
-                             },
-    "settlementCategoryDaily":  {
-                                    "x":  70,
-                                    "y":  338
-                                },
-    "settlementCategoryEquipment":  {
-                                        "x":  58,
-                                        "y":  456
-                                    },
-    "settlementCategoryExcavation":  {
-                                         "x":  96,
-                                         "y":  572
-                                     },
-    "settlementCategoryArtifactor":  {
-                                         "x":  67,
-                                         "y":  674
-                                     },
-    "settlementSubcategoryTabs":  [
-                                      {
-                                          "x":  416,
-                                          "y":  200
-                                      },
-                                      {
-                                          "x":  625,
-                                          "y":  200
-                                      },
-                                      {
-                                          "x":  840,
-                                          "y":  200
-                                      },
-                                      {
-                                          "x":  1050,
-                                          "y":  200
-                                      }
-                                  ],
-    "settlementBuyButtons":  [
-                                 {
-                                     "x":  890,
-                                     "y":  355
-                                 },
-                                 {
-                                     "x":  1630,
-                                     "y":  355
-                                 },
-                                 {
-                                     "x":  890,
-                                     "y":  545
-                                 },
-                                 {
-                                     "x":  1630,
-                                     "y":  545
-                                 },
-                                 {
-                                     "x":  890,
-                                     "y":  720
-                                 },
-                                 {
-                                     "x":  1630,
-                                     "y":  720
-                                 }
-                             ],
-    "settlementMultiplierToggle":  {
-                                       "x":  1780,
-                                       "y":  195
-                                   },
-    "settlementMultiplierTopLeft":  {
-                                        "x":  1710,
-                                        "y":  155
-                                    },
-    "settlementMultiplierSize":  {
-                                     "width":  180,
-                                     "height":  90
-                                 },
-    "settlementBuyButtonSearchInset":  {
-                                           "x":  12,
-                                           "y":  12
-                                       },
-    "settlementBuyButtonSearchSize":  {
-                                          "width":  301,
-                                          "height":  119
-                                      },
-    "settlementConfirmTopLeft":  {
-                                     "x":  685,
-                                     "y":  520
-                                 },
-    "settlementConfirmSize":  {
-                                  "width":  592,
-                                  "height":  424
-                              },
-    "settlementConfirmCancel":  {
-                                    "x":  810,
-                                    "y":  790
-                                },
-    "settlementConfirmOk":  {
-                                "x":  1115,
-                                "y":  790
-                            },
-    "settlementConfirmLeftover":  true,
-    "settlementPurchases":  {
-                                "daily":  {
-                                              "skillBook1":  [
-                                                                 0,
-                                                                 0,
-                                                                 0,
-                                                                 0,
-                                                                 0,
-                                                                 0
-                                                             ],
-                                              "skillBook2":  [
-                                                                 0,
-                                                                 0,
-                                                                 0,
-                                                                 0,
-                                                                 0,
-                                                                 0
-                                                             ],
-                                              "disk":  [
-                                                           0,
-                                                           0,
-                                                           0,
-                                                           0,
-                                                           0,
-                                                           0
-                                                       ],
-                                              "unit":  [
-                                                           0,
-                                                           0,
-                                                           0,
-                                                           0,
-                                                           0,
-                                                           0
-                                                       ]
-                                          },
-                                "equipment":  {
-                                                  "physics":  [
-                                                                  0,
-                                                                  0,
-                                                                  0,
-                                                                  0
-                                                              ],
-                                                  "en":  [
-                                                             0,
-                                                             0,
-                                                             0,
-                                                             0
-                                                         ],
-                                                  "agility":  [
-                                                                  0,
-                                                                  0,
-                                                                  0,
-                                                                  0
-                                                              ]
-                                              },
-                                "excavation":  {
-                                                   "funds":  0,
-                                                   "training":  0,
-                                                   "technical":  0
-                                               },
-                                "artifactor":  {
-                                                   "physics":  [
-                                                                   0,
-                                                                   0,
-                                                                   0,
-                                                                   0,
-                                                                   0
-                                                               ],
-                                                   "en":  [
-                                                              0,
-                                                              0,
-                                                              0,
-                                                              0,
-                                                              0
-                                                          ],
-                                                   "agility":  [
-                                                                   0,
-                                                                   0,
-                                                                   0,
-                                                                   0,
-                                                                   0
-                                                               ]
-                                               }
-                            },
-    "treasureStateTopLeft":  {
-                                 "x":  700,
-                                 "y":  15
-                             },
-    "treasureStateSize":  {
-                              "width":  520,
-                              "height":  120
-                          },
-    "treasureOptionsTopLeft":  {
-                                   "x":  478,
-                                   "y":  316
-                               },
-    "treasureOptionsSize":  {
-                                "width":  1081,
-                                "height":  90
-                            },
-    "treasureMatchThreshold":  0.58,
-    "treasureMatchRetryCount":  3,
-    "treasureMatchRetryDelayMs":  150,
-    "treasureClickOffset":  {
-                                "x":  -40,
-                                "y":  55
-                            },
-    "routeSelectionTopLeft":  {
-                                  "x":  1595,
-                                  "y":  924
-                              },
-    "routeSelectionSize":  {
-                               "width":  181,
-                               "height":  37
-                           },
-    "routeTreasureOptionsTopLeft":  {
-                                        "x":  661,
-                                        "y":  243
-                                    },
-    "routeTreasureOptionsSize":  {
-                                     "width":  209,
-                                     "height":  554
-                                 },
-    "treasurePriority": [ "diamond", "shield", "sword", "heart", "skull", "shoe", "sparkle" ],
-    "firstClick":  {
-                       "x":  1143,
-                       "y":  961
-                   },
-    "secondClick":  {
-                        "x":  1611,
-                        "y":  453
-                    },
-    "thirdClick":  {
-                       "x":  1667,
-                       "y":  836
-                   },
-    "fourthClick":  {
-                        "x":  1730,
-                        "y":  1015
-                    },
-    "fifthClick":  {
-                       "x":  1672,
-                       "y":  959
-                   },
-    "partnerClick":  {
-                         "x":  1655,
-                         "y":  990
-                     },
-    "battleSkipClick":  {
-                            "x":  1816,
-                            "y":  65
-                        },
-    "routeClick":  {
-                       "x":  1680,
-                       "y":  940
-                   },
-    "mazeDifficultyMode":  "keep",
-    "mazeDifficultyTarget":  1,
-    "difficultyDigitTopLeft":  {
-                                   "x":  1320,
-                                   "y":  310
-                               },
-    "difficultyDigitSize":  {
-                                "width":  420,
-                                "height":  150
-                            },
-    "difficultyDecreaseClick":  {
-                                    "x":  992,
-                                    "y":  383
-                                },
-    "difficultyIncreaseClick":  {
-                                    "x":  1880,
-                                    "y":  381
-                                },
-    "difficultyDecreaseTopLeft":  {
-                                      "x":  969,
-                                      "y":  350
-                                  },
-    "difficultyDecreaseSize":  {
-                                   "width":  140,
-                                   "height":  150
-                               },
-    "difficultyIncreaseTopLeft":  {
-                                      "x":  1862,
-                                      "y":  350
-                                  },
-    "difficultyIncreaseSize":  {
-                                   "width":  140,
-                                   "height":  150
-                               },
-    "difficultyOpenSliderClick":  {
-                                      "x":  1633,
-                                      "y":  261
-                                  },
-    "difficultyListTopLeft":  {
-                                  "x":  579,
-                                  "y":  292
-                              },
-    "difficultyListSize":  {
-                               "width":  182,
-                               "height":  561
-                           },
-    "difficultyConfirmClick":  {
-                                   "x":  1140,
-                                   "y":  974
-                               },
-    "doubleClickIntervalMs":  100,
-    "detectionPollIntervalMs":  250,
-    "detectionTimeoutMs":  10000,
-    "mazeRunLimit":  0,
-    "mainQuestRunLimit":  10,
-    "mainQuestTaskEnabled":  true,
-    "toggleHotkey":  "F10",
-    "pauseHotkey":  "",
-    "stopHotkey":  "F10",
-    "firstRunNoticeAccepted":  false,
-    "lastDailyShopDay":  null
+{
+  "windowTitleKeyword": "マブラヴ",
+  "launchGameWithCapture": false,
+  "gameExecutablePath": "",
+  "gameLaunchArguments": "",
+  "gameLaunchTimeoutSeconds": 90,
+  "matchThreshold": 0.78,
+  "saveDiagnostics": false,
+  "diagnosticDirectory": "diagnostics",
+  "referenceWidth": 1920,
+  "referenceHeight": 1080,
+  "searchTopLeft": {
+    "x": 1080,
+    "y": 950
+  },
+  "firstSearchSize": {
+    "width": 150,
+    "height": 110
+  },
+  "secondSearchTopLeft": {
+    "x": 1470,
+    "y": 410
+  },
+  "secondSearchSize": {
+    "width": 340,
+    "height": 120
+  },
+  "thirdSearchTopLeft": {
+    "x": 1500,
+    "y": 820
+  },
+  "thirdSearchSize": {
+    "width": 420,
+    "height": 140
+  },
+  "fourthSearchTopLeft": {
+    "x": 1540,
+    "y": 940
+  },
+  "fourthSearchSize": {
+    "width": 380,
+    "height": 140
+  },
+  "fifthSearchTopLeft": {
+    "x": 1621,
+    "y": 927
+  },
+  "fifthSearchSize": {
+    "width": 103,
+    "height": 64
+  },
+  "partnerSelectionTopLeft": {
+    "x": 1540,
+    "y": 930
+  },
+  "partnerSelectionSize": {
+    "width": 360,
+    "height": 130
+  },
+  "battleSkipTopLeft": {
+    "x": 1720,
+    "y": 20
+  },
+  "battleSkipSize": {
+    "width": 180,
+    "height": 80
+  },
+  "eventChoiceTopLeft": {
+    "x": 1018,
+    "y": 628
+  },
+  "eventChoiceSize": {
+    "width": 814,
+    "height": 367
+  },
+  "eventChoiceFirstOption": {
+    "x": 1300,
+    "y": 700
+  },
+  "eventChoiceSecondOption": {
+    "x": 1300,
+    "y": 825
+  },
+  "eventRestTopLeft": {
+    "x": 900,
+    "y": 640
+  },
+  "eventRestSize": {
+    "width": 980,
+    "height": 160
+  },
+  "settlementTopLeft": {
+    "x": 1674,
+    "y": 948
+  },
+  "settlementSearchTopLeft": {
+    "x": 1626,
+    "y": 917
+  },
+  "settlementSearchSize": {
+    "width": 97,
+    "height": 62
+  },
+  "settlementCategoryDaily": {
+    "x": 70,
+    "y": 338
+  },
+  "settlementCategoryEquipment": {
+    "x": 58,
+    "y": 456
+  },
+  "settlementCategoryExcavation": {
+    "x": 96,
+    "y": 572
+  },
+  "settlementCategoryArtifactor": {
+    "x": 67,
+    "y": 674
+  },
+  "settlementSubcategoryTabs": [
+    {
+      "x": 416,
+      "y": 200
+    },
+    {
+      "x": 625,
+      "y": 200
+    },
+    {
+      "x": 840,
+      "y": 200
+    },
+    {
+      "x": 1050,
+      "y": 200
+    }
+  ],
+  "settlementBuyButtons": [
+    {
+      "x": 890,
+      "y": 355
+    },
+    {
+      "x": 1630,
+      "y": 355
+    },
+    {
+      "x": 890,
+      "y": 545
+    },
+    {
+      "x": 1630,
+      "y": 545
+    },
+    {
+      "x": 890,
+      "y": 720
+    },
+    {
+      "x": 1630,
+      "y": 720
+    }
+  ],
+  "settlementMultiplierToggle": {
+    "x": 1780,
+    "y": 195
+  },
+  "settlementMultiplierTopLeft": {
+    "x": 1710,
+    "y": 155
+  },
+  "settlementMultiplierSize": {
+    "width": 180,
+    "height": 90
+  },
+  "settlementBuyButtonSearchInset": {
+    "x": 12,
+    "y": 12
+  },
+  "settlementBuyButtonSearchSize": {
+    "width": 301,
+    "height": 119
+  },
+  "settlementConfirmTopLeft": {
+    "x": 685,
+    "y": 520
+  },
+  "settlementConfirmSize": {
+    "width": 592,
+    "height": 424
+  },
+  "settlementConfirmCancel": {
+    "x": 810,
+    "y": 790
+  },
+  "settlementConfirmOk": {
+    "x": 1115,
+    "y": 790
+  },
+  "settlementConfirmLeftover": true,
+  "settlementPurchases": {
+    "daily": {
+      "skillBook1": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "skillBook2": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "disk": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "unit": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "equipment": {
+      "physics": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "en": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "agility": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "excavation": {
+      "funds": 0,
+      "training": 0,
+      "technical": 0
+    },
+    "artifactor": {
+      "physics": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "en": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "agility": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    }
+  },
+  "treasureStateTopLeft": {
+    "x": 700,
+    "y": 15
+  },
+  "treasureStateSize": {
+    "width": 520,
+    "height": 120
+  },
+  "treasureOptionsTopLeft": {
+    "x": 478,
+    "y": 316
+  },
+  "treasureOptionsSize": {
+    "width": 1081,
+    "height": 90
+  },
+  "treasureMatchThreshold": 0.58,
+  "treasureMatchRetryCount": 3,
+  "treasureMatchRetryDelayMs": 150,
+  "treasureClickOffset": {
+    "x": -40,
+    "y": 55
+  },
+  "routeSelectionTopLeft": {
+    "x": 1595,
+    "y": 924
+  },
+  "routeSelectionSize": {
+    "width": 181,
+    "height": 37
+  },
+  "routeTreasureOptionsTopLeft": {
+    "x": 661,
+    "y": 243
+  },
+  "routeTreasureOptionsSize": {
+    "width": 209,
+    "height": 554
+  },
+  "treasurePriority": [
+    "diamond",
+    "shield",
+    "sword",
+    "heart",
+    "skull",
+    "shoe",
+    "sparkle"
+  ],
+  "firstClick": {
+    "x": 1143,
+    "y": 961
+  },
+  "secondClick": {
+    "x": 1611,
+    "y": 453
+  },
+  "thirdClick": {
+    "x": 1723,
+    "y": 888
+  },
+  "fourthClick": {
+    "x": 1730,
+    "y": 1015
+  },
+  "fifthClick": {
+    "x": 1672,
+    "y": 959
+  },
+  "partnerClick": {
+    "x": 1655,
+    "y": 990
+  },
+  "battleSkipClick": {
+    "x": 1816,
+    "y": 65
+  },
+  "routeClick": {
+    "x": 1680,
+    "y": 940
+  },
+  "mazeDifficultyMode": "keep",
+  "mazeDifficultyTarget": 1,
+  "difficultyDigitTopLeft": {
+    "x": 1320,
+    "y": 310
+  },
+  "difficultyDigitSize": {
+    "width": 420,
+    "height": 150
+  },
+  "difficultyDecreaseClick": {
+    "x": 992,
+    "y": 383
+  },
+  "difficultyIncreaseClick": {
+    "x": 1880,
+    "y": 381
+  },
+  "difficultyDecreaseTopLeft": {
+    "x": 969,
+    "y": 350
+  },
+  "difficultyDecreaseSize": {
+    "width": 140,
+    "height": 150
+  },
+  "difficultyIncreaseTopLeft": {
+    "x": 1862,
+    "y": 350
+  },
+  "difficultyIncreaseSize": {
+    "width": 140,
+    "height": 150
+  },
+  "difficultyOpenSliderClick": {
+    "x": 1633,
+    "y": 261
+  },
+  "difficultyListTopLeft": {
+    "x": 579,
+    "y": 292
+  },
+  "difficultyListSize": {
+    "width": 182,
+    "height": 561
+  },
+  "difficultyConfirmClick": {
+    "x": 1140,
+    "y": 974
+  },
+  "doubleClickIntervalMs": 100,
+  "detectionPollIntervalMs": 250,
+  "detectionTimeoutMs": 10000,
+  "mazeRunLimit": 0,
+  "mainQuestRunLimit": 10,
+  "mainQuestTaskEnabled": true,
+  "toggleHotkey": "F10",
+  "pauseHotkey": "",
+  "stopHotkey": "F10",
+  "firstRunNoticeAccepted": false,
+  "lastDailyShopDay": null,
+  "dailyShopEntryClick": {
+    "x": 1840,
+    "y": 1025
+  },
+  "dailyShopExchangeHallTopLeft": {
+    "x": 20,
+    "y": 140
+  },
+  "dailyShopExchangeHallSize": {
+    "width": 300,
+    "height": 180
+  },
+  "dailyShopExchangeHallClick": {
+    "x": 1420,
+    "y": 800
+  },
+  "miningEntryClick": {
+    "x": 1420,
+    "y": 780
+  },
+  "miningEntryTopLeft": {
+    "x": 1280,
+    "y": 640
+  },
+  "miningEntrySize": {
+    "width": 360,
+    "height": 360
+  },
+  "dailyFreeGiftTitleTopLeft": {
+    "x": 300,
+    "y": 240
+  },
+  "dailyFreeGiftTitleSize": {
+    "width": 500,
+    "height": 140
+  },
+  "dailyFreeGiftTitleClickOffset": {
+    "x": 0,
+    "y": 120
+  }
 }

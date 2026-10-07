@@ -49,8 +49,12 @@ public sealed class AutomationConfig
     /// <summary>任务页「メイズ探索」文字带；略大于旧 220×59，避免校准偏移后扫空。</summary>
     public ConfigPoint SecondSearchTopLeft { get; set; } = new(1470, 420);
     public ConfigSize SecondSearchSize { get; set; } = new(300, 100);
-    public ConfigPoint ThirdSearchTopLeft { get; set; } = new(1568, 796);
-    public ConfigSize ThirdSearchSize { get; set; } = new(208, 98);
+    /// <summary>
+    /// 迷宫开始页「探索準備」定位带（1080p）。
+    /// 粉钮中心约 (1723,888)；旧 ThirdClick y=1010 点到导航栏导致进不了下一页。
+    /// </summary>
+    public ConfigPoint ThirdSearchTopLeft { get; set; } = new(1500, 820);
+    public ConfigSize ThirdSearchSize { get; set; } = new(420, 140);
     public ConfigPoint FourthSearchTopLeft { get; set; } = new(1540, 940);
     /// <summary>右下角粉钮「探索」完整区域（旧 1560,910 320×120 在 1080p 只擦到上沿，分数约 0.25）。</summary>
     public ConfigSize FourthSearchSize { get; set; } = new(380, 140);
@@ -146,7 +150,8 @@ public sealed class AutomationConfig
     // 写死点击点（1080p）；实际点击 = Client 原点 + 点 × (Client宽高 / Reference宽高)。
     public ConfigPoint FirstClick { get; set; } = new(1143, 961);
     public ConfigPoint SecondClick { get; set; } = new(1611, 473);
-    public ConfigPoint ThirdClick { get; set; } = new(1667, 836);
+    /// <summary>「探索準備」固定点击（1080p；粉钮中心，实测 2K 截图）。</summary>
+    public ConfigPoint ThirdClick { get; set; } = new(1723, 888);
     public ConfigPoint FourthClick { get; set; } = new(1730, 1015);
     public ConfigPoint FifthClick { get; set; } = new(1672, 959);
     public ConfigPoint PartnerClick { get; set; } = new(1655, 990);
@@ -194,11 +199,14 @@ public sealed class AutomationConfig
     public List<string> PipelineTaskOrder { get; set; } =
         ["maze", "mainQuest", "hardMainQuest", "dailyShop", "dailyFreeGift", "dailyExercises", "dailySimulationTower", "dailyMissions", "dailyCircle", "dailyHarvest", "dailyFreeBoost"];
     // 每日商店入口兜底坐标（1080p）；4K 为 (3620,2080)。正常流程优先识别图标。
-    public ConfigPoint DailyShopEntryClick { get; set; } = new(1810, 1040);
+    public ConfigPoint DailyShopEntryClick { get; set; } = new(1840, 1025);
     /// <summary>商店内「交換所」入口点击中心（1080p）。</summary>
-    public ConfigPoint DailyShopExchangeHallClick { get; set; } = new(1540, 790);
-    public ConfigPoint DailyShopExchangeHallTopLeft { get; set; } = new(1200, 620);
-    public ConfigSize DailyShopExchangeHallSize { get; set; } = new(680, 360);
+    /// <summary>LIMITED SHOP 枢纽内「交換所」入口点击。</summary>
+    /// <summary>LIMITED SHOP 枢纽右下「交換所」卡片中心（截图日志校正）。</summary>
+    public ConfigPoint DailyShopExchangeHallClick { get; set; } = new(1420, 800);
+    /// <summary>交換所页左侧「定期交換」页签搜索区（落地确认）。</summary>
+    public ConfigPoint DailyShopExchangeHallTopLeft { get; set; } = new(20, 140);
+    public ConfigSize DailyShopExchangeHallSize { get; set; } = new(300, 180);
     // 4K (2822,1416)
     public ConfigPoint DailyShopTabClick { get; set; } = new(1411, 708);
     // 4K (924,1362)
@@ -227,10 +235,11 @@ public sealed class AutomationConfig
     public ConfigPoint DailyFreeGiftOtokuTopLeft { get; set; } = new(40, 250);
     public ConfigSize DailyFreeGiftOtokuSize { get; set; } = new(220, 450);
     /// <summary>「デイリー無料パック」标题搜索区（1080p）。</summary>
-    public ConfigPoint DailyFreeGiftTitleTopLeft { get; set; } = new(1200, 700);
-    public ConfigSize DailyFreeGiftTitleSize { get; set; } = new(700, 350);
-    /// <summary>相对标题匹配中心的点击偏移（屏幕像素，偏下点価格/無料条）。</summary>
-    public ConfigPoint DailyFreeGiftTitleClickOffset { get; set; } = new(0, 90);
+    /// <summary>お得パック页「デイリー無料パック」标题（左上第一格，非右下）。</summary>
+    public ConfigPoint DailyFreeGiftTitleTopLeft { get; set; } = new(300, 240);
+    public ConfigSize DailyFreeGiftTitleSize { get; set; } = new(500, 140);
+    /// <summary>相对标题匹配中心的点击偏移（偏下点無料条）。</summary>
+    public ConfigPoint DailyFreeGiftTitleClickOffset { get; set; } = new(0, 120);
     public ConfigPoint DailyFreeGiftPurchaseTopLeft { get; set; } = new(900, 880);
     public ConfigSize DailyFreeGiftPurchaseSize { get; set; } = new(500, 160);
     public ConfigPoint DailyFreeGiftOkTopLeft { get; set; } = new(700, 820);
@@ -300,10 +309,10 @@ public sealed class AutomationConfig
     /// <summary>社团ミッション左侧页签搜索区（1080p）。</summary>
     public ConfigPoint DailyCircleTabTopLeft { get; set; } = new(0, 350);
     public ConfigSize DailyCircleTabSize { get; set; } = new(160, 500);
-    /// <summary>主页采矿小人/矿车入口（1080p）。</summary>
-    public ConfigPoint MiningEntryClick { get; set; } = new(1740, 774);
-    public ConfigPoint MiningEntryTopLeft { get; set; } = new(1580, 650);
-    public ConfigSize MiningEntrySize { get; set; } = new(340, 260);
+    /// <summary>主页采矿小人+矿车中心（角色会换皮/换背景；模板失效时兜底）。</summary>
+    public ConfigPoint MiningEntryClick { get; set; } = new(1420, 780);
+    public ConfigPoint MiningEntryTopLeft { get; set; } = new(1280, 640);
+    public ConfigSize MiningEntrySize { get; set; } = new(360, 360);
     /// <summary>採掘弹窗标题搜索区（1080p）。</summary>
     public ConfigPoint MiningTitleTopLeft { get; set; } = new(820, 30);
     public ConfigSize MiningTitleSize { get; set; } = new(400, 130);
@@ -404,6 +413,11 @@ public sealed class AutomationConfig
     public string StopHotkey { get; set; } = "F10";
     /// <summary>是否已确认过首次运行提示弹窗。</summary>
     public bool FirstRunNoticeAccepted { get; set; }
+    /// <summary>
+    /// 已忽略的更新大版本号。非 null 时，同大版本及更低大版本的新版本不再弹窗，
+    /// 直到出现更高 Major 才重新提示。
+    /// </summary>
+    public int? IgnoredUpdateMajor { get; set; }
     /// <summary>首次迷宫时「商店未配置」提示是否已点过「继续」。</summary>
     public bool SettlementShopHintAccepted { get; set; }
     /// <summary>上次日常已买够配置数量的游戏日（yyyy-MM-dd，每天 4:00 起算新一日）。</summary>
@@ -561,15 +575,21 @@ public sealed class AutomationConfig
 
     private void MigrateLegacyMiningEntry()
     {
-        // 旧版入口坐标取自采矿小人尚未移到主页最右侧时的布局。
-        // 三项同时吻合才迁移，避免覆盖用户手动校准的配置。
-        if (MiningEntryClick == new ConfigPoint(1462, 774) &&
-            MiningEntryTopLeft == new ConfigPoint(1340, 650) &&
-            MiningEntrySize == new ConfigSize(260, 260))
+        // 采矿小人换皮/挪位：旧坐标与旧搜索框一并迁到当前小人中心。
+        var legacy = new HashSet<(ConfigPoint Click, ConfigPoint TopLeft, ConfigSize Size)>
         {
-            MiningEntryClick = new ConfigPoint(1740, 774);
-            MiningEntryTopLeft = new ConfigPoint(1580, 650);
-            MiningEntrySize = new ConfigSize(340, 260);
+            (new(1462, 774), new(1340, 650), new(260, 260)),
+            (new(1740, 774), new(1580, 650), new(340, 260)),
+            (new(1550, 810), new(1420, 680), new(280, 280)),
+            (new(1480, 800), new(1360, 660), new(280, 280)),
+            (new(1480, 800), new(1360, 680), new(280, 280)),
+            (new(1500, 770), new(1420, 680), new(280, 280)),
+        };
+        if (legacy.Contains((MiningEntryClick, MiningEntryTopLeft, MiningEntrySize)))
+        {
+            MiningEntryClick = new ConfigPoint(1420, 780);
+            MiningEntryTopLeft = new ConfigPoint(1280, 640);
+            MiningEntrySize = new ConfigSize(360, 360);
         }
     }
 

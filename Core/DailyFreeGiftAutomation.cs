@@ -16,7 +16,8 @@ public sealed class DailyFreeGiftAutomation
     private const int RecognizeTimeoutMs = 8000;
     private const int PurchaseTimeoutMs = 4000;
     private const double OtokuThreshold = 0.72;
-    private const double TitleThreshold = 0.72;
+    /// <summary>标题模板偏旧时常见 0.60~0.68（日志实测 0.616）；略降以免卡边。</summary>
+    private const double TitleThreshold = 0.55;
     private const double PurchaseThreshold = 0.70;
     private const double OkThreshold = 0.70;
     /// <summary>礼包「毎日5時更新」。</summary>
@@ -26,10 +27,14 @@ public sealed class DailyFreeGiftAutomation
     private readonly ScreenAutomation _screen;
     private readonly Action<string> _log;
     private readonly TemplateMatcher _otokuMatcher;
+    private readonly TemplateMatcher _hubLimitedMatcher;
     private readonly TemplateMatcher _titleMatcher;
     private readonly TemplateMatcher _purchaseMatcher;
     private readonly TemplateMatcher _okMatcher;
     private readonly TemplateMatcher _okMatcherAlt;
+    /// <summary>LIMITED SHOP 枢纽中心卡（点进后左侧才有お得パック）。</summary>
+    private static readonly ConfigPoint HubLimitedTopLeft = new(700, 350);
+    private static readonly ConfigSize HubLimitedSize = new(600, 450);
 
     public DailyFreeGiftAutomation(AutomationConfig config, Action<string> log)
     {
@@ -37,6 +42,7 @@ public sealed class DailyFreeGiftAutomation
         _log = log;
         _screen = new ScreenAutomation(config, log);
         _otokuMatcher = TemplateAssets.Load("shop-otoku-pack.png");
+        _hubLimitedMatcher = TemplateAssets.Load("daily-shop-hub-limited.png");
         _titleMatcher = TemplateAssets.Load("daily-free-gift-title.png");
         _purchaseMatcher = TemplateAssets.Load("shop-purchase.png");
         _okMatcher = TemplateAssets.Load("settlement-confirm.png");
@@ -81,11 +87,15 @@ public sealed class DailyFreeGiftAutomation
             _config.DailyFreeGiftOtokuSize,
             OtokuThreshold,
             cancellationToken,
-            _config.DailyFreeGiftShopPortalClick);
+            _hubLimitedMatcher,
+            HubLimitedTopLeft,
+            HubLimitedSize,
+            portalThreshold: 0.60);
         if (!shopOpened)
             return TaskRunResult.Fail("未能进入商店");
 
-        window = await ClickOtokuPackAsync(window, cancellationToken);
+        if (!await ClickOtokuPackAsync(window, cancellationToken))
+            return TaskRunResult.Fail("未识别お得パック");
         await Task.Delay(AfterTabDelayMs, cancellationToken);
         window = _screen.Refresh(window);
 
@@ -111,7 +121,7 @@ public sealed class DailyFreeGiftAutomation
             : TaskRunResult.Fail("未能确认领取");
     }
 
-    private async Task<GameWindow> ClickOtokuPackAsync(GameWindow window, CancellationToken cancellationToken)
+    private async Task<bool> ClickOtokuPackAsync(GameWindow window, CancellationToken cancellationToken)
     {
         _log("每日免费礼包：识别「お得パック」。");
         TemplateProbeResult otoku = await _screen.WaitForProbeAsync(
@@ -122,16 +132,15 @@ public sealed class DailyFreeGiftAutomation
             cancellationToken,
             timeoutMs: RecognizeTimeoutMs,
             matchThreshold: OtokuThreshold);
-        if (otoku.IsMatch)
+        if (!otoku.IsMatch)
         {
-            _log($"每日免费礼包：已识别「お得パック」（{otoku.Score:F4}），点击匹配中心。");
-            await _screen.ClickProbeAsync(window, otoku, "お得パック", cancellationToken, settleDelayMs: 200);
-            return _screen.Refresh(window);
+            _log($"每日免费礼包：未识别「お得パック」（最高 {otoku.Score:F4}），不点击。");
+            return false;
         }
 
-        _log($"每日免费礼包：未识别「お得パック」（最高 {otoku.Score:F4}），改用固定点击（{_config.DailyFreeGiftOtokuClick.X},{_config.DailyFreeGiftOtokuClick.Y}）。");
-        return await _screen.ClickAsync(
-            window, _config.DailyFreeGiftOtokuClick, "お得パック", cancellationToken);
+        _log($"每日免费礼包：已识别「お得パック」（{otoku.Score:F4}），点击匹配中心。");
+        await _screen.ClickProbeAsync(window, otoku, "お得パック", cancellationToken, settleDelayMs: 200);
+        return true;
     }
 
     private async Task<bool> TryClaimFreeGiftAsync(GameWindow window, CancellationToken cancellationToken)

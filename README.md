@@ -34,6 +34,7 @@ English | **中文** | 繁體中文 | 日本語
 
 ### 其它
 
+- **应用内更新**：启动时检查 GitHub Release；可立即安装，或忽略当前大版本线直至更高 Major
 - **模板定位工具**：导入裁图，生成 1080p 基准搜索 ROI
 - **游戏启动**：可随工具自动拉起游戏 exe
 - **执行控制**：默认 F10 暂停/继续，F11 停止（可在设置中改为其它 F1–F12）
@@ -155,10 +156,10 @@ dotnet publish Better-Muv.csproj -c Release -r win-x64 --self-contained true -o 
 打包可安装程序（需先安装 [Inno Setup 6](https://jrsoftware.org/isinfo.php)）：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\pack-installer.ps1 -Version 1.3.0
+powershell -ExecutionPolicy Bypass -File scripts\pack-installer.ps1 -Version 1.3.2
 ```
 
-生成物：`dist\Better-Muv-Setup-1.3.0.exe`。
+生成物：`dist\Better-Muv-Setup-1.3.2.exe`。
 
 ---
 

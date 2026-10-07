@@ -18,7 +18,8 @@ public sealed class DailyMissionsAutomation
     private const double EntryThreshold = 0.70;
     private const double TitleThreshold = 0.70;
     private const double ClearedThreshold = 0.72;
-    private const double ClaimThreshold = 0.70;
+    /// <summary>一括受取粉钮；旧模板/灰态常见 0.47~0.55，过严会漏领。</summary>
+    private const double ClaimThreshold = 0.55;
     private const double OkThreshold = 0.70;
     private const double WeeklyTabThreshold = 0.70;
 
@@ -119,7 +120,8 @@ public sealed class DailyMissionsAutomation
 
         if (dailyCleared || weeklyClaims > 0 || achievementClaims > 0)
             return TaskRunResult.Success();
-        return TaskRunResult.Success("无可领");
+        // 未能确认清完且零领取：按失败处理，避免红点仍在却显示成功。
+        return TaskRunResult.Fail("未能领取（一括受取未命中或未确认清完）");
     }
 
     private async Task<GameWindow> OpenMissionsAsync(GameWindow window, CancellationToken cancellationToken)
@@ -221,7 +223,8 @@ public sealed class DailyMissionsAutomation
             if (!await TryDismissOkAsync(window, cancellationToken))
             {
                 _log("每日任务：点了一括受取但无 OK，停止デイリー连点。");
-                return await IsClearedAsync(window, cancellationToken);
+                // 无 OK 不能凭「クリア」文案单独报成功（文案可能残留/误匹配）。
+                return false;
             }
         }
 

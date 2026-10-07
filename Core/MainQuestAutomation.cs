@@ -789,20 +789,39 @@ public sealed class MainQuestAutomation
     private async Task<(Phase Phase, bool Abort)> BootstrapEntryAsync(
         GameWindow window, CancellationToken cancellationToken)
     {
+        // skipAlt=迷宫同款 battle-skip；与クエスト并查，避免加载切战斗时只空等主页。
         var locateJobs = new (string Key, TemplateMatcher Matcher)[]
         {
             ("rematch", _rematch), ("toHome", _toHome), ("next", _next),
             ("scenarioMenu", _scenarioMenu), ("scenarioMenuBack", _scenarioMenuBack),
-            ("skip", _skip), ("sortie", _sortie), ("start", _start)
+            ("skipAlt", _skipAlt), ("skip", _skip), ("sortie", _sortie), ("start", _start)
         };
+        TemplateMatcher questMatcher = TemplateAssets.Load("quest.png");
+        ConfigSize questSize = ScreenAutomation.EnsureFitsTemplate(_config.FirstSearchSize, questMatcher);
 
         var timer = Stopwatch.StartNew();
-        while (timer.ElapsedMilliseconds < 3000)
+        const int locateBudgetMs = 14000;
+        while (timer.ElapsedMilliseconds < locateBudgetMs)
         {
             cancellationToken.ThrowIfCancellationRequested();
             window = _screen.Refresh(window);
             IReadOnlyDictionary<string, TemplateProbeResult> probes =
                 await ProbeClientAsync(window, locateJobs, cancellationToken);
+
+            // 1) 下一步：直接进入结算推进。
+            if (TryHit(probes, "next", out _))
+            {
+                _log("开局并查：已识别「下一步」，进入结算推进。");
+                return (Phase.Next, false);
+            }
+
+            // 2) SKIP：立刻点掉，再进入「下一步」阶段。
+            if (TryPickBattleSkip(probes, out TemplateProbeResult skipHit))
+            {
+                _log($"开局并查：已识别 SKIP（{skipHit.Score:F4}），点击后等待下一步。");
+                await ClickMazeStyleSkipAsync(window, skipHit, cancellationToken);
+                return (Phase.Next, false);
+            }
 
             if (TryHit(probes, "rematch", out _))
             {
@@ -814,22 +833,10 @@ public sealed class MainQuestAutomation
                 return (Phase.Start, true);
             }
 
-            if (TryHit(probes, "next", out _))
-            {
-                _log("开局定位：结算页（下一步）。");
-                return (Phase.Next, false);
-            }
-
             if (TryPickScenarioMenu(probes, out _))
             {
                 _log("开局定位：剧情中（右上角箭头）。");
                 return (Phase.Scenario, false);
-            }
-
-            if (TryHit(probes, "skip", out _))
-            {
-                _log("开局定位：战斗中（SKIP）。");
-                return (Phase.Battle, false);
             }
 
             if (TryHit(probes, "sortie", out _))
@@ -844,10 +851,27 @@ public sealed class MainQuestAutomation
                 return (Phase.Start, false);
             }
 
+            // 3) 与 SKIP 同轮探测クエスト：在主页则连点进主线。
+            TemplateProbeResult quest = await _screen.ProbeAsync(
+                window, questMatcher, _config.SearchTopLeft, questSize, cancellationToken, 0.80);
+            if (quest.IsMatch)
+            {
+                _log($"开局并查：已识别「クエスト」（{quest.Score:F4}），连点进主线。");
+                await new QuestFromHomeEntry(_config, _screen, _log).RunAsync(
+                    window,
+                    QuestFromHomeEntry.MainQuestBannerClick(_config),
+                    "メインクエスト",
+                    cancellationToken,
+                    _banner,
+                    _config.MainQuestBannerTopLeft,
+                    _config.MainQuestBannerSize);
+                return (Phase.Start, false);
+            }
+
             await Task.Delay(_config.DetectionPollIntervalMs, cancellationToken);
         }
 
-        _log("开局不在关卡内：回主页后连点进主线。");
+        _log("开局并查超时：仍未见 SKIP/下一步/クエスト，最后再试回主页进主线。");
         await new QuestFromHomeEntry(_config, _screen, _log).RunAsync(
             window,
             QuestFromHomeEntry.MainQuestBannerClick(_config),

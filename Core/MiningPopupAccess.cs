@@ -8,7 +8,8 @@ internal sealed class MiningPopupAccess
     private const int AfterHomeDelayMs = 700;
     private const int AfterOpenDelayMs = 1600;
     private const int RecognizeTimeoutMs = 8000;
-    private const double EntryThreshold = 0.52;
+    /// <summary>只点识别中心；未命中不点固定坐标，避免误点活动条。</summary>
+    private const double EntryThreshold = 0.62;
     private const double TitleThreshold = 0.55;
     private const double ClaimOpenThreshold = 0.62;
     private const double CloseThreshold = 0.72;
@@ -99,12 +100,15 @@ internal sealed class MiningPopupAccess
                 matchThreshold: EntryThreshold);
             if (entry.IsMatch)
             {
-                _log($"{_taskName}：已识别采矿入口（{entry.Score:F4}），点击。");
+                _log($"{_taskName}：已识别采矿入口（{entry.Score:F4}），点击识别中心。");
                 await _screen.ClickProbeAsync(window, entry, "采矿入口", cancellationToken, settleDelayMs: 200);
             }
             else
             {
-                _log($"{_taskName}：未识别入口（最高 {entry.Score:F4}），不点击。");
+                _log($"{_taskName}：未识别入口（最高 {entry.Score:F4}），改点固定坐标 " +
+                     $"（{_config.MiningEntryClick.X},{_config.MiningEntryClick.Y}）。");
+                await _screen.ClickAsync(
+                    window, _config.MiningEntryClick, "采矿入口(固定坐标)", cancellationToken);
             }
 
             await Task.Delay(AfterOpenDelayMs, cancellationToken);

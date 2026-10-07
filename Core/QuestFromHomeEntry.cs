@@ -13,6 +13,12 @@ public sealed class QuestFromHomeEntry
     private const int AfterTargetDelayMs = 1100;
     private const int QuestEnterAttempts = 3;
     private const int QuestEnterWaitMs = 6000;
+    /// <summary>
+    /// 窗口已找到时只做短探测（命中即返回）。
+    /// 长时间等待留给「尚未找到游戏窗口」的启动流程，不在这里空等。
+    /// </summary>
+    private const int QuestPresenceTimeoutMs = 2000;
+    private const int QuestPresenceRetryMs = 2000;
     /// <summary>紧裁文字模板在 4K/1080p 均应稳定超过 0.80。</summary>
     private const double QuestPresenceThreshold = 0.80;
 
@@ -74,15 +80,17 @@ public sealed class QuestFromHomeEntry
             _log("未能将游戏置于前台，クエスト识别可能失败。");
         await Task.Delay(250, cancellationToken);
 
-        _log("等待主界面的“クエスト”按钮出现，最多 10 秒。");
-        TemplateProbeResult quest = await WaitForQuestAsync(window, cancellationToken);
+        _log("识别主界面“クエスト”（窗口已就绪，短探测）。");
+        TemplateProbeResult quest = await WaitForQuestAsync(
+            window, cancellationToken, timeoutMs: QuestPresenceTimeoutMs);
         if (!quest.IsMatch)
         {
             // 再聚焦一次并放宽底栏 ROI 重试。
             window = _screen.Refresh(window);
             await _screen.FocusAsync(window.Handle, cancellationToken);
-            await Task.Delay(300, cancellationToken);
-            quest = await WaitForQuestAsync(window, cancellationToken, widen: true, timeoutMs: 5000);
+            await Task.Delay(200, cancellationToken);
+            quest = await WaitForQuestAsync(
+                window, cancellationToken, widen: true, timeoutMs: QuestPresenceRetryMs);
         }
 
         if (!quest.IsMatch)
@@ -163,7 +171,7 @@ public sealed class QuestFromHomeEntry
         GameWindow window,
         CancellationToken cancellationToken,
         bool widen = false,
-        int timeoutMs = 10000)
+        int timeoutMs = QuestPresenceTimeoutMs)
     {
         ConfigPoint topLeft = widen
             ? new ConfigPoint(

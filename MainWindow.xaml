@@ -716,6 +716,33 @@
                                     <TextBlock x:Name="LocatorResultText" Foreground="#BFD3E5" Margin="0,8,0,0" TextWrapping="Wrap"/>
                                 </StackPanel>
                             </Border>
+                            <Border Style="{StaticResource Card}">
+                                <StackPanel>
+                                    <TextBlock Text="软件更新" FontSize="16"/>
+                                    <TextBlock x:Name="UpdateCurrentVersionText"
+                                               Foreground="#AEB8C5"
+                                               FontSize="13"
+                                               Margin="0,8,0,0"
+                                               TextWrapping="Wrap"/>
+                                    <TextBlock x:Name="UpdateStatusText"
+                                               Foreground="#BFD3E5"
+                                               FontSize="12"
+                                               Margin="0,6,0,0"
+                                               TextWrapping="Wrap"
+                                               Text="启动时会检查 GitHub Release；忽略后同大版本不再提示。"/>
+                                    <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+                                        <Button x:Name="CheckUpdateButton"
+                                                Style="{StaticResource PrimaryButton}"
+                                                Content="检查更新"
+                                                Click="CheckUpdateButton_Click"/>
+                                        <Button x:Name="OpenReleasesButton"
+                                                Style="{StaticResource PrimaryButton}"
+                                                Content="打开发布页"
+                                                Margin="8,0,0,0"
+                                                Click="OpenReleasesButton_Click"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
                         </StackPanel>
                     </ScrollViewer>
                     <Border x:Name="SettingsHotkeySection" Style="{StaticResource Card}" Margin="0" Visibility="Collapsed" VerticalAlignment="Top">

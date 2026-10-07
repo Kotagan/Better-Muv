@@ -20,7 +20,8 @@ public sealed class DailyCircleAutomation
     private const double NavThreshold = 0.55;
     private const double TitleThreshold = 0.70;
     private const double MissionEntryThreshold = 0.70;
-    private const double ClaimThreshold = 0.70;
+    /// <summary>一括受取粉钮；旧模板/灰态常见 0.47~0.55，过严会漏领。</summary>
+    private const double ClaimThreshold = 0.55;
     private const double OkThreshold = 0.70;
     private const double WeeklyTabThreshold = 0.70;
 
@@ -121,8 +122,8 @@ public sealed class DailyCircleAutomation
         }
         else
         {
-            _log("每日社团：当前无可领奖励（未点挑戦、未购买）。");
-            result = TaskRunResult.Success("当前无可领");
+            _log("每日社团：未能领取任何奖励（一括受取未命中）。");
+            result = TaskRunResult.Fail("未能领取（一括受取未命中）");
         }
 
         _log("每日社团：返回主页。");
@@ -218,7 +219,7 @@ public sealed class DailyCircleAutomation
         return (_screen.Refresh(window), true);
     }
 
-    /// <summary>每个页签只尝试一次；出现奖励 OK，或按钮点击后消失/变灰，均算领取成功。</summary>
+    /// <summary>每个页签只尝试一次；必须以出现奖励 OK 并点掉才算领取成功（避免空点假成功）。</summary>
     private async Task<int> ClaimRewardsAsync(GameWindow window, string scope, CancellationToken cancellationToken)
     {
         int claimed = 0;
@@ -246,20 +247,8 @@ public sealed class DailyCircleAutomation
             window = _screen.Refresh(window);
             if (!await TryDismissOkAsync(window, cancellationToken))
             {
-                TemplateProbeResult afterClaim = await _screen.ProbeAsync(
-                    window,
-                    _claimMatcher,
-                    _config.DailyMissionsClaimTopLeft,
-                    _config.DailyMissionsClaimSize,
-                    cancellationToken,
-                    ClaimThreshold);
-                if (afterClaim.IsMatch)
-                {
-                    _log($"每日社团：{scope}点了一括受取后无 OK，且按钮仍可用（{afterClaim.Score:F4}），判定未领取。");
-                    break;
-                }
-
-                _log($"每日社团：{scope}未出现 OK，但一括受取已消失或变灰（{afterClaim.Score:F4}），确认领取成功。");
+                _log($"每日社团：{scope}点了一括受取后无 OK，判定未领取。");
+                break;
             }
 
             claimed++;

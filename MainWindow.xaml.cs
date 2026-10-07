@@ -105,6 +105,8 @@ public partial class MainWindow : Window
     private async void MainWindow_ContentRendered(object? sender, EventArgs e)
     {
         ContentRendered -= MainWindow_ContentRendered;
+        await CheckForUpdatesOnStartupAsync();
+
         if (!string.Equals(Environment.GetEnvironmentVariable("BETTER_MUV_AUTO_MAIN_QUEST"), "1", StringComparison.Ordinal))
             return;
         AppendLog("调试模式：自动启动主线任务。");
@@ -1478,11 +1480,10 @@ public partial class MainWindow : Window
         _ => RunMainQuestCoreAsync(cancellationToken),
     };
 
-    private async Task<TaskRunResult> RunMazeCoreAsync(CancellationToken cancellationToken)
+    private Task<TaskRunResult> RunMazeCoreAsync(CancellationToken cancellationToken)
     {
         var automation = new MazeAutomation(PrepareDiagnosticTask("maze"), AppendLog);
-        await automation.RunOnceAsync(cancellationToken);
-        return TaskRunResult.Success();
+        return automation.RunOnceAsync(cancellationToken);
     }
 
     private async Task<TaskRunResult> RunMainQuestCoreAsync(CancellationToken cancellationToken)
@@ -1890,9 +1891,100 @@ public partial class MainWindow : Window
             : Visibility.Visible;
     }
 
+    private async Task CheckForUpdatesOnStartupAsync()
+    {
+        try
+        {
+            var updater = new AppUpdateService();
+            UpdateCheckResult result = await updater.CheckAsync(respectIgnore: true);
+            if (result.Kind == UpdateCheckKind.Available && result.Latest is not null)
+            {
+                AppendLog(result.Message);
+                var dialog = new UpdateAvailableWindow(result.Current, result.Latest, updater) { Owner = this };
+                dialog.ShowDialog();
+                if (dialog.ResultChoice == UpdateAvailableWindow.Choice.IgnoreMajor)
+                    AppendLog($"已忽略 {result.Latest.Version.Major}.x 线更新提示。");
+                RefreshUpdateSettingsUi();
+            }
+            else if (result.Kind == UpdateCheckKind.SuppressedByIgnore)
+            {
+                AppendLog(result.Message);
+            }
+        }
+        catch (Exception ex)
+        {
+            AppendLog("检查更新失败：" + ex.Message);
+        }
+    }
+
+    private async void CheckUpdateButton_Click(object sender, RoutedEventArgs e)
+    {
+        CheckUpdateButton.IsEnabled = false;
+        UpdateStatusText.Text = "正在检查更新…";
+        try
+        {
+            var updater = new AppUpdateService();
+            UpdateCheckResult result = await updater.CheckAsync(respectIgnore: false);
+            UpdateStatusText.Text = result.Message;
+            AppendLog(result.Message);
+
+            if (result.Kind == UpdateCheckKind.Available && result.Latest is not null)
+            {
+                var dialog = new UpdateAvailableWindow(result.Current, result.Latest, updater) { Owner = this };
+                dialog.ShowDialog();
+                if (dialog.ResultChoice == UpdateAvailableWindow.Choice.IgnoreMajor)
+                    AppendLog($"已忽略 {result.Latest.Version.Major}.x 线更新提示。");
+            }
+            else if (result.Kind == UpdateCheckKind.UpToDate)
+            {
+                MessageBox.Show(this, result.Message, "检查更新", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+
+            RefreshUpdateSettingsUi();
+        }
+        catch (Exception ex)
+        {
+            UpdateStatusText.Text = "检查失败：" + ex.Message;
+            AppendLog("检查更新失败：" + ex.Message);
+            MessageBox.Show(this, "检查更新失败：\n" + ex.Message, "检查更新", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        finally
+        {
+            CheckUpdateButton.IsEnabled = true;
+        }
+    }
+
+    private void OpenReleasesButton_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = GitHubReleaseClient.ReleasesPageUrl,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, "无法打开发布页：\n" + ex.Message, "软件更新", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    private void RefreshUpdateSettingsUi()
+    {
+        if (UpdateCurrentVersionText is null)
+            return;
+        AppVersion current = AppUpdateService.GetCurrentVersion();
+        UpdateCurrentVersionText.Text = $"当前版本：{current}";
+        AutomationConfig config = ConfigStore.Load();
+        if (config.IgnoredUpdateMajor is int major)
+            UpdateStatusText.Text = $"已忽略 {major}.x 更新提示；出现更高大版本时会再次提醒。";
+    }
+
     private void LoadSettings()
     {
         AutomationConfig config = ConfigStore.Load();
+        RefreshUpdateSettingsUi();
         LaunchGameCheckBox.IsChecked = config.LaunchGameWithCapture;
         EnsureGamePathResolved();
         SetMazeRunLimitCombo(config.MazeRunLimit);

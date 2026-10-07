@@ -176,10 +176,33 @@ public static class ConfigStore
             config.GameLaunchTimeoutSeconds = 90;
             changed = true;
         }
-        // 旧坐标落在 4K 主页商店按钮上方，导致商店和免费礼包流程一直停在主页。
-        if (config.DailyShopEntryClick is { X: 1780, Y: 965 })
+        // 底栏「ショップ」购物车中心；旧点偏上/偏左会打到活动条或打不开枢纽。
+        if (config.DailyShopEntryClick is { X: 1780, Y: 965 } or { X: 1810, Y: 1040 })
         {
-            config.DailyShopEntryClick = new ConfigPoint(1810, 1040);
+            config.DailyShopEntryClick = new ConfigPoint(1840, 1025);
+            changed = true;
+        }
+        // 交換所落地确认：旧 ROI 对着枢纽大图，对不上左侧「定期交換」页签。
+        if (config.DailyShopExchangeHallTopLeft is { X: 1200, Y: 620 } ||
+            config.DailyShopExchangeHallSize.Width > 400)
+        {
+            config.DailyShopExchangeHallTopLeft = new ConfigPoint(20, 140);
+            config.DailyShopExchangeHallSize = new ConfigSize(300, 180);
+            changed = true;
+        }
+        // 免费礼包标题：旧 ROI 在右下 (1200,700)，实际在左上第一格 ~ (530,300)。
+        if (config.DailyFreeGiftTitleTopLeft is { X: 1200, Y: 700 } ||
+            (config.DailyFreeGiftTitleSize.Width >= 650 && config.DailyFreeGiftTitleTopLeft.X >= 1000))
+        {
+            config.DailyFreeGiftTitleTopLeft = new ConfigPoint(300, 240);
+            config.DailyFreeGiftTitleSize = new ConfigSize(500, 140);
+            config.DailyFreeGiftTitleClickOffset = new ConfigPoint(0, 120);
+            changed = true;
+        }
+        // 交換所枢纽卡片：旧点偏右打到活动条；截图日志校正到卡片中心。
+        if (config.DailyShopExchangeHallClick is { X: 1540, Y: 790 } or { X: 1263, Y: 790 })
+        {
+            config.DailyShopExchangeHallClick = new ConfigPoint(1420, 800);
             changed = true;
         }
         // 每日爬塔禁止持久化完成状态；清除所有旧版本遗留标记。
@@ -366,6 +389,19 @@ public static class ConfigStore
             config.FirstSearchSize = new ConfigSize(150, 110);
             config.QuestNavTopLeft = new ConfigPoint(1080, 950);
             config.QuestNavSize = new ConfigSize(150, 110);
+            changed = true;
+        }
+
+        // 「探索準備」：粉钮中心约 y=888；旧 y≥1010 点到底栏导航。模板需覆盖 1500,820 一带。
+        if (config.ThirdClick.Y >= 980 ||
+            config.ThirdClick.Y < 850 ||
+            config.ThirdSearchTopLeft.Y > 860 ||
+            config.ThirdSearchSize.Width < 360 ||
+            config.ThirdSearchSize.Height < 120)
+        {
+            config.ThirdSearchTopLeft = new ConfigPoint(1500, 820);
+            config.ThirdSearchSize = new ConfigSize(420, 140);
+            config.ThirdClick = new ConfigPoint(1723, 888);
             changed = true;
         }
 
