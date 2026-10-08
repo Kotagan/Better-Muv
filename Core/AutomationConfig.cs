@@ -225,8 +225,9 @@ public sealed class AutomationConfig
     /// <summary>零元购弹窗粉钮「交換」搜索区（1080p；确认弹窗右下）。</summary>
     public ConfigPoint DailyShopExchangeTopLeft { get; set; } = new(1000, 900);
     public ConfigSize DailyShopExchangeSize { get; set; } = new(340, 140);
-    public ConfigPoint DailyShopOkTopLeft { get; set; } = new(800, 900);
-    public ConfigSize DailyShopOkSize { get; set; } = new(400, 160);
+    /// <summary>奖励确认弹窗粉钮「OK」搜索区（1080p；弹窗底部居中）。</summary>
+    public ConfigPoint DailyShopOkTopLeft { get; set; } = new(760, 900);
+    public ConfigSize DailyShopOkSize { get; set; } = new(420, 140);
     public ConfigPoint DailyShopTicketTopLeft { get; set; } = new(200, 750);
     public ConfigSize DailyShopTicketSize { get; set; } = new(500, 300);
     public ConfigPoint DailyShopScrollPoint { get; set; } = new(960, 700);

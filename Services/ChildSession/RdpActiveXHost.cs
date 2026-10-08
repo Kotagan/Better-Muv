@@ -447,10 +447,11 @@ internal sealed class RdpActiveXHost : WinForms.AxHost
             return """
 
 常见原因与处理（错误 516）：
-1. 若安装过 RDP Wrapper / SuperRDP：必须临时停用（与桌面分身二选一）。
-2. 「你的凭据不工作」：用账户「密码」登录，不要用 PIN；无密码请先设置密码。
-3. 设置 → 账户 → 登录选项：关闭「仅允许 Microsoft 帐户使用 Windows Hello 登录」。
-4. 先重启 Better-Muv；仍不行再重启系统。
+1. 本机若未启用 RDP Wrapper：多半是账户密码不对（含已保存的旧密码）。请重新输入 Windows「密码」，不要用 PIN。
+2. 从未设过密码：设置 → 账户 → 登录选项 → 密码 → 添加；或在分身登录框点「没有密码 / 只用 PIN？」。
+3. 微软账户：关闭「仅允许 Microsoft 帐户使用 Windows Hello 登录」。
+4. 若安装过 RDP Wrapper / SuperRDP 且仍挂着 rdpwrap.dll：必须临时停用（与桌面分身二选一）。
+5. 先重启 Better-Muv；仍不行再重启系统。
 """;
         }
 

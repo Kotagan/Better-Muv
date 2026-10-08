@@ -72,10 +72,20 @@ internal static class ChildSessionNativeMethods
 
     internal static void EnableChildSessions()
     {
-        if (!WTSEnableChildSessions(true))
+        if (WTSEnableChildSessions(true))
+            return;
+
+        var error = Marshal.GetLastPInvokeError();
+        // ERROR_ACCESS_DENIED：启停 Child Session 需要管理员（本地安全策略）。
+        if (error == 5)
         {
-            throw CreateLastWin32Exception("无法启用 RDP Child Session");
+            throw new Win32Exception(
+                error,
+                "无法启用 RDP Child Session（Win32 错误 5：拒绝访问）。"
+                + "请以管理员身份运行 Better-Muv 后再启动桌面分身。");
         }
+
+        throw new Win32Exception(error, $"无法启用 RDP Child Session（Win32 错误 {error}）");
     }
 
     internal static int GetConfiguredRdpPort()

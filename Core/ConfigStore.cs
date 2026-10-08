@@ -221,6 +221,14 @@ public static class ConfigStore
             config.DailyShopExchangeSize = new ConfigSize(340, 140);
             changed = true;
         }
+        // 奖励确认「OK」：旧模板/ROI 对不上弹窗底部居中粉钮（失败日志最高约 0.15）。
+        if (config.DailyShopOkTopLeft is { X: 800, Y: 900 } ||
+            config.DailyShopOkSize is { Width: 400, Height: 160 })
+        {
+            config.DailyShopOkTopLeft = new ConfigPoint(760, 900);
+            config.DailyShopOkSize = new ConfigSize(420, 140);
+            changed = true;
+        }
         // 每日爬塔禁止持久化完成状态；清除所有旧版本遗留标记。
         if (!string.IsNullOrWhiteSpace(config.LastDailySimulationTowerDay) ||
             !string.IsNullOrWhiteSpace(config.LastDailySimulationTowerTenRunDay) ||

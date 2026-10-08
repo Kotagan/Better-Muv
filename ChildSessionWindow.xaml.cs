@@ -42,12 +42,7 @@ public partial class ChildSessionWindow : Window
         UpdateMuteButton();
         ApplySavedPosition(small: false);
         _service.StateChanged += (_, _) => Dispatcher.Invoke(RefreshUi);
-        _service.ConnectionFailed += (_, e) => Dispatcher.Invoke(() =>
-        {
-            if (IsLikelyCredentialFailure(e))
-                ChildSessionCredentialStore.Clear();
-            MessageBox.Show(this, e.Message, "桌面分身连接失败", MessageBoxButton.OK, MessageBoxImage.Warning);
-        });
+        _service.ConnectionFailed += (_, e) => Dispatcher.Invoke(() => OnConnectionFailed(e));
 
         _keyboardFocusTimer = new DispatcherTimer(DispatcherPriority.Input)
         {
@@ -70,6 +65,49 @@ public partial class ChildSessionWindow : Window
             _taskStatusTimer.Stop();
         };
         RefreshUi();
+    }
+
+    private async void OnConnectionFailed(ChildSessionConnectionFailedEventArgs e)
+    {
+        bool credentialLikely = IsLikelyCredentialFailure(e);
+        // 本机未挂 RDP Wrapper 时，516 多数是密码/PIN/空密码问题。
+        bool treat516AsCredential = e.ErrorCode is 516 or 0x204
+            && !ChildSessionNativeMethods.IsRdpWrapperEnabled();
+        if (credentialLikely || treat516AsCredential)
+            ChildSessionCredentialStore.Clear();
+
+        if (treat516AsCredential || credentialLikely)
+        {
+            MessageBoxResult retry = MessageBox.Show(
+                this,
+                e.Message + "\n\n"
+                + "已清除本机保存的分身密码。\n"
+                + "是否重新输入账户密码并再试一次？\n"
+                + "（必须用 Windows「密码」，不能用 PIN）",
+                "桌面分身连接失败",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+            if (retry == MessageBoxResult.Yes)
+            {
+                if (ElevationHelper.IsElevated())
+                {
+                    try
+                    {
+                        await Task.Run(() => RdpWrapperSwitch.TryRestartTermService(_ => { }));
+                    }
+                    catch
+                    {
+                        // 重启 TermService 失败不阻断重输密码重试。
+                    }
+                }
+
+                await StartSessionAsync(forceCredentialPrompt: true);
+            }
+
+            return;
+        }
+
+        MessageBox.Show(this, e.Message, "桌面分身连接失败", MessageBoxButton.OK, MessageBoxImage.Warning);
     }
 
     private static bool IsLikelyCredentialFailure(ChildSessionConnectionFailedEventArgs e)
@@ -204,6 +242,28 @@ public partial class ChildSessionWindow : Window
 
         try
         {
+            // 首次启用 Child Session 需要管理员；未提权时先问，避免只弹 Win32 错误 5。
+            if (!ElevationHelper.IsElevated()
+                && !ChildSessionNativeMethods.IsChildSessionsEnabled())
+            {
+                MessageBoxResult elevateChoice = MessageBox.Show(
+                    this,
+                    "启用桌面分身（RDP Child Session）需要管理员权限。\n\n"
+                    + "是否以管理员权限重启 Better-Muv？\n"
+                    + "（重启后会自动打开并启动桌面分身）",
+                    "需要管理员权限",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Question);
+                if (elevateChoice != MessageBoxResult.Yes)
+                    return;
+                if (!ElevationHelper.TryRestartElevated(AppInstance.OpenChildSessionArgument))
+                {
+                    MessageBox.Show(this, "已取消管理员授权，未重启。", "桌面分身",
+                        MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+                return;
+            }
+
             bool disableWrapper = false;
             if (_service.IsRdpWrapperEnabled())
             {
@@ -280,7 +340,10 @@ public partial class ChildSessionWindow : Window
             return false;
 
         Exception root = ex.GetBaseException();
-        bool needsAdmin = root is UnauthorizedAccessException
+        bool accessDenied = root is System.ComponentModel.Win32Exception win32
+            && win32.NativeErrorCode == 5;
+        bool needsAdmin = accessDenied
+            || root is UnauthorizedAccessException
             || root is System.Security.SecurityException
             || root.Message.Contains("管理员", StringComparison.Ordinal);
         if (!needsAdmin)
