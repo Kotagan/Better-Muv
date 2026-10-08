@@ -261,12 +261,12 @@ public static class GamePathLocator
         }
     }
 
-    private static IEnumerable<DriveInfo> SafeFixedDrives()
+    private static IEnumerable<System.IO.DriveInfo> SafeFixedDrives()
     {
-        DriveInfo[] drives;
+        System.IO.DriveInfo[] drives;
         try
         {
-            drives = DriveInfo.GetDrives();
+            drives = System.IO.DriveInfo.GetDrives();
         }
         catch
         {

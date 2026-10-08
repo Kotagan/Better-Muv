@@ -9,7 +9,7 @@ public partial class UpdateAvailableWindow : Window
     public enum Choice
     {
         Later,
-        IgnoreMajor,
+        IgnoreLine,
         Updated
     }
 
@@ -55,8 +55,8 @@ public partial class UpdateAvailableWindow : Window
     {
         if (_busy)
             return;
-        AppUpdateService.IgnoreMajorLine(_release.Version);
-        ResultChoice = Choice.IgnoreMajor;
+        AppUpdateService.IgnoreVersionLine(_release.Version);
+        ResultChoice = Choice.IgnoreLine;
         DialogResult = true;
         Close();
     }

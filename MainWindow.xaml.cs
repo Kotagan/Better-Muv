@@ -8,6 +8,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using BetterMuv.Core;
 using BetterMuv.Services;
+using BetterMuv.Services.ChildSession;
 using Microsoft.Win32;
 
 namespace BetterMuv;
@@ -68,9 +69,13 @@ public partial class MainWindow : Window
         catch { /* 启动清理静默失败 */ }
 
         string version = GetAppVersion();
-        string title = $"Better-Muv {version} · 更好的 MuvLuv Girls Garden";
+        string title = AppInstance.IsChildSession
+            ? $"Better-Muv {version} · 桌面分身"
+            : $"Better-Muv {version} · 更好的 MuvLuv Girls Garden";
         Title = title;
         TitleBarText.Text = title;
+        if (AppInstance.IsChildSession && DesktopCloneCard is not null)
+            DesktopCloneCard.Visibility = Visibility.Collapsed;
         AppendLog("版本：" + version);
         AppendLog("配置文件：" + _configPath);
         AppendLog("等待启动截图器。");
@@ -1902,8 +1907,8 @@ public partial class MainWindow : Window
                 AppendLog(result.Message);
                 var dialog = new UpdateAvailableWindow(result.Current, result.Latest, updater) { Owner = this };
                 dialog.ShowDialog();
-                if (dialog.ResultChoice == UpdateAvailableWindow.Choice.IgnoreMajor)
-                    AppendLog($"已忽略 {result.Latest.Version.Major}.x 线更新提示。");
+                if (dialog.ResultChoice == UpdateAvailableWindow.Choice.IgnoreLine)
+                    AppendLog($"已忽略 {AppUpdateService.FormatLine(result.Latest.Version.Major, result.Latest.Version.Minor)} 更新提示。");
                 RefreshUpdateSettingsUi();
             }
             else if (result.Kind == UpdateCheckKind.SuppressedByIgnore)
@@ -1932,8 +1937,8 @@ public partial class MainWindow : Window
             {
                 var dialog = new UpdateAvailableWindow(result.Current, result.Latest, updater) { Owner = this };
                 dialog.ShowDialog();
-                if (dialog.ResultChoice == UpdateAvailableWindow.Choice.IgnoreMajor)
-                    AppendLog($"已忽略 {result.Latest.Version.Major}.x 线更新提示。");
+                if (dialog.ResultChoice == UpdateAvailableWindow.Choice.IgnoreLine)
+                    AppendLog($"已忽略 {AppUpdateService.FormatLine(result.Latest.Version.Major, result.Latest.Version.Minor)} 更新提示。");
             }
             else if (result.Kind == UpdateCheckKind.UpToDate)
             {
@@ -1977,8 +1982,9 @@ public partial class MainWindow : Window
         AppVersion current = AppUpdateService.GetCurrentVersion();
         UpdateCurrentVersionText.Text = $"当前版本：{current}";
         AutomationConfig config = ConfigStore.Load();
-        if (config.IgnoredUpdateMajor is int major)
-            UpdateStatusText.Text = $"已忽略 {major}.x 更新提示；出现更高大版本时会再次提醒。";
+        string? ignoredLine = AppUpdateService.GetIgnoredLineLabel(config);
+        if (ignoredLine is not null)
+            UpdateStatusText.Text = $"已忽略 {ignoredLine} 更新提示；出现更高小版本时会再次提醒。";
     }
 
     private void LoadSettings()
@@ -2462,8 +2468,22 @@ public partial class MainWindow : Window
 
     private void OpenCloneButton_Click(object sender, RoutedEventArgs e)
     {
-        var window = new DesktopCloneWindow { Owner = this };
-        window.Show();
+        if (!AppInstance.IsRoot)
+        {
+            MessageBox.Show(this, "当前已是桌面分身实例，无需再打开分身窗口。", "桌面分身",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        ChildSessionService? service = App.SharedChildSessionService;
+        if (service is null)
+        {
+            MessageBox.Show(this, "桌面分身服务未初始化。", "桌面分身",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        service.ShowWindow();
     }
 
     private void WindowFrame_SizeChanged(object sender, SizeChangedEventArgs e)
@@ -2485,6 +2505,19 @@ public partial class MainWindow : Window
     private void CloseButton_Click(object sender, RoutedEventArgs e) => Close();
     private void Window_Closing(object? sender, CancelEventArgs e)
     {
+        if (AppInstance.IsRoot &&
+            App.SharedChildSessionService?.HasActiveChildSession() == true)
+        {
+            e.Cancel = true;
+            MessageBox.Show(
+                this,
+                "桌面分身仍在运行，请先关闭桌面分身，再关闭主窗口。",
+                "桌面分身未关闭",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return;
+        }
+
         PersistMazeSettings(quiet: true);
         PersistShopPurchases(quiet: true);
         _runCancellation?.Cancel();

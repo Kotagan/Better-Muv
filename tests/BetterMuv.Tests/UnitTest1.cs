@@ -440,16 +440,17 @@ public class AutomationConfigTests
     }
 
     [Fact]
-    public void IgnoredUpdateMajorRoundTripsThroughJson()
+    public void IgnoredUpdateLineRoundTripsThroughJson()
     {
-        string path = Path.Combine(Path.GetTempPath(), $"better-muv-ignore-major-{Guid.NewGuid():N}.json");
+        string path = Path.Combine(Path.GetTempPath(), $"better-muv-ignore-line-{Guid.NewGuid():N}.json");
         try
         {
-            var config = new AutomationConfig { IgnoredUpdateMajor = 1 };
+            var config = new AutomationConfig { IgnoredUpdateMajor = 1, IgnoredUpdateMinor = 3 };
             config.Save(path);
 
             AutomationConfig loaded = AutomationConfig.Load(path);
             Assert.Equal(1, loaded.IgnoredUpdateMajor);
+            Assert.Equal(3, loaded.IgnoredUpdateMinor);
         }
         finally
         {
@@ -510,6 +511,42 @@ public class AutomationConfigTests
     }
 }
 
+public class ReleasePackagingTests
+{
+    [Theory]
+    [InlineData("daily-shop-hub-exchange.png")]
+    [InlineData("daily-shop-hub-limited.png")]
+    [InlineData("daily-shop-icon.png")]
+    [InlineData("mining-home-entry.png")]
+    public void RequiredShopTemplatesExistInRepo(string fileName)
+    {
+        string path = Path.GetFullPath(Path.Combine(
+            AppContext.BaseDirectory, "..", "..", "..", "..", "..", "Assets", "Templates", fileName));
+        Assert.True(File.Exists(path), $"缺少模板：{path}");
+    }
+
+    [Fact]
+    public void ChildSessionTypesAreAvailable()
+    {
+        Assert.NotNull(typeof(BetterMuv.Services.ChildSession.ChildSessionService));
+        Assert.NotNull(typeof(BetterMuv.ChildSessionWindow));
+        Assert.Equal(BetterMuvInstanceType.Root, AppInstance.Type);
+        Assert.Contains(
+            "RdpActiveXHost",
+            typeof(BetterMuv.Services.ChildSession.ChildSessionService).Assembly
+                .GetTypes()
+                .Select(t => t.Name));
+    }
+
+    [Fact]
+    public void IgnoreLineSuppressesOnlySameMinor()
+    {
+        var config = new AutomationConfig { IgnoredUpdateMajor = 1, IgnoredUpdateMinor = 3 };
+        Assert.True(AppUpdateService.IsSuppressed(config, new AppVersion(1, 3, 9)));
+        Assert.False(AppUpdateService.IsSuppressed(config, new AppVersion(1, 4, 0)));
+    }
+}
+
 public class AppVersionTests
 {
     [Theory]
@@ -533,13 +570,17 @@ public class AppVersionTests
     }
 
     [Fact]
-    public void IsSuppressedUntilHigherMajor()
+    public void IsSuppressedOnlySameMinorLine()
     {
-        var config = new AutomationConfig { IgnoredUpdateMajor = 1 };
-        Assert.True(AppUpdateService.IsSuppressed(config, new AppVersion(1, 4, 0)));
-        Assert.True(AppUpdateService.IsSuppressed(config, new AppVersion(1, 9, 9)));
+        var config = new AutomationConfig { IgnoredUpdateMajor = 1, IgnoredUpdateMinor = 3 };
+        Assert.True(AppUpdateService.IsSuppressed(config, new AppVersion(1, 3, 0)));
+        Assert.True(AppUpdateService.IsSuppressed(config, new AppVersion(1, 3, 9)));
+        Assert.False(AppUpdateService.IsSuppressed(config, new AppVersion(1, 4, 0)));
         Assert.False(AppUpdateService.IsSuppressed(config, new AppVersion(2, 0, 0)));
-        Assert.False(AppUpdateService.IsSuppressed(new AutomationConfig(), new AppVersion(1, 4, 0)));
+        Assert.False(AppUpdateService.IsSuppressed(
+            new AutomationConfig { IgnoredUpdateMajor = 1 },
+            new AppVersion(1, 3, 5)));
+        Assert.False(AppUpdateService.IsSuppressed(new AutomationConfig(), new AppVersion(1, 3, 5)));
     }
 }
 

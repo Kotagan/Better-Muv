@@ -34,12 +34,12 @@ English | **中文** | 繁體中文 | 日本語
 
 ### 其它
 
-- **应用内更新**：启动时检查 GitHub Release；可立即安装，或忽略当前大版本线直至更高 Major
+- **应用内更新**：启动时检查 GitHub Release；可立即安装，或忽略当前小版本线（如 1.3.x）直至更高 Minor/Major
 - **模板定位工具**：导入裁图，生成 1080p 基准搜索 ROI
 - **游戏启动**：可随工具自动拉起游戏 exe
 - **执行控制**：默认 F10 暂停/继续，F11 停止（可在设置中改为其它 F1–F12）
 - **运行日志**：侧栏查看；支持导出日志与截图包
-- **桌面分身**：独立会话入口（需管理员等条件）
+- **桌面分身**：内嵌 RDP Child Session；自动在分身内启动本工具；支持静音、小窗、游戏鼠标（相对移动）、系统热键切换、退出保护；需管理员与本机账户密码（勿用 PIN / RDP Wrapper）
 
 ### Todolist
 
@@ -156,10 +156,10 @@ dotnet publish Better-Muv.csproj -c Release -r win-x64 --self-contained true -o 
 打包可安装程序（需先安装 [Inno Setup 6](https://jrsoftware.org/isinfo.php)）：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\pack-installer.ps1 -Version 1.3.2
+powershell -ExecutionPolicy Bypass -File scripts\pack-installer.ps1 -Version 1.3.3
 ```
 
-生成物：`dist\Better-Muv-Setup-1.3.2.exe`。
+生成物：`dist\Better-Muv-Setup-1.3.3.exe`。
 
 ---
 

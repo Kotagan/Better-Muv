@@ -1,0 +1,75 @@
+<Window x:Class="BetterMuv.ChildSessionWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:wfi="clr-namespace:System.Windows.Forms.Integration;assembly=WindowsFormsIntegration"
+        Title="Better-Muv 桌面分身"
+        Width="1280" Height="752"
+        MinWidth="480" MinHeight="300"
+        WindowStartupLocation="CenterScreen"
+        Background="#151A21"
+        Foreground="#EEF2F6"
+        FontFamily="Microsoft YaHei UI"
+        Closing="Window_Closing">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="40"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Background="#1E2630" BorderBrush="#2F3845" BorderThickness="0,0,0,1">
+            <DockPanel Margin="10,0">
+                <Ellipse x:Name="StatusDot" Width="9" Height="9" Fill="#6B7785" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                <TextBlock Text="Better-Muv 桌面分身" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,16,0"/>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" DockPanel.Dock="Right">
+                    <Button x:Name="StartButton" Content="启动" Margin="0,0,6,0" Padding="12,4" Click="StartButton_Click"/>
+                    <Button Content="隐藏" Margin="0,0,6,0" Padding="12,4" Click="HideButton_Click"/>
+                    <Button Content="切换窗口" Margin="0,0,6,0" Padding="12,4" Click="SwitchWindowButton_Click"/>
+                    <Button x:Name="GameMouseButton" Content="游戏鼠标" Margin="0,0,6,0" Padding="12,4" Click="GameMouseButton_Click"/>
+                    <Button x:Name="MuteButton" Content="静音" Margin="0,0,6,0" Padding="12,4" Click="MuteButton_Click"/>
+                    <Button Content="控制中心" Padding="12,4" Click="ControlCenterButton_Click">
+                        <Button.ContextMenu>
+                            <ContextMenu x:Name="ControlMenu">
+                                <MenuItem Header="运行 Better-Muv" Click="LaunchApp_Click"/>
+                                <MenuItem x:Name="SmallWindowMenu" Header="小窗模式" Click="SmallWindow_Click"/>
+                                <Separator/>
+                                <MenuItem Header="自适应画面" Click="Adaptive_Click"/>
+                                <MenuItem Header="1:1 画面" Click="OneToOne_Click"/>
+                                <MenuItem Header="保持宽高比" IsCheckable="True" IsChecked="True" Click="KeepAspect_Click" Name="KeepAspectMenu"/>
+                                <Separator/>
+                                <MenuItem x:Name="SystemShortcutsMenu" Header="系统组合键发送到分身" IsCheckable="True" IsChecked="True" Click="SystemShortcuts_Click"/>
+                                <MenuItem Header="发送 Win+D" Click="ShowDesktop_Click"/>
+                                <MenuItem Header="发送 Win+Tab" Click="ShowTaskView_Click"/>
+                                <MenuItem Header="以管理员启动…" Click="LaunchExe_Click"/>
+                                <MenuItem x:Name="TopmostMenu" Header="置顶" IsCheckable="True" Click="Topmost_Click"/>
+                            </ContextMenu>
+                        </Button.ContextMenu>
+                    </Button>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <Grid Grid.Row="1" Background="Black">
+            <wfi:WindowsFormsHost x:Name="FormsHost" Margin="3,0,3,3"/>
+            <Border x:Name="GuideOverlay" Background="#CC151A21">
+                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="520">
+                    <TextBlock Text="桌面分身" FontSize="28" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+                    <TextBlock Margin="0,12,0,0" TextWrapping="Wrap" Foreground="#AEB8C5" LineHeight="22"
+                               Text="点击「启动」创建独立 Windows Child Session，并在窗口内建立 RDP 连接。登录后会自动在分身内启动 Better-Muv。需要管理员权限与本机账户密码（不能只用 PIN）；请勿启用 RDP Wrapper。"/>
+                    <Button Content="启动并连接" Margin="0,22,0,0" HorizontalAlignment="Center" Padding="20,10"
+                            Click="StartButton_Click" Background="#3EA6F1" Foreground="White" BorderThickness="0"/>
+                </StackPanel>
+            </Border>
+            <Border x:Name="ClosingOverlay" Background="#CC151A21" Visibility="Collapsed">
+                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                    <TextBlock Text="正在关闭桌面分身…" FontSize="18" HorizontalAlignment="Center"/>
+                    <TextBlock Margin="0,8,0,0" Foreground="#AEB8C5" Text="请稍候，注销完成后窗口会自动隐藏。"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <Border Grid.Row="2" Background="#1A2129" Padding="12,8">
+            <TextBlock x:Name="StatusText" Text="桌面分身尚未启动" TextWrapping="Wrap" Foreground="#9AA5B3" FontSize="12"/>
+        </Border>
+    </Grid>
+</Window>

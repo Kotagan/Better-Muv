@@ -8,10 +8,24 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>1.3.2</Version>
-    <AssemblyVersion>1.3.2.0</AssemblyVersion>
-    <FileVersion>1.3.2.0</FileVersion>
+  </PropertyGroup>
+
+  <!-- Avoid WinForms/Drawing colliding with WPF via implicit usings; RDP host uses explicit aliases. -->
+  <ItemGroup>
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+    <Using Remove="System.Drawing.Imaging" />
+    <Using Remove="System.Drawing.Drawing2D" />
+    <Using Remove="System.Drawing.Text" />
+    <Using Remove="System.Drawing.Printing" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <Version>1.3.3</Version>
+    <AssemblyVersion>1.3.3.0</AssemblyVersion>
+    <FileVersion>1.3.3.0</FileVersion>
     <Product>Better-Muv</Product>
     <Company>Kotagan</Company>
     <Authors>Kotagan</Authors>
@@ -57,6 +71,8 @@
     <Content Include="Assets\Templates\daily-shop-100off.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\daily-shop-exchange.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\daily-shop-exchange-hall.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\daily-shop-hub-exchange.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\daily-shop-hub-limited.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\daily-shop-ok.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\daily-shop-ticket-2500.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\shop-cat-daily-on.png" CopyToOutputDirectory="PreserveNewest" />

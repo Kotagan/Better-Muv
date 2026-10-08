@@ -14,6 +14,8 @@ public sealed class AutomationConfig
     public bool LaunchGameWithCapture { get; set; }
     public bool CaptureTaskEnabled { get; set; } = true;
     public bool DesktopCloneTaskEnabled { get; set; }
+    /// <summary>桌面分身（Child Session）窗口与 RDP 相关设置。</summary>
+    public ChildSessionConfig? ChildSession { get; set; }
     public bool MazeTaskEnabled { get; set; } = true;
     public string GameExecutablePath { get; set; } = "";
     public string GameLaunchArguments { get; set; } = "";
@@ -414,10 +416,12 @@ public sealed class AutomationConfig
     /// <summary>是否已确认过首次运行提示弹窗。</summary>
     public bool FirstRunNoticeAccepted { get; set; }
     /// <summary>
-    /// 已忽略的更新大版本号。非 null 时，同大版本及更低大版本的新版本不再弹窗，
-    /// 直到出现更高 Major 才重新提示。
+    /// 已忽略的更新版本线（Major）。与 <see cref="IgnoredUpdateMinor"/> 同时有效时，
+    /// 同 Major.Minor 线（如 1.3.x）的更高 patch 不再弹窗，直到出现更高 Minor/Major。
     /// </summary>
     public int? IgnoredUpdateMajor { get; set; }
+    /// <summary>已忽略的更新版本线（Minor），须与 <see cref="IgnoredUpdateMajor"/> 成对使用。</summary>
+    public int? IgnoredUpdateMinor { get; set; }
     /// <summary>首次迷宫时「商店未配置」提示是否已点过「继续」。</summary>
     public bool SettlementShopHintAccepted { get; set; }
     /// <summary>上次日常已买够配置数量的游戏日（yyyy-MM-dd，每天 4:00 起算新一日）。</summary>

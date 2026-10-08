@@ -1,1 +1,25 @@
+// Prefer WPF types when WinForms is also referenced for RDP ActiveX hosting.
 global using System.IO;
+global using Path = System.IO.Path;
+global using Application = System.Windows.Application;
+global using Point = System.Windows.Point;
+global using MouseEventArgs = System.Windows.Input.MouseEventArgs;
+global using KeyEventArgs = System.Windows.Input.KeyEventArgs;
+global using DragEventArgs = System.Windows.DragEventArgs;
+global using TextBox = System.Windows.Controls.TextBox;
+global using CheckBox = System.Windows.Controls.CheckBox;
+global using Button = System.Windows.Controls.Button;
+global using Color = System.Windows.Media.Color;
+global using Brushes = System.Windows.Media.Brushes;
+global using Clipboard = System.Windows.Clipboard;
+global using MessageBox = System.Windows.MessageBox;
+global using MessageBoxButton = System.Windows.MessageBoxButton;
+global using MessageBoxImage = System.Windows.MessageBoxImage;
+global using MessageBoxResult = System.Windows.MessageBoxResult;
+global using Orientation = System.Windows.Controls.Orientation;
+global using DataFormats = System.Windows.DataFormats;
+global using DataObject = System.Windows.DataObject;
+global using DragDropEffects = System.Windows.DragDropEffects;
+global using OpenFileDialog = Microsoft.Win32.OpenFileDialog;
+global using HorizontalAlignment = System.Windows.HorizontalAlignment;
+global using VerticalAlignment = System.Windows.VerticalAlignment;
