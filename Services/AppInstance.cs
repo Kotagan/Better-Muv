@@ -1,5 +1,3 @@
-using System.Security.Principal;
-
 namespace BetterMuv.Services;
 
 public enum BetterMuvInstanceType
@@ -23,9 +21,6 @@ public static class AppInstance
     /// <summary>提升权限重启后自动打开桌面分身窗口。</summary>
     public static bool ShouldOpenChildSession { get; private set; }
 
-    public static string RelativeMousePipeName { get; } =
-        $"Better-Muv.v1.user-{GetUserSid()}.relativeMouse";
-
     public static void Initialize(string[] args)
     {
         for (int i = 0; i < args.Length; i++)
@@ -46,17 +41,4 @@ public static class AppInstance
     }
 
     public static void ClearOpenChildSessionRequest() => ShouldOpenChildSession = false;
-
-    private static string GetUserSid()
-    {
-        try
-        {
-            using WindowsIdentity identity = WindowsIdentity.GetCurrent();
-            return identity.User?.Value ?? "unknown";
-        }
-        catch
-        {
-            return "unknown";
-        }
-    }
 }

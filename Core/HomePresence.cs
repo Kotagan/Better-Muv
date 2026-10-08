@@ -4,7 +4,8 @@ using BetterMuv.Services;
 namespace BetterMuv.Core;
 
 /// <summary>
-/// 确认已在主界面（底栏「クエスト」可见且不存在右上返回主页按钮）；否则清弹窗 / Esc / 点主页钮后重试。
+/// 确认已在主界面（底栏「クエスト」可见且不存在右上返回主页按钮）；否则走失败恢复回主页。
+/// 清弹窗仅由 <see cref="TaskFailureHandler"/> 在失败时执行。
 /// </summary>
 public sealed class HomePresence
 {
@@ -17,7 +18,6 @@ public sealed class HomePresence
     private readonly AutomationConfig _config;
     private readonly ScreenAutomation _screen;
     private readonly Action<string> _log;
-    private readonly PromoPopupDismisser _promo;
     private readonly TemplateMatcher _questMatcher;
     private readonly TemplateMatcher _hudHomeMatcher;
 
@@ -26,7 +26,6 @@ public sealed class HomePresence
         _config = config;
         _screen = screen;
         _log = log;
-        _promo = new PromoPopupDismisser(config, screen, log);
         _questMatcher = TemplateAssets.Load("quest.png");
         _hudHomeMatcher = TemplateAssets.Load("hud-home.png");
     }
@@ -44,29 +43,19 @@ public sealed class HomePresence
         return !hudHome.IsMatch;
     }
 
-    /// <summary>若已在主页直接 true；否则轻清弹窗 / 恢复后再确认。</summary>
+    /// <summary>若已在主页直接 true；否则走失败恢复（内含清弹窗）后再确认。</summary>
     public async Task<(GameWindow Window, bool OnHome)> EnsureAsync(
         GameWindow window, string scope, CancellationToken cancellationToken)
     {
         window = _screen.Refresh(window);
 
-        // 快路径：已在主页则跳过弹窗扫描（任务开始最常见）。
         if (await IsHomeAsync(window, cancellationToken))
         {
             _log($"{scope}：已在主界面。");
             return (window, true);
         }
 
-        _log($"{scope}：未在主界面，先清弹窗。");
-        await _promo.DismissAllAsync(window, cancellationToken);
-        window = _screen.Refresh(window);
-        if (await IsHomeAsync(window, cancellationToken))
-        {
-            _log($"{scope}：清弹窗后已在主界面。");
-            return (window, true);
-        }
-
-        _log($"{scope}：尝试回主页。");
+        _log($"{scope}：未在主界面，尝试回主页。");
         bool recovered = await new TaskFailureHandler(_config, _log)
             .RecoverToHomeAsync(scope, cancellationToken);
         window = _screen.Refresh(window);

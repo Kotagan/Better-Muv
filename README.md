@@ -156,10 +156,10 @@ dotnet publish Better-Muv.csproj -c Release -r win-x64 --self-contained true -o 
 打包可安装程序（需先安装 [Inno Setup 6](https://jrsoftware.org/isinfo.php)）：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\pack-installer.ps1 -Version 1.3.4
+powershell -ExecutionPolicy Bypass -File scripts\pack-installer.ps1 -Version 1.3.6
 ```
 
-生成物：`dist\Better-Muv-Setup-1.3.4.exe`。
+生成物：`dist\Better-Muv-Setup-1.3.6.exe`。
 
 ---
 

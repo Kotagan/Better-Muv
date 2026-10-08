@@ -674,9 +674,9 @@ public sealed class SettlementShopRunner
                 continue;
             }
 
-            // 日常“全买”直接使用 MAX 点击一次。左下次数是最终依据：归零即结束本小类，
-            // 未归零则继续下一个配置商品；不再对同一商品降到 ×10 / ×1 重复扫档。
-            if (isDaily && quantity < 0)
+            // 全买：直接切到 MAX 点购买（日常/装备等同逻辑）。
+            // MAX 一次即按当前可买上限买入；不再 MAX→×10→×1 逐级扫档空转。
+            if (quantity < 0)
             {
                 if (!await EnsureMultiplierAsync(window, MultiplierState.Max, cancellationToken))
                 {
@@ -688,7 +688,7 @@ public sealed class SettlementShopRunner
                     window, button, $"购买 {slotTag} MAX（全部购买）", cancellationToken);
                 await Task.Delay(120, cancellationToken);
 
-                if (await DetectDailyLimitTipAsync(window, cancellationToken))
+                if (isDaily && await DetectDailyLimitTipAsync(window, cancellationToken))
                 {
                     _log($"购买 {slotTag}：命中每日购买上限提示，本格结束。");
                     if (await TryReadPurchaseCountLeftAsync(window, cancellationToken) is 0)
@@ -699,15 +699,34 @@ public sealed class SettlementShopRunner
                     continue;
                 }
 
-                int? leftAfterMax = await TryReadPurchaseCountLeftAsync(window, cancellationToken);
-                if (leftAfterMax is 0)
+                if (isDaily)
                 {
-                    _log($"购买 {slotTag}：MAX 后左下角剩余 0，本小类购买完成。");
-                    return true;
+                    int? leftAfterMax = await TryReadPurchaseCountLeftAsync(window, cancellationToken);
+                    if (leftAfterMax is 0)
+                    {
+                        _log($"购买 {slotTag}：MAX 后左下角剩余 0，本小类购买完成。");
+                        return true;
+                    }
+
+                    BuySlotVisual visualAfterMax = await ReadBuySlotVisualAsync(window, button, cancellationToken);
+                    if (visualAfterMax == BuySlotVisual.AtLimit)
+                        DisableSlotInConfig(category, subcategory, quantities, i, scope);
+
+                    if (await DetectGreenDoneAsync(window, cancellationToken))
+                        return false;
+
+                    await RefreshCurrencySkipFlagAsync(window, cancellationToken);
+                    if (_sessionBuyDone)
+                        return false;
+
+                    _log(leftAfterMax is int left
+                        ? $"购买 {slotTag}：MAX 完成，左下角仍剩 {left}，继续下一个配置商品。"
+                        : $"购买 {slotTag}：MAX 完成，左下角未稳定读出，继续按配置处理下一格。");
+                    continue;
                 }
 
-                BuySlotVisual visualAfterMax = await ReadBuySlotVisualAsync(window, button, cancellationToken);
-                if (visualAfterMax == BuySlotVisual.AtLimit)
+                BuySlotVisual visualAfterMaxEquip = await ReadBuySlotVisualAsync(window, button, cancellationToken);
+                if (visualAfterMaxEquip == BuySlotVisual.AtLimit)
                     DisableSlotInConfig(category, subcategory, quantities, i, scope);
 
                 if (await DetectGreenDoneAsync(window, cancellationToken))
@@ -717,112 +736,7 @@ public sealed class SettlementShopRunner
                 if (_sessionBuyDone)
                     return false;
 
-                _log(leftAfterMax is int left
-                    ? $"购买 {slotTag}：MAX 完成，左下角仍剩 {left}，继续下一个配置商品。"
-                    : $"购买 {slotTag}：MAX 完成，左下角未稳定读出，继续按配置处理下一格。");
-                continue;
-            }
-
-            if (quantity < 0)
-            {
-                _log($"购买 {slotTag}：全买开始。");
-                // 全买：MAX → ×10 → ×1 逐级降；每级连点直到售罄/买不动/货币归零。
-                MultiplierState[] multipliers =
-                [
-                    MultiplierState.Max,
-                    MultiplierState.X10,
-                    MultiplierState.X1
-                ];
-                bool slotFinished = false;
-                int totalClicks = 0;
-                // 已识别到左下剩余时严格封顶；OCR 失败只允许每档少量兜底点击。
-                int maxClicksPerTier = isDaily
-                    ? Math.Clamp(dailyPurchaseLeft ?? 6, 1, 24)
-                    : 20;
-                foreach (MultiplierState mult in multipliers)
-                {
-                    if (_sessionBuyDone || slotFinished)
-                        break;
-
-                    if (!await EnsureMultiplierAsync(window, mult, cancellationToken))
-                    {
-                        _log($"购买 {slotTag}：未确认倍率 {FormatMultiplier(mult)}，尝试更低倍率。");
-                        continue;
-                    }
-
-                    int? leftBeforeTier = isDaily
-                        ? await TryReadPurchaseCountLeftAsync(window, cancellationToken)
-                        : null;
-                    if (leftBeforeTier is 0)
-                    {
-                        _log($"购买 {slotTag}：左下角剩余已变为 0，本小类购买完成。");
-                        return true;
-                    }
-                    int clicksThisTier = 0;
-                    for (int n = 0; n < maxClicksPerTier; n++)
-                    {
-                        if (_sessionBuyDone)
-                            return false;
-
-                        if (isDaily && n > 0 && await TryReadPurchaseCountLeftAsync(window, cancellationToken) is 0)
-                        {
-                            _log($"购买 {slotTag}：左下角剩余已变为 0，本小类购买完成。");
-                            return true;
-                        }
-
-                        BuySlotVisual preClick = await ReadBuySlotVisualAsync(window, button, cancellationToken);
-                        if (preClick == BuySlotVisual.AtLimit)
-                        {
-                            DisableSlotInConfig(category, subcategory, quantities, i, scope);
-                            slotFinished = true;
-                            break;
-                        }
-
-                        window = await _screen.ClickAsync(
-                            window,
-                            button,
-                            $"购买 {slotTag} {FormatMultiplier(mult)}({n + 1}/{maxClicksPerTier})",
-                            cancellationToken);
-                        await Task.Delay(80, cancellationToken);
-                        clicksThisTier++;
-                        totalClicks++;
-
-                        if (isDaily && await DetectDailyLimitTipAsync(window, cancellationToken))
-                        {
-                            _log($"购买 {slotTag}：命中「これ以上購入できません」，停止该格（已点 {totalClicks} 次）。");
-                            slotFinished = true;
-                            break;
-                        }
-
-                        BuySlotVisual afterClick = await ReadBuySlotVisualAsync(window, button, cancellationToken);
-                        if (afterClick == BuySlotVisual.AtLimit)
-                        {
-                            DisableSlotInConfig(category, subcategory, quantities, i, scope);
-                            slotFinished = true;
-                            break;
-                        }
-
-                        if (await DetectGreenDoneAsync(window, cancellationToken))
-                        {
-                            _log($"购买 {slotTag}：已点 {totalClicks} 次后命中绿色提示。");
-                            return false;
-                        }
-
-                        await RefreshCurrencySkipFlagAsync(window, cancellationToken);
-                        if (_sessionBuyDone)
-                            return false;
-
-                    }
-
-                    // 日常某一档点满仍无上限提示：不再降档空转。
-                    if (isDaily && !slotFinished && clicksThisTier >= maxClicksPerTier)
-                    {
-                        _log($"购买 {slotTag}：{FormatMultiplier(mult)} 已点满仍无上限提示，停止该格。");
-                        slotFinished = true;
-                    }
-                }
-
-                _log($"购买 {slotTag}：全买结束，共点击 {totalClicks} 次。");
+                _log($"购买 {slotTag}：MAX 全买完成。");
                 continue;
             }
 

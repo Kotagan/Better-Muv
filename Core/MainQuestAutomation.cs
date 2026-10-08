@@ -48,7 +48,6 @@ public sealed class MainQuestAutomation
     private readonly TemplateMatcher _rematch;
     private readonly TemplateMatcher _toHome;
     private readonly TemplateMatcher _banner;
-    private readonly PromoPopupDismisser _promoPopup;
 
     public MainQuestAutomation(AutomationConfig config, Action<string> log)
     {
@@ -73,7 +72,6 @@ public sealed class MainQuestAutomation
         _rematch = TemplateAssets.Load("main-quest-rematch.png");
         _toHome = TemplateAssets.Load("main-quest-to-home.png");
         _banner = TemplateAssets.Load("main-quest-banner.png");
-        _promoPopup = new PromoPopupDismisser(config, _screen, log);
     }
 
     public async Task RunOnceAsync(CancellationToken cancellationToken)
@@ -115,15 +113,6 @@ public sealed class MainQuestAutomation
         {
             cancellationToken.ThrowIfCancellationRequested();
             window = _screen.Refresh(window);
-
-            // SKIP 后 / 结算：偶发宣传弹窗 X。
-            if (ShouldCheckPromoPopup(phase) &&
-                await _promoPopup.TryAsync(window, cancellationToken))
-            {
-                missTimer.Restart();
-                await Task.Delay(250, cancellationToken);
-                continue;
-            }
 
             IReadOnlyList<(string Key, TemplateMatcher Matcher)> active = phase switch
             {
@@ -984,10 +973,6 @@ public sealed class MainQuestAutomation
 
         return false;
     }
-
-    /// <summary>SKIP 后下一步、结算阶段偶发宣传 X。</summary>
-    private static bool ShouldCheckPromoPopup(Phase phase) =>
-        phase is Phase.Battle or Phase.Next or Phase.Sortie;
 
     private static bool TryHit(
         IReadOnlyDictionary<string, TemplateProbeResult> probes, string key, out TemplateProbeResult probe) =>

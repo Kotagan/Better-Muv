@@ -217,13 +217,14 @@ public sealed class AutomationConfig
     public ConfigPoint DailyShopConfirmClick { get; set; } = new(1129, 935);
     // 4K (1944,1874)
     public ConfigPoint DailyShopDoneClick { get; set; } = new(972, 937);
-    /// <summary>每日商店「100%OFF」搜索区（1080p）。</summary>
-    public ConfigPoint DailyShopFreeOffTopLeft { get; set; } = new(300, 600);
-    public ConfigSize DailyShopFreeOffSize { get; set; } = new(280, 80);
+    /// <summary>每日商店「100%OFF」搜索区（1080p；首列折扣条一带，略扩容）。</summary>
+    public ConfigPoint DailyShopFreeOffTopLeft { get; set; } = new(280, 580);
+    public ConfigSize DailyShopFreeOffSize { get; set; } = new(320, 120);
+    /// <summary>零元商品点击兜底（1080p）；优先点「100%OFF」匹配中心下方。</summary>
     public ConfigPoint DailyShopFreeItemClick { get; set; } = new(413, 698);
-    /// <summary>零元购弹窗「交換」按钮搜索区（1080p）。</summary>
-    public ConfigPoint DailyShopExchangeTopLeft { get; set; } = new(1050, 920);
-    public ConfigSize DailyShopExchangeSize { get; set; } = new(240, 140);
+    /// <summary>零元购弹窗粉钮「交換」搜索区（1080p；确认弹窗右下）。</summary>
+    public ConfigPoint DailyShopExchangeTopLeft { get; set; } = new(1000, 900);
+    public ConfigSize DailyShopExchangeSize { get; set; } = new(340, 140);
     public ConfigPoint DailyShopOkTopLeft { get; set; } = new(800, 900);
     public ConfigSize DailyShopOkSize { get; set; } = new(400, 160);
     public ConfigPoint DailyShopTicketTopLeft { get; set; } = new(200, 750);
@@ -329,7 +330,7 @@ public sealed class AutomationConfig
     public ConfigSize MiningBoostExecuteSize { get; set; } = new(360, 140);
     public ConfigPoint MiningOkTopLeft { get; set; } = new(700, 820);
     public ConfigSize MiningOkSize { get; set; } = new(520, 200);
-    /// <summary>每日收菜上次完成日（每天 5:00 刷新）。</summary>
+    /// <summary>已废弃：收菜可随时进行，不再按日限次。保留字段仅兼容旧配置。</summary>
     public string? LastDailyHarvestDay { get; set; }
     /// <summary>每日免费加速上次用完日（每天 5:00 刷新）。</summary>
     public string? LastDailyFreeBoostDay { get; set; }

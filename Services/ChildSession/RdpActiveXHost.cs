@@ -283,9 +283,13 @@ internal sealed class RdpActiveXHost : WinForms.AxHost
     {
         base.CreateSink();
 
+        object? ocx = GetOcx();
+        if (ocx is null)
+            throw new InvalidOperationException("RDP ActiveX 尚未创建，无法订阅事件。");
+
         _eventSink = new RdpEventSink(this);
         _eventCookie = new ConnectionPointCookie(
-            GetOcx(),
+            ocx,
             _eventSink,
             typeof(IMsTscAxEvents));
     }

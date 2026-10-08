@@ -26,8 +26,8 @@ internal static class FlowCatalog
                 "未命中 → QuestFromHomeEntry → SecondClick",
                 "难度 OCR（失败仍点探索準備）→ 探索",
                 "循环：next > craft > battle > rest > event > partner > settlement > treasure > route",
-                "合成关：识别クラフト标题 → 点クラフト終了离开（暂不自动配方）",
-                "结算商店 SettlementShopRunner；宣传弹窗 PromoPopupDismisser"
+                "合成关：识别クラフト标题 → 点クラフト終了 → 确认弹窗 OK（暂不自动配方）",
+                "结算商店 SettlementShopRunner；宣传弹窗仅失败恢复时清（TaskFailureHandler）"
             ]),
             Flow("mainQuest", "自动主线", "Core/MainQuestAutomation.cs", "mainquest",
             [
@@ -36,7 +36,7 @@ internal static class FlowCatalog
                 "Start: 双击 BeginStageClick（开始/情景同点）",
                 "AwaitBranch: scenarioMenu→Scenario；skip→Next（战斗）",
                 "Scenario: 菜单→加速；加速后 next 优先；箭头卡住>15s 再点选项",
-                "Battle/Next: SKIP / 下一步；偶发宣传 X",
+                "Battle/Next: SKIP / 下一步",
                 "再戦 rematch / ホームへ toHome 结束一关"
             ]),
             Flow("hardMainQuest", "困难主线", "Core/HardMainQuestAutomation.cs", "hard",
@@ -82,8 +82,8 @@ internal static class FlowCatalog
             Flow("dailyHarvest", "每日收菜", "Core/DailyHarvestAutomation.cs", null,
             [
                 "HudHomeReturn → 主页采矿小人 → 採掘",
-                "识别「受取」→ 点击 → OK；无钮视为已收",
-                "每天 5:00 刷新"
+                "识别「受取」→ 点击 → OK；无钮则跳过",
+                "可随时收取，不设每日时限"
             ]),
             Flow("dailyFreeBoost", "每日免费加速", "Core/DailyFreeBoostAutomation.cs", null,
             [

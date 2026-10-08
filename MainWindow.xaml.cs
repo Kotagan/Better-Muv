@@ -80,6 +80,8 @@ public partial class MainWindow : Window
         AppendLog("配置文件：" + _configPath);
         AppendLog("等待启动截图器。");
         App.AttachChildSessionLogger(AppendLog);
+        if (AppInstance.IsChildSession)
+            App.AttachChildSessionTaskHandler(HandleChildSessionTaskCommand);
         ContentRendered += MainWindow_ContentRendered;
     }
 
@@ -119,8 +121,8 @@ public partial class MainWindow : Window
             ChildSessionService? childService = App.SharedChildSessionService;
             if (childService is not null)
             {
-                AppendLog("已以管理员权限重启，正在打开桌面分身窗口。");
-                childService.ShowWindow();
+                AppendLog("已以管理员权限重启，正在自动启动桌面分身。");
+                await childService.ShowWindowAndStartAsync();
             }
         }
 
@@ -192,16 +194,49 @@ public partial class MainWindow : Window
 
     private async void CaptureStartButton_Click(object sender, RoutedEventArgs e)
     {
-        // 首页「启动一条龙」= 按任务列表开关与顺序串行执行（不再只开截图器）。
-        if (_activeTask == ActiveTask.Pipeline && (_runCancellation is not null || _isPaused))
+        // 首页「启动」：空闲时开一条龙；任一任务运行中则停止。
+        if (IsAnyTaskBusy())
         {
             StopButton_Click(sender, e);
             return;
         }
 
-        if (_runCancellation is not null || _isPaused)
-            return;
+        await StartPipelineFromUiAsync();
+    }
 
+    private bool IsAnyTaskBusy() =>
+        _activeTask != ActiveTask.None && (_runCancellation is not null || _isPaused);
+
+    /// <summary>分身观看窗经 Named Pipe 遥控本实例启动/停止任务。</summary>
+    internal string HandleChildSessionTaskCommand(string command)
+    {
+        if (string.Equals(command, ChildSessionTaskBridge.CmdStatus, StringComparison.OrdinalIgnoreCase))
+            return IsAnyTaskBusy() ? ChildSessionTaskBridge.ReplyBusy : ChildSessionTaskBridge.ReplyIdle;
+
+        if (string.Equals(command, ChildSessionTaskBridge.CmdStop, StringComparison.OrdinalIgnoreCase))
+        {
+            Dispatcher.Invoke(() => StopButton_Click(this, new RoutedEventArgs()));
+            return ChildSessionTaskBridge.ReplyOk;
+        }
+
+        if (string.Equals(command, ChildSessionTaskBridge.CmdStart, StringComparison.OrdinalIgnoreCase))
+        {
+            if (IsAnyTaskBusy())
+                return ChildSessionTaskBridge.ReplyBusy;
+
+            Dispatcher.InvokeAsync(async () =>
+            {
+                try { await StartPipelineFromUiAsync(); }
+                catch (Exception ex) { AppendLog("远程启动任务失败：" + ex.GetBaseException().Message); }
+            });
+            return ChildSessionTaskBridge.ReplyOk;
+        }
+
+        return "ERR unknown command";
+    }
+
+    private async Task StartPipelineFromUiAsync()
+    {
         SetPage(Page.Execute);
         OpenLogDrawer();
         PersistPipelineSelectionFromUi();
@@ -215,11 +250,15 @@ public partial class MainWindow : Window
 
     private void UpdateCaptureUi()
     {
-        bool pipelineBusy = _activeTask == ActiveTask.Pipeline && (_runCancellation is not null || _isPaused);
+        bool taskBusy = IsAnyTaskBusy();
         bool running = _captureSession.IsRunning;
-        CaptureStartButton.Content = pipelineBusy ? "■  停止" : "▷  启动";
+        CaptureStartButton.Content = taskBusy ? "■  停止" : "▷  启动";
+        CaptureStartButton.ToolTip = taskBusy
+            ? "停止当前任务（一条龙或单项任务）"
+            : "按任务页开关与顺序启动一条龙";
         CaptureStartButton.Background = new SolidColorBrush(Color.FromRgb(59, 66, 78));
-        MazeStatusText.Text = pipelineBusy ? "一条龙运行中。"
+        MazeStatusText.Text = taskBusy
+            ? (_activeTask == ActiveTask.Pipeline ? "一条龙运行中。" : "任务运行中。")
             : running ? "截图器已就绪。" : "等待截图器启动。";
     }
 
@@ -1906,6 +1945,9 @@ public partial class MainWindow : Window
         DailyFreeBoostStatusText.Visibility = string.IsNullOrEmpty(DailyFreeBoostStatusText.Text)
             ? Visibility.Collapsed
             : Visibility.Visible;
+
+        // 单项任务启动后，首页「启动」同步变为「停止」。
+        UpdateCaptureUi();
     }
 
     private async Task CheckForUpdatesOnStartupAsync()
@@ -2478,7 +2520,7 @@ public partial class MainWindow : Window
         catch (Exception exception) { LocatorResultText.Text = "定位失败：" + exception.Message; }
     }
 
-    private void OpenCloneButton_Click(object sender, RoutedEventArgs e)
+    private async void OpenCloneButton_Click(object sender, RoutedEventArgs e)
     {
         if (!AppInstance.IsRoot)
         {
@@ -2495,7 +2537,8 @@ public partial class MainWindow : Window
             return;
         }
 
-        service.ShowWindow();
+        AppendLog("正在启动桌面分身…");
+        await service.ShowWindowAndStartAsync();
     }
 
     private void WindowFrame_SizeChanged(object sender, SizeChangedEventArgs e)
@@ -2515,19 +2558,36 @@ public partial class MainWindow : Window
     }
     private void MinimizeButton_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
     private void CloseButton_Click(object sender, RoutedEventArgs e) => Close();
+    /// <summary>分身已拉起并主动交接时，允许关掉主界面（只留分身观看窗）。</summary>
+    internal bool AllowCloseWhileChildSessionActive { get; set; }
+
     private void Window_Closing(object? sender, CancelEventArgs e)
     {
         if (AppInstance.IsRoot &&
-            App.SharedChildSessionService?.HasActiveChildSession() == true)
+            App.SharedChildSessionService?.HasActiveChildSession() == true &&
+            !AllowCloseWhileChildSessionActive)
         {
-            e.Cancel = true;
-            MessageBox.Show(
-                this,
-                "桌面分身仍在运行，请先关闭桌面分身，再关闭主窗口。",
-                "桌面分身未关闭",
-                MessageBoxButton.OK,
-                MessageBoxImage.Warning);
-            return;
+            bool childViewerOpen = false;
+            foreach (Window w in Application.Current.Windows)
+            {
+                if (w is ChildSessionWindow { IsLoaded: true })
+                {
+                    childViewerOpen = true;
+                    break;
+                }
+            }
+
+            if (!childViewerOpen)
+            {
+                e.Cancel = true;
+                MessageBox.Show(
+                    this,
+                    "桌面分身仍在运行，请先关闭桌面分身，再关闭主窗口。",
+                    "桌面分身未关闭",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
         }
 
         PersistMazeSettings(quiet: true);

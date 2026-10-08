@@ -45,6 +45,12 @@
                          CaretBrush="#F5F7FA"
                          KeyDown="PasswordBox_KeyDown" />
 
+            <CheckBox x:Name="RememberPasswordCheckBox"
+                      Content="记住密码（本机加密保存，下次自动填写）"
+                      IsChecked="True"
+                      Margin="0,0,0,10"
+                      Foreground="#D5DCE5" />
+
             <Button x:Name="ToggleSetPasswordButton"
                     Content="没有密码 / 只用 PIN？点此设置新密码"
                     HorizontalAlignment="Left"
@@ -89,7 +95,7 @@
                        Foreground="#8B949E"
                        FontSize="12"
                        Margin="0,4,0,18"
-                       Text="密码仅用于本机桌面分身登录，不会上传。" />
+                       Text="密码仅保存在本机（Windows DPAPI 加密），不会上传。" />
 
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                 <Button Content="取消"

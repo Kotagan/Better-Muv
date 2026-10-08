@@ -205,6 +205,22 @@ public static class ConfigStore
             config.DailyShopExchangeHallClick = new ConfigPoint(1420, 800);
             changed = true;
         }
+        // 100%OFF：贴新模板后略扩搜索区（旧 300,600/280×80 或更紧框仍可用，统一到当前默认）。
+        if (config.DailyShopFreeOffTopLeft is { X: 300, Y: 600 } or { X: 348, Y: 628 } ||
+            config.DailyShopFreeOffSize is { Width: 280, Height: 80 } or { Width: 140, Height: 36 })
+        {
+            config.DailyShopFreeOffTopLeft = new ConfigPoint(280, 580);
+            config.DailyShopFreeOffSize = new ConfigSize(320, 120);
+            changed = true;
+        }
+        // 「交換」粉钮：旧 ROI 偏下且偏窄，对不上确认弹窗右下按钮（失败日志最高约 0.12）。
+        if (config.DailyShopExchangeTopLeft is { X: 1050, Y: 920 } ||
+            config.DailyShopExchangeSize is { Width: 240, Height: 140 })
+        {
+            config.DailyShopExchangeTopLeft = new ConfigPoint(1000, 900);
+            config.DailyShopExchangeSize = new ConfigSize(340, 140);
+            changed = true;
+        }
         // 每日爬塔禁止持久化完成状态；清除所有旧版本遗留标记。
         if (!string.IsNullOrWhiteSpace(config.LastDailySimulationTowerDay) ||
             !string.IsNullOrWhiteSpace(config.LastDailySimulationTowerTenRunDay) ||

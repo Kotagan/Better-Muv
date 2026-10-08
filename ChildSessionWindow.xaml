@@ -22,10 +22,10 @@
                 <Ellipse x:Name="StatusDot" Width="9" Height="9" Fill="#6B7785" Margin="0,0,8,0" VerticalAlignment="Center"/>
                 <TextBlock Text="Better-Muv 桌面分身" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,16,0"/>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" DockPanel.Dock="Right">
-                    <Button x:Name="StartButton" Content="启动" Margin="0,0,6,0" Padding="12,4" Click="StartButton_Click"/>
+                    <Button x:Name="TaskButton" Content="启动任务" Margin="0,0,6,0" Padding="12,4"
+                            Click="TaskButton_Click" ToolTip="遥控分身内 Better-Muv：启动/停止一条龙"/>
                     <Button Content="隐藏" Margin="0,0,6,0" Padding="12,4" Click="HideButton_Click"/>
                     <Button Content="切换窗口" Margin="0,0,6,0" Padding="12,4" Click="SwitchWindowButton_Click"/>
-                    <Button x:Name="GameMouseButton" Content="游戏鼠标" Margin="0,0,6,0" Padding="12,4" Click="GameMouseButton_Click"/>
                     <Button x:Name="MuteButton" Content="静音" Margin="0,0,6,0" Padding="12,4" Click="MuteButton_Click"/>
                     <Button Content="控制中心" Padding="12,4" Click="ControlCenterButton_Click">
                         <Button.ContextMenu>
@@ -41,6 +41,10 @@
                                 <MenuItem Header="发送 Win+D" Click="ShowDesktop_Click"/>
                                 <MenuItem Header="发送 Win+Tab" Click="ShowTaskView_Click"/>
                                 <MenuItem Header="以管理员启动…" Click="LaunchExe_Click"/>
+                                <MenuItem Header="结束主桌面 Chrome/Edge（分身登录用）"
+                                          Click="UnlockBrowser_Click"/>
+                                <MenuItem Header="注销分身会话（下次需重新登录游戏）"
+                                          Click="LogoffSession_Click"/>
                                 <MenuItem x:Name="TopmostMenu" Header="置顶" IsCheckable="True" Click="Topmost_Click"/>
                             </ContextMenu>
                         </Button.ContextMenu>
@@ -55,9 +59,9 @@
                 <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="520">
                     <TextBlock Text="桌面分身" FontSize="28" FontWeight="SemiBold" HorizontalAlignment="Center"/>
                     <TextBlock Margin="0,12,0,0" TextWrapping="Wrap" Foreground="#AEB8C5" LineHeight="22"
-                               Text="点击「启动」创建独立 Windows Child Session，并在窗口内建立 RDP 连接。登录后会自动在分身内启动 Better-Muv。需要管理员权限与本机账户密码（不能只用 PIN）；请勿启用 RDP Wrapper。"/>
+                               Text="点击「启动」创建独立 Windows Child Session。需要管理员与账户密码（非 PIN）；勿用 RDP Wrapper。&#10;&#10;关闭窗口选「是」可保留分身与游戏登录；选「否」才会注销。Chrome 登录先关主桌面浏览器；Clash 主桌面开 TUN。"/>
                     <Button Content="启动并连接" Margin="0,22,0,0" HorizontalAlignment="Center" Padding="20,10"
-                            Click="StartButton_Click" Background="#3EA6F1" Foreground="White" BorderThickness="0"/>
+                            Click="ConnectButton_Click" Background="#3EA6F1" Foreground="White" BorderThickness="0"/>
                 </StackPanel>
             </Border>
             <Border x:Name="ClosingOverlay" Background="#CC151A21" Visibility="Collapsed">

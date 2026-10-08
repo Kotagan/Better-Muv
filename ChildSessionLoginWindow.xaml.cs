@@ -21,6 +21,14 @@ public partial class ChildSessionLoginWindow : Window
                 + "请点上方蓝色文字设置一个新密码。";
         }
 
+        ChildSessionLoginCredentials? saved = ChildSessionCredentialStore.TryLoadForCurrentUser();
+        if (saved is not null)
+        {
+            PasswordBox.Password = saved.Password;
+            RememberPasswordCheckBox.IsChecked = true;
+            HintText.Text = "已从本机读取上次保存的密码，可直接连接。";
+        }
+
         Loaded += (_, _) => PasswordBox.Focus();
     }
 
@@ -140,6 +148,11 @@ public partial class ChildSessionLoginWindow : Window
             domain = Environment.MachineName;
 
         Credentials = new ChildSessionLoginCredentials(userName, domain, password);
+        if (RememberPasswordCheckBox.IsChecked == true)
+            ChildSessionCredentialStore.Save(Credentials);
+        else
+            ChildSessionCredentialStore.Clear();
+
         DialogResult = true;
         Close();
     }

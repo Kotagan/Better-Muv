@@ -23,8 +23,6 @@ public sealed class ChildSessionService : IDisposable
     private const int ErrorTimeout = 1460;
 
     private readonly ChildSessionConfig _config;
-    private readonly RelativeMouseBridge _relativeMouse = new();
-    private bool _gameMouseModeEnabled;
     private readonly DispatcherTimer _statusTimer;
     private readonly SemaphoreSlim _launchSemaphore = new(1, 1);
     private readonly CancellationTokenSource _disposeCancellationTokenSource = new();
@@ -59,8 +57,6 @@ public sealed class ChildSessionService : IDisposable
     public uint? ChildSessionId { get; private set; }
 
     public bool SendSystemShortcutsToRemote { get; private set; } = true;
-
-    public bool IsGameMouseModeEnabled => _gameMouseModeEnabled;
 
     public bool TopmostEnabled => _config.TopmostEnabled;
 
@@ -106,7 +102,6 @@ public sealed class ChildSessionService : IDisposable
         _config = automationConfig.ChildSession ?? new ChildSessionConfig();
         automationConfig.ChildSession = _config;
         SendSystemShortcutsToRemote = _config.SendSystemShortcutsToRemote;
-        _gameMouseModeEnabled = _config.GameMouseModeEnabled;
         _statusTimer = new DispatcherTimer(DispatcherPriority.Background)
         {
             Interval = TimeSpan.FromMilliseconds(500)
@@ -144,20 +139,28 @@ public sealed class ChildSessionService : IDisposable
             Log("桌面分身警告：检测到 RDP Wrapper，未切换时极易出现错误 516");
         }
 
-        // 先清理残留 Child Session，避免上次失败会话导致断开原因 4。
-        await Task.Run(() =>
+        // 已有分身会话则复用（保留游戏登录）；仅在没有会话时才新建，避免每次登录。
+        uint? existingChildSessionId = await Task.Run(() =>
         {
             try
             {
-                _ = ChildSessionNativeMethods.TerminateChildSession(wait: true);
+                return ChildSessionNativeMethods.TryGetChildSessionId();
             }
             catch
             {
+                return null;
             }
         });
+        if (existingChildSessionId is not null)
+        {
+            Log($"桌面分身：复用已有会话 {existingChildSessionId.Value}（游戏登录状态会保留）");
+        }
 
         // 探测证实：TermService 卡住时会一直 Connecting 直到超时；管理员下重启一次即可 LoginComplete。
-        if (!_termServiceHealedThisProcess && Services.ElevationHelper.IsElevated())
+        // 仅在无已有会话时重启，避免打断正在挂机的分身。
+        if (existingChildSessionId is null
+            && !_termServiceHealedThisProcess
+            && Services.ElevationHelper.IsElevated())
         {
             _termServiceHealedThisProcess = true;
             Log("桌面分身：重启 TermService 以清除卡住的 Child Session 状态");
@@ -173,6 +176,9 @@ public sealed class ChildSessionService : IDisposable
         {
             return;
         }
+
+        // 分身登录会再次跑当前用户开机启动项；连接前临时禁用，登录完成后立刻还原。
+        await Task.Run(() => ChildSessionStartupSuppressor.Suppress(Log));
 
         var completionSource = _connectionAttemptCompletionSource;
         if (completionSource is null || completionSource.Task.IsCompleted)
@@ -192,6 +198,7 @@ public sealed class ChildSessionService : IDisposable
                 _initialConnectionRetriesRemaining = 0;
                 completionSource.TrySetResult(false);
                 _connectionAttemptCompletionSource = null;
+                try { ChildSessionStartupSuppressor.Restore(Log); } catch { /* ignore */ }
                 throw;
             }
         }
@@ -226,6 +233,16 @@ public sealed class ChildSessionService : IDisposable
         ThrowIfDisposed();
         ShowDesktopWindow(EnsureDesktopWindow());
         RefreshState();
+    }
+
+    /// <summary>打开分身窗口并立即开始连接（主页「桌面分身」入口）。</summary>
+    public async Task ShowWindowAndStartAsync()
+    {
+        ThrowIfDisposed();
+        ChildSessionWindow window = EnsureDesktopWindow();
+        ShowDesktopWindow(window);
+        RefreshState();
+        await window.StartSessionAsync();
     }
 
     public void HideWindow()
@@ -316,44 +333,47 @@ public sealed class ChildSessionService : IDisposable
             muted ? "桌面分身声音已关闭" : "桌面分身声音已开启");
     }
 
-    public void SetGameMouseModeEnabled(bool enabled)
-    {
-        ThrowIfDisposed();
-        _gameMouseModeEnabled = enabled;
-        _config.GameMouseModeEnabled = enabled;
-        PersistConfig();
-        if (enabled)
-            _relativeMouse.StartHost(this);
-        else
-            _relativeMouse.StopHost();
-        RefreshState(enabled
-            ? "已切换为游戏鼠标模式"
-            : "已切换为普通鼠标模式");
-    }
-
     public Task LaunchBetterMuvAsync()
     {
         ThrowIfDisposed();
         return LaunchBetterMuvCoreAsync(isAutomatic: false);
     }
 
-    public bool IsRelativeMouseForwardingAvailable()
+    public bool IsCursorOverRdpClient()
     {
-        return _desktopWindow?.IsVisible == true
-               && _desktopWindow.RdpHost.IsInputWindowFocused();
+        if (_desktopWindow?.IsVisible != true || _desktopWindow.RdpHost is not { IsHandleCreated: true } rdpHost)
+            return false;
+        if (rdpHost.ConnectedState != 1)
+            return false;
+
+        DrawingRectangle bounds = rdpHost.RectangleToScreen(rdpHost.ClientRectangle);
+        if (bounds.Width <= 0 || bounds.Height <= 0)
+            return false;
+
+        System.Drawing.Point pos = System.Windows.Forms.Control.MousePosition;
+        return bounds.Contains(pos);
     }
 
-    public bool TryGetRelativeMouseCaptureBounds(out DrawingRectangle bounds)
+    /// <summary>
+    /// 仅当鼠标在分身画面内时，把键盘交给 RDP；鼠标在外面则收回，避免按键误进分身。
+    /// </summary>
+    public void SyncKeyboardFocusToMouse()
     {
-        bounds = DrawingRectangle.Empty;
-        if (!IsRelativeMouseForwardingAvailable() || _desktopWindow is null)
-        {
-            return false;
-        }
+        if (_disposed || _desktopWindow is null || !_desktopWindow.IsVisible || !_desktopWindow.IsActive)
+            return;
+        if (_desktopWindow.RdpHost is not { IsHandleCreated: true } rdpHost || rdpHost.ConnectedState != 1)
+            return;
 
-        var rdpHost = _desktopWindow.RdpHost;
-        bounds = rdpHost.RectangleToScreen(rdpHost.ClientRectangle);
-        return bounds.Width > 0 && bounds.Height > 0;
+        var helper = new System.Windows.Interop.WindowInteropHelper(_desktopWindow);
+        if (IsCursorOverRdpClient())
+        {
+            if (!rdpHost.IsInputWindowFocused())
+                _ = ChildSessionNativeMethods.TryFocusRdpInputWindow(rdpHost.Handle);
+        }
+        else if (rdpHost.IsInputWindowFocused())
+        {
+            ChildSessionNativeMethods.ReleaseRdpInputFocus(helper.Handle);
+        }
     }
 
     public async Task LaunchExecutableAsync(string executablePath)
@@ -375,6 +395,34 @@ public sealed class ChildSessionService : IDisposable
         }
     }
 
+    /// <summary>只断开 RDP 画面并隐藏窗口，保留 Child Session 与其中游戏登录。</summary>
+    public async Task DisconnectAndHideAsync()
+    {
+        ThrowIfDisposed();
+        _autoLaunchBetterMuvPending = false;
+        _initialConnectionRetriesRemaining = 0;
+        _pendingRdpSettingChanges = RdpSettingChange.None;
+        _rdpSettingsReconnectRetriesRemaining = 0;
+        _connectionAttemptCompletionSource?.TrySetResult(false);
+
+        await _launchSemaphore.WaitAsync();
+        try
+        {
+            TryDisconnectRdpHost();
+            _desktopWindow?.Hide();
+            await Task.Run(() => ChildSessionStartupSuppressor.Restore(Log));
+            uint? sessionId = ChildSessionNativeMethods.TryGetChildSessionId();
+            RefreshState(sessionId is null
+                ? "已断开画面；当前没有可复用的分身会话"
+                : $"已断开画面，分身会话 {sessionId.Value} 仍在运行（游戏登录保留）");
+        }
+        finally
+        {
+            _launchSemaphore.Release();
+        }
+    }
+
+    /// <summary>注销 Child Session（最多等待约 15 秒）。调用方负责随后关闭窗口。</summary>
     public async Task LogoffAndHideAsync()
     {
         ThrowIfDisposed();
@@ -388,14 +436,30 @@ public sealed class ChildSessionService : IDisposable
         try
         {
             TryDisconnectRdpHost();
-            RefreshState("正在断开 RDP 并注销 Better-Muv 桌面分身");
+            RefreshState("正在断开 RDP 并注销 Better-Muv 桌面分身…");
 
-            var terminatedSessionId = await Task.Run(ChildSessionNativeMethods.TerminateChildSession);
-            _desktopWindow?.Hide();
-            await Task.Run(() => RdpWrapperSwitch.RestoreIfNeeded(Log));
-            RefreshState(terminatedSessionId is null
-                ? "当前没有桌面分身会话，桌面分身窗口已隐藏"
-                : $"桌面分身会话 {terminatedSessionId.Value} 已注销，桌面分身窗口已隐藏");
+            // wait:false，避免 WTSLogoffSession 永久卡住导致窗口关不掉。
+            uint? terminatedSessionId = await Task.Run(() =>
+                ChildSessionNativeMethods.TerminateChildSession(wait: false));
+
+            for (int i = 0; i < 30; i++)
+            {
+                if (ChildSessionNativeMethods.TryGetChildSessionId() is null)
+                    break;
+                await Task.Delay(500);
+            }
+
+            await Task.Run(() =>
+            {
+                ChildSessionStartupSuppressor.Restore(Log);
+                RdpWrapperSwitch.RestoreIfNeeded(Log);
+            });
+            ChildSessionId = ChildSessionNativeMethods.TryGetChildSessionId();
+            RefreshState(ChildSessionId is null
+                ? (terminatedSessionId is null
+                    ? "当前没有桌面分身会话"
+                    : $"桌面分身会话 {terminatedSessionId.Value} 已注销")
+                : $"已请求注销分身会话，仍可能残留（会话 {ChildSessionId.Value}）");
         }
         finally
         {
@@ -480,6 +544,14 @@ public sealed class ChildSessionService : IDisposable
             }
             try
             {
+                ChildSessionStartupSuppressor.Restore(Log);
+            }
+            catch
+            {
+                // 退出时还原启动项失败不阻止关闭
+            }
+            try
+            {
                 RdpWrapperSwitch.RestoreIfNeeded(Log);
             }
             catch
@@ -495,7 +567,6 @@ public sealed class ChildSessionService : IDisposable
             _desktopWindow = null;
         }
 
-        _relativeMouse.Dispose();
         _launchSemaphore.Dispose();
         _disposeCancellationTokenSource.Dispose();
     }
@@ -663,6 +734,9 @@ public sealed class ChildSessionService : IDisposable
         _connectionRetryInProgress = false;
         _connectionAttemptCompletionSource?.TrySetResult(true);
 
+        // 登录已完成，Explorer 已按抑制策略跳过启动项；立刻还原父会话的启动配置。
+        _ = Task.Run(() => ChildSessionStartupSuppressor.Restore(Log));
+
         var completedSettingChanges = _pendingRdpSettingChanges;
         if (completedSettingChanges != RdpSettingChange.None)
         {
@@ -686,29 +760,66 @@ public sealed class ChildSessionService : IDisposable
             RefreshState("桌面分身登录初始化完成");
         }
 
-        if (!_autoLaunchBetterMuvPending)
+        if (_autoLaunchBetterMuvPending)
         {
-            return;
+            _autoLaunchBetterMuvPending = false;
+            await Task.Yield();
+            if (_disposed)
+            {
+                return;
+            }
+
+            try
+            {
+                RefreshState();
+                if (ConnectedState == 1 && ChildSessionId is not null)
+                {
+                    await LaunchBetterMuvCoreAsync(isAutomatic: true);
+                }
+            }
+            catch (Exception exception) when (IsExpectedChildSessionException(exception))
+            {
+                RefreshState($"自动启动 Better-Muv 失败：{exception.GetBaseException().Message}");
+            }
         }
 
-        _autoLaunchBetterMuvPending = false;
-        await Task.Yield();
-        if (_disposed)
-        {
+        // 分身就绪后关掉主界面，只留分身观看窗 + 分身内的 Better-Muv。
+        TryCloseRootMainWindow();
+    }
+
+    private void TryCloseRootMainWindow()
+    {
+        if (!AppInstance.IsRoot || _disposed)
             return;
-        }
 
         try
         {
-            RefreshState();
-            if (ConnectedState == 1 && ChildSessionId is not null)
+            System.Windows.Application.Current?.Dispatcher.InvokeAsync(() =>
             {
-                await LaunchBetterMuvCoreAsync(isAutomatic: true);
-            }
+                try
+                {
+                    if (_desktopWindow is not null)
+                        System.Windows.Application.Current.MainWindow = _desktopWindow;
+
+                    foreach (System.Windows.Window window in System.Windows.Application.Current.Windows)
+                    {
+                        if (window is global::BetterMuv.MainWindow main)
+                        {
+                            main.AllowCloseWhileChildSessionActive = true;
+                            main.Close();
+                            break;
+                        }
+                    }
+                }
+                catch
+                {
+                    // 关主窗失败不影响分身
+                }
+            });
         }
-        catch (Exception exception) when (IsExpectedChildSessionException(exception))
+        catch
         {
-            RefreshState($"自动启动 Better-Muv 失败：{exception.GetBaseException().Message}");
+            // ignore
         }
     }
 
@@ -825,6 +936,7 @@ public sealed class ChildSessionService : IDisposable
         _autoLaunchBetterMuvPending = false;
         _initialConnectionRetriesRemaining = 0;
         _connectionAttemptCompletionSource?.TrySetResult(false);
+        _ = Task.Run(() => ChildSessionStartupSuppressor.Restore(Log));
         string oneLine = e.Message.Replace("\r\n", " | ").Replace('\n', ' ');
         Log($"桌面分身连接失败：code={e.ErrorCode} ext={e.ExtendedErrorCode?.ToString() ?? "-"} | {oneLine}");
         RefreshState(e.Message);

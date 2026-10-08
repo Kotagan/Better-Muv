@@ -34,7 +34,6 @@ public sealed class HardMainQuestAutomation
     private readonly TemplateMatcher _hardMark;
     private readonly TemplateMatcher _scenarioOk;
     private readonly TemplateMatcher _banner;
-    private readonly PromoPopupDismisser _promoPopup;
 
     public HardMainQuestAutomation(AutomationConfig config, Action<string> log)
     {
@@ -52,7 +51,6 @@ public sealed class HardMainQuestAutomation
         _hardMark = TemplateAssets.Load("hard-quest-battle.png");
         _scenarioOk = TemplateAssets.Load("main-quest-scenario-ok.png");
         _banner = TemplateAssets.Load("main-quest-banner.png");
-        _promoPopup = new PromoPopupDismisser(config, _screen, log);
     }
 
     public async Task RunOnceAsync(CancellationToken cancellationToken)
@@ -92,14 +90,6 @@ public sealed class HardMainQuestAutomation
         {
             cancellationToken.ThrowIfCancellationRequested();
             window = _screen.Refresh(window);
-
-            if (ShouldCheckPromoPopup(phase) &&
-                await _promoPopup.TryAsync(window, cancellationToken))
-            {
-                missTimer.Restart();
-                await Task.Delay(250, cancellationToken);
-                continue;
-            }
 
             IReadOnlyList<(string Key, TemplateMatcher Matcher)> active = phase switch
             {
@@ -451,10 +441,6 @@ public sealed class HardMainQuestAutomation
 
         return false;
     }
-
-    /// <summary>宣传弹窗只在战斗结束后挡结算，主页与进关前不扫。</summary>
-    private static bool ShouldCheckPromoPopup(Phase phase) =>
-        phase is Phase.Battle or Phase.Next;
 
     private static bool TryHit(
         IReadOnlyDictionary<string, TemplateProbeResult> probes, string key, out TemplateProbeResult probe)

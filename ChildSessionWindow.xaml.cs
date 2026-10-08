@@ -1,6 +1,8 @@
 using System.ComponentModel;
 using System.Windows;
+using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using BetterMuv.Core;
 using BetterMuv.Services;
 using BetterMuv.Services.ChildSession;
@@ -13,6 +15,10 @@ public partial class ChildSessionWindow : Window
 {
     private readonly ChildSessionService _service;
     private readonly RdpActiveXHost _rdpHost = new();
+    private readonly DispatcherTimer _keyboardFocusTimer;
+    private readonly DispatcherTimer _taskStatusTimer;
+    private bool _childTaskBusy;
+    private bool _taskCommandInFlight;
     private bool _smallWindow;
     private bool _closingInProgress;
     private const double NormalWidth = 1280;
@@ -33,13 +39,48 @@ public partial class ChildSessionWindow : Window
         TopmostMenu.IsChecked = _service.TopmostEnabled;
         KeepAspectMenu.IsChecked = _service.KeepAspectRatio;
         SystemShortcutsMenu.IsChecked = _service.SendSystemShortcutsToRemote;
-        UpdateGameMouseButton();
         UpdateMuteButton();
         ApplySavedPosition(small: false);
         _service.StateChanged += (_, _) => Dispatcher.Invoke(RefreshUi);
         _service.ConnectionFailed += (_, e) => Dispatcher.Invoke(() =>
-            MessageBox.Show(this, e.Message, "桌面分身连接失败", MessageBoxButton.OK, MessageBoxImage.Warning));
+        {
+            if (IsLikelyCredentialFailure(e))
+                ChildSessionCredentialStore.Clear();
+            MessageBox.Show(this, e.Message, "桌面分身连接失败", MessageBoxButton.OK, MessageBoxImage.Warning);
+        });
+
+        _keyboardFocusTimer = new DispatcherTimer(DispatcherPriority.Input)
+        {
+            Interval = TimeSpan.FromMilliseconds(50)
+        };
+        _keyboardFocusTimer.Tick += (_, _) => _service.SyncKeyboardFocusToMouse();
+        _taskStatusTimer = new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromSeconds(1.5)
+        };
+        _taskStatusTimer.Tick += async (_, _) => await RefreshTaskButtonAsync();
+        Loaded += (_, _) =>
+        {
+            _keyboardFocusTimer.Start();
+            _taskStatusTimer.Start();
+        };
+        Closed += (_, _) =>
+        {
+            _keyboardFocusTimer.Stop();
+            _taskStatusTimer.Stop();
+        };
         RefreshUi();
+    }
+
+    private static bool IsLikelyCredentialFailure(ChildSessionConnectionFailedEventArgs e)
+    {
+        if (e.ErrorCode is 0 or 264)
+            return true;
+        string msg = e.Message;
+        return msg.Contains("凭据", StringComparison.Ordinal)
+            || msg.Contains("密码", StringComparison.Ordinal)
+            || msg.Contains("credential", StringComparison.OrdinalIgnoreCase)
+            || msg.Contains("logon failure", StringComparison.OrdinalIgnoreCase);
     }
 
     private void RefreshUi()
@@ -55,12 +96,112 @@ public partial class ChildSessionWindow : Window
             ? Visibility.Visible
             : Visibility.Collapsed;
         Topmost = _service.TopmostEnabled;
-        UpdateGameMouseButton();
         UpdateMuteButton();
+        UpdateTaskButtonContent();
+        _ = RefreshTaskButtonAsync();
     }
 
-    private async void StartButton_Click(object sender, RoutedEventArgs e)
+    private async void ConnectButton_Click(object sender, RoutedEventArgs e)
     {
+        bool forcePrompt = Keyboard.IsKeyDown(Key.LeftCtrl) || Keyboard.IsKeyDown(Key.RightCtrl);
+        await StartSessionAsync(forceCredentialPrompt: forcePrompt);
+    }
+
+    private async void TaskButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_service.ConnectedState != 1)
+        {
+            MessageBox.Show(this, "请先连接桌面分身，并等待分身内 Better-Muv 启动完成。",
+                "启动任务", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        if (_taskCommandInFlight)
+            return;
+
+        _taskCommandInFlight = true;
+        TaskButton.IsEnabled = false;
+        try
+        {
+            bool? busy = _childTaskBusy;
+            if (busy != true)
+            {
+                // 再查一次，避免状态过期
+                busy = await ChildSessionTaskBridge.TryQueryBusyAsync() ?? false;
+            }
+
+            string cmd = busy == true
+                ? ChildSessionTaskBridge.CmdStop
+                : ChildSessionTaskBridge.CmdStart;
+            string reply = await ChildSessionTaskBridge.SendAsync(cmd);
+            if (reply.StartsWith("ERR", StringComparison.OrdinalIgnoreCase))
+            {
+                MessageBox.Show(this,
+                    "无法控制分身内 Better-Muv：\n" + reply
+                    + "\n\n请确认分身内已自动启动 Better-Muv。",
+                    "任务控制",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
+
+            _childTaskBusy = string.Equals(cmd, ChildSessionTaskBridge.CmdStart, StringComparison.Ordinal)
+                || string.Equals(reply, ChildSessionTaskBridge.ReplyBusy, StringComparison.OrdinalIgnoreCase);
+            if (string.Equals(cmd, ChildSessionTaskBridge.CmdStop, StringComparison.Ordinal))
+                _childTaskBusy = false;
+            UpdateTaskButtonContent();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this,
+                "连不上分身内 Better-Muv（可能还在启动）：\n" + ex.GetBaseException().Message,
+                "任务控制",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
+        finally
+        {
+            _taskCommandInFlight = false;
+            TaskButton.IsEnabled = true;
+            await RefreshTaskButtonAsync();
+        }
+    }
+
+    private async Task RefreshTaskButtonAsync()
+    {
+        if (_taskCommandInFlight || _service.ConnectedState != 1)
+        {
+            UpdateTaskButtonContent();
+            return;
+        }
+
+        bool? busy = await ChildSessionTaskBridge.TryQueryBusyAsync();
+        if (busy is not null)
+            _childTaskBusy = busy.Value;
+        UpdateTaskButtonContent();
+    }
+
+    private void UpdateTaskButtonContent()
+    {
+        bool connected = _service.ConnectedState == 1;
+        TaskButton.IsEnabled = connected && !_taskCommandInFlight;
+        TaskButton.Content = _childTaskBusy ? "停止任务" : "启动任务";
+        TaskButton.ToolTip = !connected
+            ? "分身未连接"
+            : _childTaskBusy
+                ? "停止分身内 Better-Muv 当前任务"
+                : "在分身内 Better-Muv 启动一条龙";
+    }
+
+    /// <summary>打开分身窗口后自动调用：处理 Wrapper / 凭据并连接。</summary>
+    internal async Task StartSessionAsync(bool forceCredentialPrompt = false)
+    {
+        if (_service.ConnectedState == 1)
+        {
+            RefreshUi();
+            return;
+        }
+
         try
         {
             bool disableWrapper = false;
@@ -73,7 +214,7 @@ public partial class ChildSessionWindow : Window
                         "检测到本机正在使用 RDP Wrapper（rdpwrap.dll）。\n\n"
                         + "它与桌面分身冲突（常见错误 516），临时切回系统原生 RDP 需要管理员权限。\n\n"
                         + "是否以管理员权限重启 Better-Muv？\n"
-                        + "（重启后会自动打开桌面分身窗口，再点「启动」即可）",
+                        + "（重启后会自动打开并启动桌面分身）",
                         "需要管理员权限",
                         MessageBoxButton.YesNo,
                         MessageBoxImage.Question);
@@ -103,14 +244,22 @@ public partial class ChildSessionWindow : Window
                 disableWrapper = true;
             }
 
-            var loginWindow = new ChildSessionLoginWindow { Owner = this };
-            if (loginWindow.ShowDialog() != true || loginWindow.Credentials is null)
-                return;
+            // 已记住密码则直接用；按住 Ctrl 点启动可强制重新输入。
+            ChildSessionLoginCredentials? credentials = forceCredentialPrompt
+                ? null
+                : ChildSessionCredentialStore.TryLoadForCurrentUser();
+            if (credentials is null)
+            {
+                var loginWindow = new ChildSessionLoginWindow { Owner = this };
+                if (loginWindow.ShowDialog() != true || loginWindow.Credentials is null)
+                    return;
+                credentials = loginWindow.Credentials;
+            }
 
-            StartButton.IsEnabled = false;
+            TaskButton.IsEnabled = false;
             await _service.StartAsync(
                 temporarilyDisableRdpWrapper: disableWrapper,
-                loginCredentials: loginWindow.Credentials);
+                loginCredentials: credentials);
         }
         catch (Exception ex)
         {
@@ -121,7 +270,7 @@ public partial class ChildSessionWindow : Window
         }
         finally
         {
-            StartButton.IsEnabled = true;
+            RefreshUi();
         }
     }
 
@@ -156,7 +305,11 @@ public partial class ChildSessionWindow : Window
         return true;
     }
 
-    private void HideButton_Click(object sender, RoutedEventArgs e) => _service.HideWindow();
+    private void HideButton_Click(object sender, RoutedEventArgs e)
+    {
+        _service.HideWindow();
+        App.RestoreRootMainWindow();
+    }
 
     private void SwitchWindowButton_Click(object sender, RoutedEventArgs e)
     {
@@ -165,12 +318,6 @@ public partial class ChildSessionWindow : Window
         {
             MessageBox.Show(this, ex.Message, "桌面分身", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
-    }
-
-    private void GameMouseButton_Click(object sender, RoutedEventArgs e)
-    {
-        _service.SetGameMouseModeEnabled(!_service.IsGameMouseModeEnabled);
-        UpdateGameMouseButton();
     }
 
     private void MuteButton_Click(object sender, RoutedEventArgs e)
@@ -183,6 +330,37 @@ public partial class ChildSessionWindow : Window
     {
         ControlMenu.PlacementTarget = sender as FrameworkElement;
         ControlMenu.IsOpen = true;
+    }
+
+    private void UnlockBrowser_Click(object sender, RoutedEventArgs e)
+    {
+        MessageBoxResult confirm = MessageBox.Show(
+            this,
+            "将结束主桌面上的 Chrome / Edge 进程，以便分身里的登录页能打开浏览器。\n\n"
+            + "未保存的网页会丢失。是否继续？",
+            "结束主桌面浏览器",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+        if (confirm != MessageBoxResult.Yes)
+            return;
+
+        try
+        {
+            int killed = ChildSessionBrowserUnlock.TerminateBrowsersInCurrentSession();
+            MessageBox.Show(
+                this,
+                killed == 0
+                    ? "主桌面未发现 Chrome / Edge 进程。若仍拉不起，请检查托盘里是否还有后台运行，或改用独立用户数据目录启动 Chrome。"
+                    : $"已结束主桌面约 {killed} 个浏览器进程。请回到分身里再次点击登录。",
+                "结束主桌面浏览器",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, ex.GetBaseException().Message, "结束浏览器失败",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
     }
 
     private async void LaunchApp_Click(object sender, RoutedEventArgs e)
@@ -267,17 +445,49 @@ public partial class ChildSessionWindow : Window
 
         if (_service.ChildSessionId is null && _service.ConnectedState == 0)
         {
-            Hide();
+            SaveCurrentPosition();
+            App.RestoreRootMainWindow();
+            AllowClose = true;
+            Close();
             return;
         }
 
+        // 是=保留会话仅隐藏；否=注销后再关闭窗口；取消=不关。
         MessageBoxResult choice = MessageBox.Show(
             this,
-            "关闭会断开 RDP 并注销桌面分身，其中所有正在运行的软件都会被关闭，未保存的数据会丢失。是否继续？",
+            "关闭桌面分身窗口：\n\n"
+            + "「是」：只断开画面并隐藏窗口，分身会话和游戏继续跑（登录保留）\n"
+            + "「否」：先注销分身，完成后再关闭窗口（下次需重新登录游戏）\n"
+            + "「取消」：不关闭",
             "关闭 Better-Muv 桌面分身",
+            MessageBoxButton.YesNoCancel,
+            MessageBoxImage.Question);
+        if (choice == MessageBoxResult.Cancel)
+            return;
+
+        await FinishCloseWindowAsync(logoff: choice == MessageBoxResult.No);
+    }
+
+    private async void LogoffSession_Click(object sender, RoutedEventArgs e)
+    {
+        MessageBoxResult confirm = MessageBox.Show(
+            this,
+            "将注销桌面分身会话，其中游戏等都会关闭，下次进入需重新登录。\n\n注销完成后会关闭本窗口。是否继续？",
+            "注销分身会话",
             MessageBoxButton.YesNo,
             MessageBoxImage.Warning);
-        if (choice != MessageBoxResult.Yes)
+        if (confirm != MessageBoxResult.Yes)
+            return;
+
+        await FinishCloseWindowAsync(logoff: true);
+    }
+
+    /// <summary>
+    /// 注销路径：等会话注销完成后再真正 Close；仅断开则 Hide 以便下次复用。
+    /// </summary>
+    private async Task FinishCloseWindowAsync(bool logoff)
+    {
+        if (_closingInProgress)
             return;
 
         _closingInProgress = true;
@@ -286,18 +496,25 @@ public partial class ChildSessionWindow : Window
         SaveCurrentPosition();
         try
         {
-            await _service.LogoffAndHideAsync();
+            if (logoff)
+            {
+                await _service.LogoffAndHideAsync();
+                App.RestoreRootMainWindow();
+                AllowClose = true;
+                Close();
+            }
+            else
+            {
+                await _service.DisconnectAndHideAsync();
+                App.RestoreRootMainWindow();
+            }
         }
         finally
         {
             _closingInProgress = false;
-            ClosingOverlay.Visibility = Visibility.Collapsed;
+            if (!AllowClose)
+                ClosingOverlay.Visibility = Visibility.Collapsed;
         }
-    }
-
-    private void UpdateGameMouseButton()
-    {
-        GameMouseButton.Content = _service.IsGameMouseModeEnabled ? "普通鼠标" : "游戏鼠标";
     }
 
     private void UpdateMuteButton()

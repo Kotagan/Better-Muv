@@ -8,12 +8,13 @@ namespace BetterMuv.Core;
 /// </summary>
 public sealed class DailyShopAutomation
 {
-    private const int AfterHomeDelayMs = 700;
-    private const int AfterHallOpenDelayMs = 1000;
-    private const int AfterItemClickDelayMs = 800;
-    private const int AfterScrollDelayMs = 600;
-    private const int AfterOkDelayMs = 700;
-    private const int RecognizeTimeoutMs = 10000;
+    private const int AfterHomeDelayMs = 400;
+    private const int AfterHallOpenDelayMs = 250;
+    private const int AfterItemClickDelayMs = 450;
+    private const int AfterScrollDelayMs = 400;
+    private const int AfterOkDelayMs = 450;
+    private const int RecognizeTimeoutMs = 5000;
+    private const int ExchangeTimeoutMs = 4000;
     private const double OffThreshold = 0.75;
     private const double ExchangeThreshold = 0.70;
     private const double HallThreshold = 0.68;
@@ -23,7 +24,6 @@ public sealed class DailyShopAutomation
     private readonly AutomationConfig _config;
     private readonly ScreenAutomation _screen;
     private readonly Action<string> _log;
-    private readonly PromoPopupDismisser _promo;
     private readonly TemplateMatcher _hallMatcher;
     private readonly TemplateMatcher _hubExchangeMatcher;
     private readonly TemplateMatcher _offMatcher;
@@ -39,7 +39,6 @@ public sealed class DailyShopAutomation
         _config = config;
         _log = log;
         _screen = new ScreenAutomation(config, log);
-        _promo = new PromoPopupDismisser(config, _screen, log);
         _hallMatcher = TemplateAssets.Load("daily-shop-exchange-hall.png");
         _hubExchangeMatcher = TemplateAssets.Load("daily-shop-hub-exchange.png");
         _offMatcher = TemplateAssets.Load("daily-shop-100off.png");
@@ -86,12 +85,8 @@ public sealed class DailyShopAutomation
         if (!shopOpened)
             return TaskRunResult.Fail("未能进入商店");
 
-        // 若落地模板已确认在交換所，此处再认一次仅作补充点击（未命中则不点）。
+        // 落地已确认在交換所时跳过重复点击；仅未命中时补点一次。
         window = await ClickExchangeHallAsync(window, cancellationToken);
-        await Task.Delay(AfterHallOpenDelayMs, cancellationToken);
-        window = _screen.Refresh(window);
-        await _promo.DismissAllAsync(window, cancellationToken);
-        window = _screen.Refresh(window);
 
         // 1) 100%OFF → 交換 → OK；未识别则跳过，直接滚轮。
         window = await TryBuyFreeOffAsync(window, cancellationToken);
@@ -106,10 +101,8 @@ public sealed class DailyShopAutomation
             cancellationToken);
         await Task.Delay(AfterScrollDelayMs, cancellationToken);
         window = _screen.Refresh(window);
-        await _promo.DismissAllAsync(window, cancellationToken);
-        window = _screen.Refresh(window);
 
-        // 3) 左下角 2500 ×2；首次未识别则关弹窗再试一次，仍失败回主页结束。
+        // 3) 左下角 2500 ×2；首次未识别则直接失败（清弹窗交由失败处理）。
         ConfigPoint? ticketClick = null;
         for (int i = 1; i <= 2; i++)
         {
@@ -118,18 +111,7 @@ public sealed class DailyShopAutomation
                 await TryBuyTicket2500Async(window, ticketClick, cancellationToken);
             if (!bought)
             {
-                _log("每日商店：未识别到 2500，先关弹窗再试一次。");
-                await _promo.DismissAllAsync(window, cancellationToken);
-                window = _screen.Refresh(window);
-                (window, ticketClick, bought) =
-                    await TryBuyTicket2500Async(window, ticketClick, cancellationToken);
-            }
-
-            if (!bought)
-            {
-                _log("每日商店：未识别到 2500，清弹窗后返回主页并结束任务。");
-                await _promo.DismissAllAsync(window, cancellationToken);
-                window = _screen.Refresh(window);
+                _log("每日商店：未识别到 2500，返回主页并结束任务。");
                 await new HudHomeReturn(_config, _screen, _log).TryAsync(window, cancellationToken);
                 _log("每日商店：结束。");
                 return TaskRunResult.Fail("未识别到 2500 票券");
@@ -137,8 +119,6 @@ public sealed class DailyShopAutomation
         }
 
         _log("每日商店：完成，返回主页。");
-        await _promo.DismissAllAsync(window, cancellationToken);
-        window = _screen.Refresh(window);
         await new HudHomeReturn(_config, _screen, _log).TryAsync(window, cancellationToken);
         _log("每日商店：结束。");
         return TaskRunResult.Success();
@@ -159,8 +139,9 @@ public sealed class DailyShopAutomation
             return window;
         }
 
-        _log($"每日商店：已识别「交換所」（{hall.Score:F4}），点击匹配中心。");
-        await _screen.ClickProbeAsync(window, hall, "交換所", cancellationToken, settleDelayMs: 200);
+        // OpenAsync 已用同一落地模板确认成功时，再点页签只会空等；直接进入购物流。
+        _log($"每日商店：已在交換所（{hall.Score:F4}），跳过重复点击。");
+        await Task.Delay(AfterHallOpenDelayMs, cancellationToken);
         return _screen.Refresh(window);
     }
 
@@ -177,28 +158,17 @@ public sealed class DailyShopAutomation
             matchThreshold: OffThreshold);
         if (!off.IsMatch)
         {
-            _log($"每日商店：未识别到「100%OFF」（最高 {off.Score:F4}），尝试关弹窗后重试。");
-            await _promo.DismissAllAsync(window, cancellationToken);
-            window = _screen.Refresh(window);
-            off = await _screen.WaitForProbeAsync(
-                window,
-                _offMatcher,
-                _config.DailyShopFreeOffTopLeft,
-                _config.DailyShopFreeOffSize,
-                cancellationToken,
-                timeoutMs: RecognizeTimeoutMs / 2,
-                matchThreshold: OffThreshold);
-        }
-
-        if (!off.IsMatch)
-        {
             _log($"每日商店：未识别到「100%OFF」（最高 {off.Score:F4}），跳过零元购，进入滚轮。");
             return window;
         }
 
-        _log($"每日商店：已识别「100%OFF」（{off.Score:F4}），点击商品（{_config.DailyShopFreeItemClick.X},{_config.DailyShopFreeItemClick.Y}）。");
-        window = await _screen.ClickAsync(
-            window, _config.DailyShopFreeItemClick, "零元商品", cancellationToken);
+        // 点折扣条下方价格区，避免只点到橙色条本身；偏移按当前客户区缩放。
+        CaptureGeometry geometry = _screen.Geometry(window);
+        var itemScreen = new System.Windows.Point(
+            off.Center.X,
+            off.Center.Y + geometry.ScaleY * 70);
+        _log($"每日商店：已识别「100%OFF」（{off.Score:F4}），点击商品 screen({itemScreen.X:F0},{itemScreen.Y:F0})。");
+        await _screen.ClickScreenAsync(window, itemScreen, cancellationToken);
         await Task.Delay(AfterItemClickDelayMs, cancellationToken);
         window = _screen.Refresh(window);
 
@@ -259,31 +229,31 @@ public sealed class DailyShopAutomation
     private async Task<GameWindow> ExchangeThenOkAsync(
         GameWindow window, string label, CancellationToken cancellationToken)
     {
-        _log($"每日商店：[{label}] 等待识别「交換」，最多 {RecognizeTimeoutMs / 1000} 秒。");
+        _log($"每日商店：[{label}] 等待识别「交換」，最多 {ExchangeTimeoutMs / 1000} 秒。");
         TemplateProbeResult exchange = await _screen.WaitForProbeAsync(
             window,
             _exchangeMatcher,
             _config.DailyShopExchangeTopLeft,
             _config.DailyShopExchangeSize,
             cancellationToken,
-            timeoutMs: RecognizeTimeoutMs,
+            timeoutMs: ExchangeTimeoutMs,
             matchThreshold: ExchangeThreshold);
         if (!exchange.IsMatch)
             throw new InvalidOperationException(
                 $"[{label}] 未识别到「交換」（最高 {exchange.Score:F4}）。每日商店已停止。");
 
         _log($"每日商店：[{label}] 已识别「交換」（{exchange.Score:F4}），点击匹配中心。");
-        await _screen.ClickProbeAsync(window, exchange, "交換", cancellationToken, settleDelayMs: 700);
+        await _screen.ClickProbeAsync(window, exchange, "交換", cancellationToken, settleDelayMs: 400);
         window = _screen.Refresh(window);
 
-        _log($"每日商店：[{label}] 等待识别 OK，最多 {RecognizeTimeoutMs / 1000} 秒。");
+        _log($"每日商店：[{label}] 等待识别 OK，最多 {ExchangeTimeoutMs / 1000} 秒。");
         TemplateProbeResult ok = await _screen.WaitForProbeAsync(
             window,
             _okMatcher,
             _config.DailyShopOkTopLeft,
             _config.DailyShopOkSize,
             cancellationToken,
-            timeoutMs: RecognizeTimeoutMs,
+            timeoutMs: ExchangeTimeoutMs,
             matchThreshold: OkThreshold);
         if (!ok.IsMatch)
             throw new InvalidOperationException(

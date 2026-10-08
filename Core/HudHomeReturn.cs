@@ -4,6 +4,7 @@ namespace BetterMuv.Core;
 
 /// <summary>
 /// 若出现主界面房子按钮则点一次返回主页，再等页面切换。已在主页时通常没有该图标，会直接跳过。
+/// 不清弹窗；弹窗遮挡导致无法回主页时，交由失败处理。
 /// </summary>
 public sealed class HudHomeReturn
 {
@@ -17,7 +18,6 @@ public sealed class HudHomeReturn
     private readonly ScreenAutomation _screen;
     private readonly TemplateMatcher _matcher;
     private readonly Action<string> _log;
-    private readonly PromoPopupDismisser _promo;
 
     public HudHomeReturn(AutomationConfig config, ScreenAutomation screen, Action<string> log)
     {
@@ -25,7 +25,6 @@ public sealed class HudHomeReturn
         _screen = screen;
         _log = log;
         _matcher = TemplateAssets.Load("hud-home.png");
-        _promo = new PromoPopupDismisser(config, screen, log);
     }
 
     public async Task<bool> TryAsync(GameWindow window, CancellationToken cancellationToken)
@@ -34,19 +33,6 @@ public sealed class HudHomeReturn
         window = _screen.Refresh(window);
 
         TemplateProbeResult probe = await ProbeHomeButtonAsync(window, cancellationToken);
-        if (probe.IsMatch)
-            return await ClickHomeAsync(window, probe, cancellationToken);
-
-        // 快路径未发现主页钮时才清弹窗，避免正常任务结束时承担完整弹窗扫描。
-        await _promo.DismissAllAsync(window, cancellationToken);
-        window = _screen.Refresh(window);
-        if (await _promo.IsOshiraseVisibleAsync(window, cancellationToken))
-        {
-            _log("お知らせ仍在，跳过点击主页按钮。");
-            return false;
-        }
-
-        probe = await ProbeHomeButtonAsync(window, cancellationToken);
         if (!probe.IsMatch)
         {
             _log($"未发现主界面按钮（{probe.Score:F2}），跳过返回。");

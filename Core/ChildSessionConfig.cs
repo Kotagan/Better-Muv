@@ -8,7 +8,6 @@ public sealed class ChildSessionConfig
     public bool SmartSizingEnabled { get; set; } = true;
     public bool KeepAspectRatio { get; set; } = true;
     public bool SendSystemShortcutsToRemote { get; set; } = true;
-    public bool GameMouseModeEnabled { get; set; }
     public bool AudioMuted { get; set; }
 }
 

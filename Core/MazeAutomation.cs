@@ -56,12 +56,13 @@ public sealed class MazeAutomation
     private readonly TemplateMatcher _victoryNextMatcher;
     private readonly TemplateMatcher _partnerSelectionMatcher;
     private readonly TemplateMatcher _battleSkipMatcher;
-    private readonly PromoPopupDismisser _promoPopup;
     private readonly TemplateMatcher _eventChoiceMatcher;
     private readonly TemplateMatcher _eventChoiceMgArmMatcher;
     private readonly TemplateMatcher _eventRestMatcher;
     private readonly TemplateMatcher _craftTitleMatcher;
     private readonly TemplateMatcher _craftEndMatcher;
+    /// <summary>合成「クラフト終了」后的确认弹窗粉钮 OK（与结算确认同模板）。</summary>
+    private readonly TemplateMatcher _craftConfirmOkMatcher;
     private readonly SettlementShopRunner _settlementShop;
     private readonly MazeDifficultyRunner _difficulty;
     private readonly TemplateMatcher _treasureStateMatcher;
@@ -84,12 +85,12 @@ public sealed class MazeAutomation
         _victoryNextMatcher = TemplateAssets.Load("maze-victory-next.png");
         _partnerSelectionMatcher = TemplateAssets.Load("partner-leave.png");
         _battleSkipMatcher = TemplateAssets.Load("battle-skip.png");
-        _promoPopup = new PromoPopupDismisser(config, _screen, log);
         _eventChoiceMatcher = TemplateAssets.Load("event-choice.png");
         _eventChoiceMgArmMatcher = TemplateAssets.Load("event-choice-mg-arm.png");
         _eventRestMatcher = TemplateAssets.Load("event-rest.png");
         _craftTitleMatcher = TemplateAssets.Load("maze-craft-title.png");
         _craftEndMatcher = TemplateAssets.Load("maze-craft-end.png");
+        _craftConfirmOkMatcher = TemplateAssets.Load("settlement-confirm.png");
         _settlementShop = new SettlementShopRunner(config, _screen, templateDirectory, log);
         _difficulty = new MazeDifficultyRunner(config, _screen, log);
         _treasureStateMatcher = TemplateAssets.Load("treasure-state.png");
@@ -244,7 +245,6 @@ public sealed class MazeAutomation
         {
             _log($"结算后在探索准备界面（{onPrep.Score:F3}），点击探索。");
             await _screen.ClickProbeAsync(window, onPrep, FourthTaskName, cancellationToken, settleDelayMs: 600);
-            _ = await _promoPopup.TryAsync(window, cancellationToken);
             return await RunMazeLoopAsync(window, 0, cancellationToken);
         }
 
@@ -259,10 +259,6 @@ public sealed class MazeAutomation
         _log("结算后未认出探索准备/迷宫开始，改走全场景识别继续下一轮。");
         return await IdentifyAndEnterMazeAsync(window, cancellationToken);
     }
-
-    /// <summary>关闭挡住迷宫的活动/商店宣传弹窗（右上角白色 X）。</summary>
-    private Task<bool> TryDismissPromoPopupAsync(GameWindow window, CancellationToken cancellationToken) =>
-        _promoPopup.TryAsync(window, cancellationToken);
 
     /// <summary>
     /// 迷宫循环全未命中时：若其实停在难度页/探索准备，点进去续跑，而不是空转到超时停死。
@@ -283,7 +279,6 @@ public sealed class MazeAutomation
         {
             _log($"迷宫未命中但在探索准备（{onPrep.Score:F3}），补点探索。");
             await _screen.ClickProbeAsync(window, onPrep, FourthTaskName, cancellationToken, settleDelayMs: 600);
-            _ = await TryDismissPromoPopupAsync(window, cancellationToken);
             return true;
         }
 
@@ -306,12 +301,6 @@ public sealed class MazeAutomation
         for (int attempt = 0; attempt < 1; attempt++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-
-            if (await TryDismissPromoPopupAsync(window, cancellationToken))
-            {
-                window = _screen.Refresh(window);
-                await Task.Delay(400, cancellationToken);
-            }
 
             IReadOnlyDictionary<string, TemplateProbeResult> probes =
                 await ProbeManyConcurrentAsync(window, BuildStartupAllProbes(), cancellationToken);
@@ -403,50 +392,17 @@ public sealed class MazeAutomation
         // “保持不变”不会操作难度控件，因此层数本身不是点击探索准备的安全前提。
         // 开始页和按钮仍分别由模板确认；只有自选难度需要先读出当前层数，
         // 以免在读数未知时调整区域。
-        // 奖励确认等弹窗可能叠多层；进关前尽量清干净再读层数。
-        for (int i = 0; i < 3; i++)
-        {
-            if (!await TryDismissPromoPopupAsync(window, cancellationToken))
-                break;
-            await Task.Delay(350, cancellationToken);
-        }
         string difficultyMode = MazeDifficultyRunner.NormalizeMode(_config.MazeDifficultyMode);
         if (difficultyMode == "tower")
         {
             // 爬塔：可读层数 + 无右箭头，才视为正确层选界面。
             if (!await _difficulty.EnsureTowerFloorSelectAsync(window, cancellationToken))
-            {
-                bool dismissed = false;
-                for (int i = 0; i < 3; i++)
-                {
-                    if (!await TryDismissPromoPopupAsync(window, cancellationToken))
-                        break;
-                    dismissed = true;
-                    await Task.Delay(350, cancellationToken);
-                }
-                if (!(dismissed && await _difficulty.EnsureTowerFloorSelectAsync(window, cancellationToken)))
-                    return false;
-            }
+                return false;
         }
         else if (MazeDifficultyRunner.RequiresRecognizedFloor(_config.MazeDifficultyMode) &&
             !await _difficulty.EnsureFloorRecognizedAsync(window, cancellationToken))
         {
-            // 读层失败时再清一次弹窗后重试，避免奖励确认挡住数字。
-            bool dismissed = false;
-            for (int i = 0; i < 3; i++)
-            {
-                if (!await TryDismissPromoPopupAsync(window, cancellationToken))
-                    break;
-                dismissed = true;
-                await Task.Delay(350, cancellationToken);
-            }
-            if (dismissed &&
-                await _difficulty.EnsureFloorRecognizedAsync(window, cancellationToken))
-            {
-                // 重试成功，继续。
-            }
-            else
-                return false;
+            return false;
         }
 
         if (!await _difficulty.ApplyAsync(window, cancellationToken))
@@ -504,7 +460,6 @@ public sealed class MazeAutomation
         {
             cancellationToken.ThrowIfCancellationRequested();
             // 进关前奖励确认弹窗会挡住层数 ROI，优先点掉。
-            _ = await TryDismissPromoPopupAsync(window, cancellationToken);
 
             TemplateProbeResult probe = await _screen.ProbeAsync(
                 window, _thirdMatcher, _config.ThirdSearchTopLeft, _config.ThirdSearchSize,
@@ -776,14 +731,6 @@ public sealed class MazeAutomation
                 // 只在未命中刚开始时截一次诊断图。
                 if (_config.SaveDiagnostics && firstMiss)
                     await SaveMazeMissDiagnosticsAsync(window, probes, cancellationToken);
-
-                if (!inBattlePhase && await TryDismissPromoPopupAsync(window, cancellationToken))
-                {
-                    missClock = null;
-                    noProgressClock = null;
-                    await Task.Delay(400, cancellationToken);
-                    continue;
-                }
 
                 // 胜利页点「次へ」后可能短暂播放演出。只有 SKIP 分数足够高才点击；
                 // 低分持续数秒通常说明已经进入遗物/路线页，应尽快恢复全场景识别。
@@ -1073,7 +1020,8 @@ public sealed class MazeAutomation
                         window, _config.CraftEndClick, "クラフト終了(坐标)", cancellationToken);
                 }
 
-                await Task.Delay(500, cancellationToken);
+                // 「クラフト終了」会弹出「本当にクラフトを終了しますか？」；不点 OK 会反复开关确认框空转。
+                window = await ConfirmCraftExitAsync(window, cancellationToken);
                 return State(true);
             }
 
@@ -1691,6 +1639,52 @@ public sealed class MazeAutomation
              (clickOffset is null ? "" : $"（相对图标中心偏移 1080p {clickOffset.X},{clickOffset.Y}）"));
         await _screen.ClickScreenAsync(window, clickPoint, cancellationToken);
         return winner.Key;
+    }
+
+    /// <summary>
+    /// 点「クラフト終了」后等「本当にクラフトを終了しますか？」粉钮 OK 并点击。
+    /// 未点 OK 时顶栏「クラフト」仍在，会反复点終了导致确认框闪烁空转。
+    /// </summary>
+    private async Task<GameWindow> ConfirmCraftExitAsync(
+        GameWindow window, CancellationToken cancellationToken)
+    {
+        const double okThreshold = 0.62;
+        const int okTimeoutMs = 3500;
+        // 与结算确认弹窗同布局：粉钮 OK 在对话框右下。
+        ConfigPoint okTopLeft = _config.SettlementConfirmTopLeft;
+        ConfigSize okSize = _config.SettlementConfirmSize;
+
+        _log($"合成结束：等待确认弹窗 OK，最多 {okTimeoutMs / 1000} 秒。");
+        TemplateProbeResult ok = await _screen.WaitForProbeAsync(
+            window, _craftConfirmOkMatcher, okTopLeft, okSize,
+            cancellationToken, timeoutMs: okTimeoutMs, matchThreshold: okThreshold);
+        if (!ok.IsMatch)
+        {
+            // 扩大搜索再试一次（对话框偶发偏下）。
+            var wideTopLeft = new ConfigPoint(
+                Math.Max(0, okTopLeft.X - 80),
+                Math.Max(0, okTopLeft.Y - 60));
+            var wideSize = new ConfigSize(
+                Math.Max(okSize.Width + 160, 800),
+                Math.Max(okSize.Height + 120, 520));
+            ok = await _screen.WaitForProbeAsync(
+                window, _craftConfirmOkMatcher, wideTopLeft, wideSize,
+                cancellationToken, timeoutMs: 2000, matchThreshold: okThreshold);
+        }
+
+        if (ok.IsMatch)
+        {
+            _log($"合成结束：已识别确认 OK（{ok.Score:F4}），点击匹配中心。");
+            await _screen.ClickProbeAsync(
+                window, ok, "合成结束确认OK", cancellationToken, settleDelayMs: 500);
+            return _screen.Refresh(window);
+        }
+
+        _log($"合成结束：确认 OK 未命中（最高 {ok.Score:F4}），改点固定坐标（{_config.SettlementConfirmOk.X},{_config.SettlementConfirmOk.Y}）。");
+        await _screen.ClickAsync(
+            window, _config.SettlementConfirmOk, "合成结束确认OK(坐标)", cancellationToken);
+        await Task.Delay(500, cancellationToken);
+        return _screen.Refresh(window);
     }
 
     /// <summary>

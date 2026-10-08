@@ -190,6 +190,17 @@ internal static class ChildSessionNativeMethods
         return inputWindow != IntPtr.Zero && GetFocus() == inputWindow;
     }
 
+    /// <summary>
+    /// 把键盘焦点从 RDP「Input Capture Window」挪走，避免鼠标已离开分身画面时按键仍进 Child Session。
+    /// </summary>
+    internal static void ReleaseRdpInputFocus(IntPtr fallbackWindow)
+    {
+        if (fallbackWindow != IntPtr.Zero)
+            _ = SetFocus(fallbackWindow);
+        else
+            _ = SetFocus(IntPtr.Zero);
+    }
+
     internal static void ClearRdpInputWindowCache(IntPtr rdpHostWindow)
     {
         RdpInputWindows.TryRemove(rdpHostWindow, out _);
