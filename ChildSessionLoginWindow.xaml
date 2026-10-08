@@ -1,0 +1,118 @@
+<Window x:Class="BetterMuv.ChildSessionLoginWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="桌面分身登录"
+        Width="440"
+        SizeToContent="Height"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        Background="#202630"
+        Foreground="#F5F7FA"
+        FontFamily="Microsoft YaHei UI"
+        FontSize="14">
+    <Border BorderBrush="#3A4552" BorderThickness="1" Padding="24,20">
+        <StackPanel>
+            <TextBlock Text="桌面分身登录"
+                       FontSize="18"
+                       FontWeight="SemiBold"
+                       Margin="0,0,0,8" />
+            <TextBlock TextWrapping="Wrap"
+                       Foreground="#B8C0CC"
+                       LineHeight="22"
+                       Margin="0,0,0,16"
+                       Text="桌面分身只能用「当前 Windows 账户」的密码登录，PIN / 指纹无效。&#10;很多人平时只用 PIN，并不知道这个密码——可以在下面直接设一个新密码。" />
+
+            <TextBlock Text="当前账户" Margin="0,0,0,6" Foreground="#D5DCE5" />
+            <TextBox x:Name="UserNameBox"
+                     Height="34"
+                     Padding="8,6"
+                     Margin="0,0,0,14"
+                     IsReadOnly="True"
+                     Background="#252B34"
+                     Foreground="#9AA3AF"
+                     BorderBrush="#4A5563" />
+
+            <TextBlock Text="账户密码" Margin="0,0,0,6" Foreground="#D5DCE5" />
+            <PasswordBox x:Name="PasswordBox"
+                         Height="34"
+                         Padding="8,6"
+                         Margin="0,0,0,8"
+                         Background="#2A313C"
+                         Foreground="#F5F7FA"
+                         BorderBrush="#4A5563"
+                         CaretBrush="#F5F7FA"
+                         KeyDown="PasswordBox_KeyDown" />
+
+            <Button x:Name="ToggleSetPasswordButton"
+                    Content="没有密码 / 只用 PIN？点此设置新密码"
+                    HorizontalAlignment="Left"
+                    Margin="0,0,0,10"
+                    Padding="0"
+                    Background="Transparent"
+                    Foreground="#64B5F6"
+                    BorderThickness="0"
+                    Cursor="Hand"
+                    Click="ToggleSetPassword_Click" />
+
+            <StackPanel x:Name="SetPasswordPanel" Visibility="Collapsed" Margin="0,0,0,8">
+                <TextBlock TextWrapping="Wrap"
+                           Foreground="#E6C07B"
+                           FontSize="12"
+                           LineHeight="18"
+                           Margin="0,0,0,10"
+                           Text="将修改当前 Windows 账户的登录密码（PIN 一般仍可用来开机）。设好后会用新密码自动连接分身。" />
+                <TextBlock Text="新密码" Margin="0,0,0,6" Foreground="#D5DCE5" />
+                <PasswordBox x:Name="NewPasswordBox"
+                             Height="34"
+                             Padding="8,6"
+                             Margin="0,0,0,10"
+                             Background="#2A313C"
+                             Foreground="#F5F7FA"
+                             BorderBrush="#4A5563"
+                             CaretBrush="#F5F7FA" />
+                <TextBlock Text="确认新密码" Margin="0,0,0,6" Foreground="#D5DCE5" />
+                <PasswordBox x:Name="ConfirmPasswordBox"
+                             Height="34"
+                             Padding="8,6"
+                             Margin="0,0,0,4"
+                             Background="#2A313C"
+                             Foreground="#F5F7FA"
+                             BorderBrush="#4A5563"
+                             CaretBrush="#F5F7FA"
+                             KeyDown="ConfirmPasswordBox_KeyDown" />
+            </StackPanel>
+
+            <TextBlock x:Name="HintText"
+                       TextWrapping="Wrap"
+                       Foreground="#8B949E"
+                       FontSize="12"
+                       Margin="0,4,0,18"
+                       Text="密码仅用于本机桌面分身登录，不会上传。" />
+
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="取消"
+                        Width="88"
+                        Height="34"
+                        Margin="0,0,10,0"
+                        Click="Cancel_Click"
+                        Background="#2A313C"
+                        Foreground="#D5DCE5"
+                        BorderThickness="0"
+                        Cursor="Hand" />
+                <Button x:Name="ConnectButton"
+                        Content="连接"
+                        Width="120"
+                        Height="34"
+                        IsDefault="True"
+                        Click="Connect_Click"
+                        Background="#2196E8"
+                        Foreground="White"
+                        BorderThickness="0"
+                        Cursor="Hand"
+                        FontWeight="SemiBold" />
+            </StackPanel>
+        </StackPanel>
+    </Border>
+</Window>

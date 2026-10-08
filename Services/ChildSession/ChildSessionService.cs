@@ -50,7 +50,7 @@ public sealed class ChildSessionService : IDisposable
 
     public event EventHandler? AudioReconnectCompleted;
 
-    public string StatusText { get; private set; } = "????????";
+    public string StatusText { get; private set; } = "桌面分身尚未启动";
 
     public bool IsDesktopVisible => _desktopWindow?.IsVisible == true;
 
@@ -95,8 +95,13 @@ public sealed class ChildSessionService : IDisposable
         return ChildSessionId is not null;
     }
 
-    public ChildSessionService()
+    private readonly Action<string>? _log;
+    private ChildSessionLoginCredentials? _pendingLoginCredentials;
+    private static bool _termServiceHealedThisProcess;
+
+    public ChildSessionService(Action<string>? log = null)
     {
+        _log = log;
         AutomationConfig automationConfig = ConfigStore.Load();
         _config = automationConfig.ChildSession ?? new ChildSessionConfig();
         automationConfig.ChildSession = _config;
@@ -111,6 +116,8 @@ public sealed class ChildSessionService : IDisposable
         RefreshState();
     }
 
+    private void Log(string message) => _log?.Invoke(message);
+
     private void PersistConfig()
     {
         AutomationConfig automationConfig = ConfigStore.Load();
@@ -118,9 +125,47 @@ public sealed class ChildSessionService : IDisposable
         ConfigStore.Save(automationConfig);
     }
 
-    public async Task StartAsync()
+    /// <param name="temporarilyDisableRdpWrapper">
+    /// 若本机启用了 RDP Wrapper，临时切回原生 termsrv.dll（关闭分身时自动还原）。
+    /// </param>
+    public async Task StartAsync(
+        bool temporarilyDisableRdpWrapper = false,
+        ChildSessionLoginCredentials? loginCredentials = null)
     {
         ThrowIfDisposed();
+        Log("桌面分身：开始连接 Child Session / RDP");
+        if (temporarilyDisableRdpWrapper && ChildSessionNativeMethods.IsRdpWrapperEnabled())
+        {
+            await Task.Run(() => RdpWrapperSwitch.TemporarilyUseNativeTermService(Log));
+            RefreshState("已临时禁用 RDP Wrapper，准备连接桌面分身");
+        }
+        else if (ChildSessionNativeMethods.IsRdpWrapperEnabled())
+        {
+            Log("桌面分身警告：检测到 RDP Wrapper，未切换时极易出现错误 516");
+        }
+
+        // 先清理残留 Child Session，避免上次失败会话导致断开原因 4。
+        await Task.Run(() =>
+        {
+            try
+            {
+                _ = ChildSessionNativeMethods.TerminateChildSession(wait: true);
+            }
+            catch
+            {
+            }
+        });
+
+        // 探测证实：TermService 卡住时会一直 Connecting 直到超时；管理员下重启一次即可 LoginComplete。
+        if (!_termServiceHealedThisProcess && Services.ElevationHelper.IsElevated())
+        {
+            _termServiceHealedThisProcess = true;
+            Log("桌面分身：重启 TermService 以清除卡住的 Child Session 状态");
+            await Task.Run(() => RdpWrapperSwitch.TryRestartTermService(Log));
+        }
+
+        _pendingLoginCredentials = loginCredentials;
+
         EnsureChildSessionsEnabled();
         RefreshState();
 
@@ -139,7 +184,7 @@ public sealed class ChildSessionService : IDisposable
 
             try
             {
-                ConnectCore("???? Better-Muv ????");
+                ConnectCore("正在启动 Better-Muv 桌面分身");
             }
             catch
             {
@@ -187,7 +232,7 @@ public sealed class ChildSessionService : IDisposable
     {
         ThrowIfDisposed();
         _desktopWindow?.Hide();
-        RefreshState("??? Better-Muv ?????RDP ??????");
+        RefreshState("已隐藏 Better-Muv 桌面分身，RDP 连接保持不变");
     }
 
     public void ShowChildSessionDesktop()
@@ -196,7 +241,7 @@ public sealed class ChildSessionService : IDisposable
         var window = EnsureDesktopWindow();
         ShowDesktopWindow(window);
         window.RdpHost.SendShowDesktopShortcut();
-        RefreshState("?? Better-Muv ?????? Win+D");
+        RefreshState("已向 Better-Muv 桌面分身发送 Win+D");
     }
 
     public void ShowChildSessionTaskView()
@@ -205,7 +250,7 @@ public sealed class ChildSessionService : IDisposable
         var window = EnsureDesktopWindow();
         ShowDesktopWindow(window);
         window.RdpHost.SendTaskViewShortcut();
-        RefreshState("?? Better-Muv ?????? Win+Tab");
+        RefreshState("已向 Better-Muv 桌面分身发送 Win+Tab");
     }
 
     public void SetSmartSizing(bool enabled)
@@ -214,7 +259,7 @@ public sealed class ChildSessionService : IDisposable
         EnsureDesktopWindow().RdpHost.SetSmartSizing(enabled);
         _config.SmartSizingEnabled = enabled;
         PersistConfig();
-        RefreshState(enabled ? "?????????????" : "?????????? 1:1");
+        RefreshState(enabled ? "窗口显示模式已切换为自适应" : "窗口显示模式已切换为 1:1");
     }
 
     public void SetKeepAspectRatio(bool enabled)
@@ -222,7 +267,7 @@ public sealed class ChildSessionService : IDisposable
         ThrowIfDisposed();
         _config.KeepAspectRatio = enabled;
         PersistConfig();
-        RefreshState(enabled ? "????????????" : "?????????????");
+        RefreshState(enabled ? "桌面分身窗口将保持宽高比" : "桌面分身窗口不再保持宽高比");
     }
 
     public void SetTopmost(bool enabled)
@@ -230,7 +275,7 @@ public sealed class ChildSessionService : IDisposable
         ThrowIfDisposed();
         _config.TopmostEnabled = enabled;
         PersistConfig();
-        RefreshState(enabled ? "?????????" : "???????????");
+        RefreshState(enabled ? "桌面分身窗口已置顶" : "桌面分身窗口已取消置顶");
     }
 
     public bool SetSendSystemShortcutsToRemote(bool enabled)
@@ -246,11 +291,11 @@ public sealed class ChildSessionService : IDisposable
         PersistConfig();
         var window = EnsureDesktopWindow();
         window.RdpHost.SetSendSystemShortcutsToRemote(enabled);
-        var target = enabled ? "????" : "??";
+        var target = enabled ? "桌面分身" : "本机";
         return ReconnectForRdpSettingChange(
             window,
             RdpSettingChange.SystemShortcuts,
-            $"?????????{target}??");
+            $"系统组合键已改为在{target}生效");
     }
 
     public bool SetAudioMuted(bool muted)
@@ -268,7 +313,7 @@ public sealed class ChildSessionService : IDisposable
         return ReconnectForRdpSettingChange(
             window,
             RdpSettingChange.Audio,
-            muted ? "?????????" : "?????????");
+            muted ? "桌面分身声音已关闭" : "桌面分身声音已开启");
     }
 
     public void SetGameMouseModeEnabled(bool enabled)
@@ -282,8 +327,8 @@ public sealed class ChildSessionService : IDisposable
         else
             _relativeMouse.StopHost();
         RefreshState(enabled
-            ? "??????????"
-            : "??????????");
+            ? "已切换为游戏鼠标模式"
+            : "已切换为普通鼠标模式");
     }
 
     public Task LaunchBetterMuvAsync()
@@ -319,10 +364,10 @@ public sealed class ChildSessionService : IDisposable
         await _launchSemaphore.WaitAsync();
         try
         {
-            RefreshState($"?????????? {System.IO.Path.GetFileName(executablePath)}");
+            RefreshState($"正在以管理员权限启动 {System.IO.Path.GetFileName(executablePath)}");
             await ChildSessionProcessLauncher.LaunchElevatedAsync(childSessionId, executablePath);
             RefreshState(
-                $"????????? {childSessionId}?????????? {System.IO.Path.GetFileName(executablePath)}");
+                $"已在桌面分身（会话 {childSessionId}）中以管理员权限启动 {System.IO.Path.GetFileName(executablePath)}");
         }
         finally
         {
@@ -343,13 +388,14 @@ public sealed class ChildSessionService : IDisposable
         try
         {
             TryDisconnectRdpHost();
-            RefreshState("???? RDP ??? Better-Muv ????");
+            RefreshState("正在断开 RDP 并注销 Better-Muv 桌面分身");
 
             var terminatedSessionId = await Task.Run(ChildSessionNativeMethods.TerminateChildSession);
             _desktopWindow?.Hide();
+            await Task.Run(() => RdpWrapperSwitch.RestoreIfNeeded(Log));
             RefreshState(terminatedSessionId is null
-                ? "????????????????????"
-                : $"?????? {terminatedSessionId.Value} ?????????????");
+                ? "当前没有桌面分身会话，桌面分身窗口已隐藏"
+                : $"桌面分身会话 {terminatedSessionId.Value} 已注销，桌面分身窗口已隐藏");
         }
         finally
         {
@@ -377,16 +423,16 @@ public sealed class ChildSessionService : IDisposable
 
             var connectionText = ConnectedState switch
             {
-                0 => "???",
-                1 => "???",
-                2 => "????",
-                _ => $"?????? {ConnectedState}"
+                0 => "未连接",
+                1 => "已连接",
+                2 => "正在连接",
+                _ => $"未知连接状态 {ConnectedState}"
             };
-            var sessionText = ChildSessionId?.ToString() ?? "?";
+            var sessionText = ChildSessionId?.ToString() ?? "无";
             var mainText = _lastOperationMessage ?? connectionText;
 
             StatusText =
-                $"{mainText} | RDP?{connectionText} | ???????{sessionText} | ??????{enabled}";
+                $"{mainText} | RDP：{connectionText} | 桌面分身会话：{sessionText} | 功能已启用：{enabled}";
         }
         catch (Exception exception) when (IsExpectedChildSessionException(exception))
         {
@@ -430,7 +476,15 @@ public sealed class ChildSessionService : IDisposable
             }
             catch (Exception exception) when (IsExpectedChildSessionException(exception))
             {
-                // ???????Child Session ??????????????
+                // 应用正在退出，Child Session 清理失败不应阻止主程序关闭。
+            }
+            try
+            {
+                RdpWrapperSwitch.RestoreIfNeeded(Log);
+            }
+            catch
+            {
+                // 退出时还原失败不阻止关闭
             }
         }
 
@@ -458,6 +512,8 @@ public sealed class ChildSessionService : IDisposable
             _initialConnectionRetriesRemaining = _autoLaunchBetterMuvPending
                 ? InitialConnectionRetryCount
                 : 0;
+            if (_pendingLoginCredentials is not null)
+                window.RdpHost.SetLoginCredentials(_pendingLoginCredentials);
             window.RdpHost.ConnectToChildSession(DefaultDesktopSize);
         }
 
@@ -525,11 +581,11 @@ public sealed class ChildSessionService : IDisposable
         {
             var childSessionId = GetRequiredChildSessionId();
             RefreshState(isAutomatic
-                ? "???????????????????? Better-Muv"
-                : "?????????? Better-Muv");
+                ? "桌面分身已加载，正在自动以管理员权限启动 Better-Muv"
+                : "正在以管理员权限启动 Better-Muv");
             await ChildSessionProcessLauncher.LaunchBetterMuvAsync(childSessionId);
             RefreshState(
-                $"????????? {childSessionId}?????????? Better-Muv");
+                $"已在桌面分身（会话 {childSessionId}）中以管理员权限启动 Better-Muv");
         }
         finally
         {
@@ -542,7 +598,7 @@ public sealed class ChildSessionService : IDisposable
         var childSessionId = ChildSessionNativeMethods.TryGetChildSessionId();
         if (childSessionId is null)
         {
-            throw new InvalidOperationException("?????????????????????");
+            throw new InvalidOperationException("当前没有可用的桌面分身，请先启动桌面分身。");
         }
 
         return childSessionId.Value;
@@ -583,9 +639,13 @@ public sealed class ChildSessionService : IDisposable
             _pendingRdpSettingChanges = RdpSettingChange.None;
         }
 
-        if (_autoLaunchBetterMuvPending
+        // 断开原因 4 / 516 重试通常无效，直接失败，避免空等 60 秒超时。
+        bool shouldRetryInitial = _autoLaunchBetterMuvPending
             && _initialConnectionRetriesRemaining > 0
-            && !_connectionRetryInProgress)
+            && !_connectionRetryInProgress
+            && e.ErrorCode is not 4 and not 516 and not 0x204;
+
+        if (shouldRetryInitial)
         {
             RetryInitialConnectionAsync(e);
             return;
@@ -594,8 +654,8 @@ public sealed class ChildSessionService : IDisposable
         CompleteConnectionFailure(e);
     }
 
-    // RDP ?????????????? Child Session ?????????
-    // ?? OnLoginComplete ?????????????????????
+    // RDP 报告连接成功后稍作等待，让新 Child Session 的桌面初始化完成。
+    // 使用 OnLoginComplete 等待实际登录完成，避免依赖固定时长的延时。
     private async void OnRdpLoginCompleted(object? sender, EventArgs e)
     {
         _lastConnectionFailure = null;
@@ -609,7 +669,7 @@ public sealed class ChildSessionService : IDisposable
             _pendingRdpSettingChanges = RdpSettingChange.None;
             _rdpSettingsReconnectRetriesRemaining = 0;
             _rdpSettingsReconnectRetryInProgress = false;
-            RefreshState("?????????RDP ?????");
+            RefreshState("自动重新连接完成，RDP 设置已生效");
 
             if (completedSettingChanges.HasFlag(RdpSettingChange.SystemShortcuts))
             {
@@ -623,7 +683,7 @@ public sealed class ChildSessionService : IDisposable
         }
         else
         {
-            RefreshState("???????????");
+            RefreshState("桌面分身登录初始化完成");
         }
 
         if (!_autoLaunchBetterMuvPending)
@@ -648,7 +708,7 @@ public sealed class ChildSessionService : IDisposable
         }
         catch (Exception exception) when (IsExpectedChildSessionException(exception))
         {
-            RefreshState($"???? Better-Muv ???{exception.GetBaseException().Message}");
+            RefreshState($"自动启动 Better-Muv 失败：{exception.GetBaseException().Message}");
         }
     }
 
@@ -663,8 +723,8 @@ public sealed class ChildSessionService : IDisposable
         _rdpSettingsReconnectRetriesRemaining--;
         var retryDelay = TimeSpan.FromSeconds(1 << retryNumber);
         RefreshState(
-            $"RDP ?????????{retryDelay.TotalSeconds:0} ????"
-            + $"?{retryNumber}/{RdpSettingsReconnectRetryCount}?");
+            $"RDP 自动重连暂未成功，{retryDelay.TotalSeconds:0} 秒后重试"
+            + $"（{retryNumber}/{RdpSettingsReconnectRetryCount}）");
 
         try
         {
@@ -675,7 +735,7 @@ public sealed class ChildSessionService : IDisposable
             }
 
             RefreshState(
-                $"???? RDP ?????{retryNumber}/{RdpSettingsReconnectRetryCount}?");
+                $"正在重试 RDP 自动连接（{retryNumber}/{RdpSettingsReconnectRetryCount}）");
             _rdpSettingsReconnectRetryInProgress = false;
             EnsureDesktopWindow().RdpHost.ReconnectToChildSession(DefaultDesktopSize);
         }
@@ -689,7 +749,7 @@ public sealed class ChildSessionService : IDisposable
                 ? comException.ErrorCode
                 : 0;
             retryFailure = new ChildSessionConnectionFailedEventArgs(
-                $"RDP ?????????{actualException.Message}",
+                $"RDP 自动重新连接失败：{actualException.Message}",
                 errorCode);
         }
         finally
@@ -711,8 +771,8 @@ public sealed class ChildSessionService : IDisposable
         _initialConnectionRetriesRemaining--;
         var retryDelay = TimeSpan.FromSeconds(1 << (retryNumber - 1));
         RefreshState(
-            $"??????????????{retryDelay.TotalSeconds:0} ??????"
-            + $"?{retryNumber}/{InitialConnectionRetryCount}?");
+            $"桌面分身首次初始化尚未完成，{retryDelay.TotalSeconds:0} 秒后自动重试"
+            + $"（{retryNumber}/{InitialConnectionRetryCount}）");
 
         try
         {
@@ -729,10 +789,10 @@ public sealed class ChildSessionService : IDisposable
             }
 
             RefreshState(
-                $"???????????{retryNumber}/{InitialConnectionRetryCount}?");
+                $"正在重试桌面分身连接（{retryNumber}/{InitialConnectionRetryCount}）");
             _connectionRetryInProgress = false;
-            // OnLogonError ??? ActiveX ???????????????????
-            // ???????????????????????????????
+            // OnLogonError 触发后 ActiveX 可能仍处于连接状态，必须先断开再重连。
+            // 否则这里直接退出会丢失已捕获的真实错误，最终只剩外层连接超时。
             _desktopWindow.RdpHost.ReconnectToChildSession(DefaultDesktopSize);
         }
         catch (OperationCanceledException) when (_disposed)
@@ -745,7 +805,7 @@ public sealed class ChildSessionService : IDisposable
                 ? comException.ErrorCode
                 : 0;
             retryFailure = new ChildSessionConnectionFailedEventArgs(
-                $"???????????{actualException.Message}",
+                $"重试桌面分身连接失败：{actualException.Message}",
                 errorCode);
         }
         finally
@@ -765,6 +825,8 @@ public sealed class ChildSessionService : IDisposable
         _autoLaunchBetterMuvPending = false;
         _initialConnectionRetriesRemaining = 0;
         _connectionAttemptCompletionSource?.TrySetResult(false);
+        string oneLine = e.Message.Replace("\r\n", " | ").Replace('\n', ' ');
+        Log($"桌面分身连接失败：code={e.ErrorCode} ext={e.ExtendedErrorCode?.ToString() ?? "-"} | {oneLine}");
         RefreshState(e.Message);
         ConnectionFailed?.Invoke(this, e);
     }
@@ -772,19 +834,21 @@ public sealed class ChildSessionService : IDisposable
     private ChildSessionConnectionFailedEventArgs CreateConnectionTimeoutFailure()
     {
         var timeoutMessage =
-            $"??????????????? {ConnectionTimeout.TotalSeconds:0} ?????";
+            $"桌面分身连接及登录初始化未能在 {ConnectionTimeout.TotalSeconds:0} 秒内完成。";
         var lastDiagnostic =
             _desktopWindow?.RdpHost.LastConnectionDiagnostic
             ?? _lastConnectionFailure;
         if (lastDiagnostic is null)
         {
             return new ChildSessionConnectionFailedEventArgs(
-                $"{timeoutMessage}\n\nRDP ActiveX ????????????",
+                timeoutMessage
+                + "\n\nRDP ActiveX 未报告更具体的失败原因。"
+                + "\n若多次卡住：请以管理员运行，程序会自动重启 TermService；仍不行请重启电脑。",
                 ErrorTimeout);
         }
 
         return new ChildSessionConnectionFailedEventArgs(
-            $"{timeoutMessage}\n\nRDP ActiveX ?????\n{lastDiagnostic.Message}",
+            $"{timeoutMessage}\n\nRDP ActiveX 最后报告：\n{lastDiagnostic.Message}",
             lastDiagnostic.ErrorCode,
             lastDiagnostic.ExtendedErrorCode);
     }
@@ -797,7 +861,7 @@ public sealed class ChildSessionService : IDisposable
         }
         catch (Exception exception) when (exception is COMException or TargetInvocationException)
         {
-            // ActiveX ??????????? COM ????????? Child Session?
+            // ActiveX 正在自行断开时可能返回 COM 错误，仍可继续注销 Child Session。
         }
     }
 
@@ -826,7 +890,7 @@ public sealed class ChildSessionService : IDisposable
         RefreshState();
         if (window.RdpHost.ConnectedState == 0 && ChildSessionId is null)
         {
-            RefreshState($"{operationMessage}????? RDP ?????");
+            RefreshState($"{operationMessage}，将在下次 RDP 连接后应用");
             return false;
         }
 
@@ -848,7 +912,7 @@ public sealed class ChildSessionService : IDisposable
             throw;
         }
 
-        RefreshState($"{operationMessage}????????? RDP");
+        RefreshState($"{operationMessage}，正在自动重新连接 RDP");
         return true;
     }
 

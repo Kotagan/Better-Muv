@@ -25,8 +25,8 @@ foreach ($name in $required) {
 
 $info = [Diagnostics.FileVersionInfo]::GetVersionInfo($dll)
 Write-Host ("ProductVersion={0} FileVersion={1}" -f $info.ProductVersion, $info.FileVersion)
-if ($info.ProductVersion -notlike "1.3.3*") {
-  throw "Expected product version 1.3.3*, got $($info.ProductVersion)"
+if ($info.ProductVersion -notlike "1.3.4*") {
+  throw "Expected product version 1.3.4*, got $($info.ProductVersion)"
 }
 
 # Type presence via MetadataLoadContext-free string scan of assembly names in deps

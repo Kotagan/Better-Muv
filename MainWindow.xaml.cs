@@ -79,6 +79,7 @@ public partial class MainWindow : Window
         AppendLog("版本：" + version);
         AppendLog("配置文件：" + _configPath);
         AppendLog("等待启动截图器。");
+        App.AttachChildSessionLogger(AppendLog);
         ContentRendered += MainWindow_ContentRendered;
     }
 
@@ -111,6 +112,17 @@ public partial class MainWindow : Window
     {
         ContentRendered -= MainWindow_ContentRendered;
         await CheckForUpdatesOnStartupAsync();
+
+        if (AppInstance.ShouldOpenChildSession && AppInstance.IsRoot)
+        {
+            AppInstance.ClearOpenChildSessionRequest();
+            ChildSessionService? childService = App.SharedChildSessionService;
+            if (childService is not null)
+            {
+                AppendLog("已以管理员权限重启，正在打开桌面分身窗口。");
+                childService.ShowWindow();
+            }
+        }
 
         if (!string.Equals(Environment.GetEnvironmentVariable("BETTER_MUV_AUTO_MAIN_QUEST"), "1", StringComparison.Ordinal))
             return;

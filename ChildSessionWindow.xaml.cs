@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Windows;
 using System.Windows.Media;
 using BetterMuv.Core;
+using BetterMuv.Services;
 using BetterMuv.Services.ChildSession;
 using Microsoft.Win32;
 using DrawingSize = System.Drawing.Size;
@@ -62,23 +63,59 @@ public partial class ChildSessionWindow : Window
     {
         try
         {
+            bool disableWrapper = false;
             if (_service.IsRdpWrapperEnabled())
             {
+                if (!ElevationHelper.IsElevated())
+                {
+                    MessageBoxResult elevateChoice = MessageBox.Show(
+                        this,
+                        "检测到本机正在使用 RDP Wrapper（rdpwrap.dll）。\n\n"
+                        + "它与桌面分身冲突（常见错误 516），临时切回系统原生 RDP 需要管理员权限。\n\n"
+                        + "是否以管理员权限重启 Better-Muv？\n"
+                        + "（重启后会自动打开桌面分身窗口，再点「启动」即可）",
+                        "需要管理员权限",
+                        MessageBoxButton.YesNo,
+                        MessageBoxImage.Question);
+                    if (elevateChoice != MessageBoxResult.Yes)
+                        return;
+                    if (!ElevationHelper.TryRestartElevated(AppInstance.OpenChildSessionArgument))
+                    {
+                        MessageBox.Show(this, "已取消管理员授权，未重启。", "桌面分身",
+                            MessageBoxButton.OK, MessageBoxImage.Information);
+                    }
+                    return;
+                }
+
                 MessageBoxResult choice = MessageBox.Show(
                     this,
-                    "检测到系统已安装并启用 RDP Wrapper。这可能导致 Child Session 异常。是否仍要继续？",
-                    "RDP Wrapper 兼容性提醒",
+                    "检测到本机正在使用 RDP Wrapper（rdpwrap.dll）。\n\n"
+                    + "它与桌面分身（Child Session）冲突，通常会直接报错误 516。\n\n"
+                    + "选「是」：临时切回系统原生 termsrv.dll 并启动分身"
+                    + "（关闭分身 / 退出程序时自动还原 Wrapper）。\n"
+                    + "选「否」：取消启动。\n\n"
+                    + "说明：临时切换期间，依赖 RDP Wrapper 的「本地多用户远程」会不可用。",
+                    "RDP Wrapper 与桌面分身冲突",
                     MessageBoxButton.YesNo,
                     MessageBoxImage.Warning);
                 if (choice != MessageBoxResult.Yes)
                     return;
+                disableWrapper = true;
             }
 
+            var loginWindow = new ChildSessionLoginWindow { Owner = this };
+            if (loginWindow.ShowDialog() != true || loginWindow.Credentials is null)
+                return;
+
             StartButton.IsEnabled = false;
-            await _service.StartAsync();
+            await _service.StartAsync(
+                temporarilyDisableRdpWrapper: disableWrapper,
+                loginCredentials: loginWindow.Credentials);
         }
         catch (Exception ex)
         {
+            if (TryOfferElevateRestart(ex))
+                return;
             MessageBox.Show(this, ex.GetBaseException().Message, "启动桌面分身失败",
                 MessageBoxButton.OK, MessageBoxImage.Error);
         }
@@ -86,6 +123,37 @@ public partial class ChildSessionWindow : Window
         {
             StartButton.IsEnabled = true;
         }
+    }
+
+    private bool TryOfferElevateRestart(Exception ex)
+    {
+        if (ElevationHelper.IsElevated())
+            return false;
+
+        Exception root = ex.GetBaseException();
+        bool needsAdmin = root is UnauthorizedAccessException
+            || root is System.Security.SecurityException
+            || root.Message.Contains("管理员", StringComparison.Ordinal);
+        if (!needsAdmin)
+            return false;
+
+        MessageBoxResult choice = MessageBox.Show(
+            this,
+            "当前操作需要管理员权限。\n\n"
+            + root.Message + "\n\n"
+            + "是否以管理员权限重启 Better-Muv？",
+            "需要管理员权限",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+        if (choice != MessageBoxResult.Yes)
+            return false;
+
+        if (!ElevationHelper.TryRestartElevated(AppInstance.OpenChildSessionArgument))
+        {
+            MessageBox.Show(this, "已取消管理员授权，未重启。", "桌面分身",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        return true;
     }
 
     private void HideButton_Click(object sender, RoutedEventArgs e) => _service.HideWindow();

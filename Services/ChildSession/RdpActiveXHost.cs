@@ -60,6 +60,11 @@ internal sealed class RdpActiveXHost : WinForms.AxHost
         }
     }
 
+    private ChildSessionLoginCredentials? _loginCredentials;
+
+    internal void SetLoginCredentials(ChildSessionLoginCredentials? credentials) =>
+        _loginCredentials = credentials;
+
     internal void ConnectToChildSession(DrawingSize desktopSize)
     {
         if (ConnectedState != 0)
@@ -78,6 +83,24 @@ internal sealed class RdpActiveXHost : WinForms.AxHost
         SetComProperty(client, "ColorDepth", 32);
         SetComProperty(client, "ConnectingText", "正在创建 Better-Muv 桌面分身...");
         SetComProperty(client, "DisconnectedText", "Better-Muv 桌面分身已断开");
+
+        // Child Session 必须用当前会话同一账户；由弹窗传入密码做自动登录。
+        ChildSessionLoginCredentials? credentials = _loginCredentials;
+        if (credentials is not null)
+        {
+            string domain = string.IsNullOrWhiteSpace(credentials.Domain)
+                ? Environment.UserDomainName
+                : credentials.Domain;
+            RunComStep("填写登录用户名", () =>
+                SetComProperty(client, "UserName", credentials.UserName));
+            RunComStep("填写登录域", () =>
+                SetComProperty(client, "Domain", domain));
+            RunComStep("填写登录密码", () =>
+            {
+                var nonScriptable = (IMsRdpClientNonScriptable)client;
+                nonScriptable.put_ClearTextPassword(credentials.Password);
+            });
+        }
 
         var securedSettings = GetComProperty(client, "SecuredSettings2")
             ?? throw new COMException("RDP ActiveX 未返回 SecuredSettings2。");
@@ -369,11 +392,70 @@ internal sealed class RdpActiveXHost : WinForms.AxHost
         var message = string.IsNullOrWhiteSpace(errorDescription)
             ? $"{failureTitle}。\n\n断开原因：{FormatErrorCode(disconnectReason)}\n扩展原因：{FormatErrorCode(extendedDisconnectReason)}"
             : $"{failureTitle}：{errorDescription}\n\n断开原因：{FormatErrorCode(disconnectReason)}\n扩展原因：{FormatErrorCode(extendedDisconnectReason)}";
+        message += BuildDisconnectHint(disconnectReason, extendedDisconnectReason);
 
         ReportConnectionFailure(
             message,
             disconnectReason,
             extendedDisconnectReason);
+    }
+
+    private static string BuildDisconnectHint(int disconnectReason, int extendedDisconnectReason)
+    {
+        // 断开原因 4：内部错误；本机事件日志常见 RDP_SEC Access Denied（0x80070005），
+        // 多因用了非当前会话用户凭据，或残留损坏的 Child Session。
+        if (disconnectReason is 4)
+        {
+            return """
+
+错误 4（内部错误）常见处理：
+1. 登录框必须用「当前已登录 Windows 的同一账户」密码（不要用新建的其他用户）。
+2. 不要用 PIN；无密码请先在「登录选项」里为当前账户设置密码。
+3. 关闭分身后再点启动；仍失败请重启电脑后重试。
+""";
+        }
+
+        // BetterGI FAQ：516 是通用断开，多数与 Windows 账户/凭据/Hello PIN 有关。
+        if (disconnectReason is 516 or 0x204)
+        {
+            if (ChildSessionNativeMethods.IsRdpWrapperEnabled())
+            {
+                return """
+
+错误 516 且本机启用了 RDP Wrapper（rdpwrap.dll）：
+这与桌面分身（Child Session）冲突。请点「启动」时选择临时切回系统原生 RDP，
+或手动卸载/停用 RDP Wrapper 后再试。关闭分身时会自动还原 Wrapper。
+""";
+            }
+
+            if (RdpWrapperSwitch.IsSwitchedAwayFromWrapper)
+            {
+                return """
+
+错误 516（已临时切回原生 RDP 仍失败）：
+1. 登录框若出现「你的凭据不工作」：必须用账户「密码」，不能用 PIN。
+2. 本机若从未设过密码：设置 → 账户 → 登录选项 → 密码 → 添加。
+3. 微软账户：关闭「仅允许 Microsoft 帐户使用 Windows Hello 登录」。
+4. 先重启 Better-Muv；仍不行再重启系统。
+""";
+            }
+
+            return """
+
+常见原因与处理（错误 516）：
+1. 若安装过 RDP Wrapper / SuperRDP：必须临时停用（与桌面分身二选一）。
+2. 「你的凭据不工作」：用账户「密码」登录，不要用 PIN；无密码请先设置密码。
+3. 设置 → 账户 → 登录选项：关闭「仅允许 Microsoft 帐户使用 Windows Hello 登录」。
+4. 先重启 Better-Muv；仍不行再重启系统。
+""";
+        }
+
+        if (extendedDisconnectReason != 0)
+        {
+            return "\n\n可先重启 Better-Muv 重试；仍失败请重启系统，并确认使用账户密码（非 PIN）登录分身。";
+        }
+
+        return string.Empty;
     }
 
     private async void ConnectPendingReconnect()
@@ -539,12 +621,15 @@ internal sealed class RdpActiveXHost : WinForms.AxHost
             -4 => "Winlogon 正在显示重新连接选项。",
             -3 => "Winlogon 已静默终止登录。",
             -1 => "访问被拒绝。",
-            0 => "登录凭据无效。",
+            0 => "登录凭据无效（常见：用了 PIN 而不是密码，或账户无密码）。"
+                 + ChildSessionCredentialHints.ShortHint,
             1 => "密码已过期，必须先修改密码。",
             2 => "登录或登录后的处理发生错误。",
             3 => "RDP 客户端正在显示登录警告。",
-            unchecked((int)0xC000006D) => "用户名或身份验证信息无效。",
-            unchecked((int)0xC000006E) => "身份验证受到用户账户限制。",
+            unchecked((int)0xC000006D) => "用户名或身份验证信息无效。"
+                                         + ChildSessionCredentialHints.ShortHint,
+            unchecked((int)0xC000006E) => "身份验证受到用户账户限制（可能是空密码被禁止远程登录）。"
+                                         + ChildSessionCredentialHints.ShortHint,
             unchecked((int)0xC0000224) => "密码已过期，必须先修改密码。",
             _ => "登录阶段发生未识别的错误或事件。"
         };
