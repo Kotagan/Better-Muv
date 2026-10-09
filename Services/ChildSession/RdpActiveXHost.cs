@@ -25,11 +25,14 @@ internal sealed class RdpActiveXHost : WinForms.AxHost
     private RdpEventSink? _eventSink;
     private bool _connectionAttemptInProgress;
     private bool _connectionFailureReported;
+    private bool _completeOnConnected;
+    private bool _loginCompleteRaisedForAttempt;
     private ChildSessionConnectionFailedEventArgs? _lastConnectionDiagnostic;
     private bool _disconnectRequested;
     private bool _sendSystemShortcutsToRemote = true;
     private bool _audioMuted;
     private DrawingSize? _pendingReconnectDesktopSize;
+    private bool _pendingReconnectSessionAlreadyLoggedOn;
     private bool _smartSizingEnabled = true;
 
     internal event EventHandler<ChildSessionConnectionFailedEventArgs>? ConnectionFailed;
@@ -65,7 +68,11 @@ internal sealed class RdpActiveXHost : WinForms.AxHost
     internal void SetLoginCredentials(ChildSessionLoginCredentials? credentials) =>
         _loginCredentials = credentials;
 
-    internal void ConnectToChildSession(DrawingSize desktopSize)
+    /// <param name="sessionAlreadyLoggedOn">
+    /// 复用已登录的 Child Session 时，ActiveX 常只触发 OnConnected、不再触发 OnLoginComplete；
+    /// 为 true 时在 OnConnected 即视为登录完成，避免空等超时。
+    /// </param>
+    internal void ConnectToChildSession(DrawingSize desktopSize, bool sessionAlreadyLoggedOn = false)
     {
         if (ConnectedState != 0)
         {
@@ -139,6 +146,8 @@ internal sealed class RdpActiveXHost : WinForms.AxHost
 
         _connectionAttemptInProgress = true;
         _connectionFailureReported = false;
+        _completeOnConnected = sessionAlreadyLoggedOn;
+        _loginCompleteRaisedForAttempt = false;
         _lastConnectionDiagnostic = null;
         _disconnectRequested = false;
         try
@@ -148,6 +157,7 @@ internal sealed class RdpActiveXHost : WinForms.AxHost
         catch
         {
             _connectionAttemptInProgress = false;
+            _completeOnConnected = false;
             throw;
         }
     }
@@ -202,8 +212,11 @@ internal sealed class RdpActiveXHost : WinForms.AxHost
         _audioMuted = muted;
     }
 
-    internal void ReconnectToChildSession(DrawingSize desktopSize)
+    internal void ReconnectToChildSession(
+        DrawingSize desktopSize,
+        bool sessionAlreadyLoggedOn = false)
     {
+        _pendingReconnectSessionAlreadyLoggedOn = sessionAlreadyLoggedOn;
         if (_disconnectRequested || _pendingReconnectDesktopSize.HasValue)
         {
             _pendingReconnectDesktopSize = desktopSize;
@@ -212,7 +225,7 @@ internal sealed class RdpActiveXHost : WinForms.AxHost
 
         if (ConnectedState == 0)
         {
-            ConnectToChildSession(desktopSize);
+            ConnectToChildSession(desktopSize, sessionAlreadyLoggedOn);
             return;
         }
 
@@ -222,7 +235,7 @@ internal sealed class RdpActiveXHost : WinForms.AxHost
             if (!DisconnectCore())
             {
                 _pendingReconnectDesktopSize = null;
-                ConnectToChildSession(desktopSize);
+                ConnectToChildSession(desktopSize, sessionAlreadyLoggedOn);
             }
         }
         catch
@@ -235,6 +248,7 @@ internal sealed class RdpActiveXHost : WinForms.AxHost
     internal void DisconnectSession()
     {
         _pendingReconnectDesktopSize = null;
+        _pendingReconnectSessionAlreadyLoggedOn = false;
         _ = DisconnectCore();
     }
 
@@ -349,9 +363,25 @@ internal sealed class RdpActiveXHost : WinForms.AxHost
         return key.ScanCode | (key.IsExtended ? extendedScanCodeFlag : 0);
     }
 
+    private void OnConnected()
+    {
+        // 复用已登录分身时，OnLoginComplete 经常不来；OnConnected 即画面已附着。
+        if (_completeOnConnected && _connectionAttemptInProgress)
+        {
+            OnLoginComplete();
+        }
+    }
+
     private void OnLoginComplete()
     {
+        if (_loginCompleteRaisedForAttempt)
+        {
+            return;
+        }
+
+        _loginCompleteRaisedForAttempt = true;
         _connectionAttemptInProgress = false;
+        _completeOnConnected = false;
         _connectionFailureReported = false;
         _lastConnectionDiagnostic = null;
         LoginCompleted?.Invoke(this, EventArgs.Empty);
@@ -468,6 +498,7 @@ internal sealed class RdpActiveXHost : WinForms.AxHost
         await Task.Delay(ReconnectDelay);
 
         var desktopSize = _pendingReconnectDesktopSize;
+        var sessionAlreadyLoggedOn = _pendingReconnectSessionAlreadyLoggedOn;
         _pendingReconnectDesktopSize = null;
         if (!desktopSize.HasValue || IsDisposed || Disposing)
         {
@@ -476,7 +507,7 @@ internal sealed class RdpActiveXHost : WinForms.AxHost
 
         try
         {
-            ConnectToChildSession(desktopSize.Value);
+            ConnectToChildSession(desktopSize.Value, sessionAlreadyLoggedOn);
         }
         catch (Exception exception) when (exception is COMException
                                               or TargetInvocationException
@@ -865,6 +896,7 @@ internal sealed class RdpActiveXHost : WinForms.AxHost
 
         public void OnConnected()
         {
+            owner.OnConnected();
         }
 
         public void OnLoginComplete()

@@ -192,7 +192,12 @@ public partial class ChildSessionWindow : Window
         catch (Exception ex)
         {
             MessageBox.Show(this,
-                "连不上分身内 Better-Muv（可能还在启动）：\n" + ex.GetBaseException().Message,
+                "连不上分身内 Better-Muv。\n\n"
+                + ex.GetBaseException().Message + "\n\n"
+                + "请确认：\n"
+                + "1. 分身画面里已自动打开 Better-Muv（标题含 childSession / 分身实例）\n"
+                + "2. 分身与主程序都已更新到同一版本\n"
+                + "3. 若刚连上，再等几秒后重试「启动任务」",
                 "任务控制",
                 MessageBoxButton.OK,
                 MessageBoxImage.Warning);

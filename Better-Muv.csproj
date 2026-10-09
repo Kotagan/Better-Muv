@@ -29,9 +29,9 @@
   </ItemGroup>
 
   <PropertyGroup>
-    <Version>1.3.7</Version>
-    <AssemblyVersion>1.3.7.0</AssemblyVersion>
-    <FileVersion>1.3.7.0</FileVersion>
+    <Version>1.3.8</Version>
+    <AssemblyVersion>1.3.8.0</AssemblyVersion>
+    <FileVersion>1.3.8.0</FileVersion>
     <Product>Better-Muv</Product>
     <Company>Kotagan</Company>
     <Authors>Kotagan</Authors>
@@ -64,6 +64,7 @@
     <Content Include="Assets\Templates\oshirase-title.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\event-choice.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\event-choice-mg-arm.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\event-choice-select.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\event-rest.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\maze-craft-title.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\maze-craft-end.png" CopyToOutputDirectory="PreserveNewest" />
@@ -199,10 +200,7 @@
 
   <!-- ??????????????????????????config.json?????? %LocalAppData%\Better-Muv\ -->
   <Target Name="CopyBundledConfigIfMissing" AfterTargets="Build">
-    <Copy SourceFiles="config.json"
-          DestinationFiles="$(OutputPath)config.json"
-          SkipUnchangedFiles="true"
-          Condition="!Exists('$(OutputPath)config.json')" />
+    <Copy SourceFiles="config.json" DestinationFiles="$(OutputPath)config.json" SkipUnchangedFiles="true" Condition="!Exists('$(OutputPath)config.json')" />
   </Target>
 
 </Project>

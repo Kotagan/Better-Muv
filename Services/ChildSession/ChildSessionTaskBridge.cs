@@ -1,4 +1,5 @@
 using System.IO.Pipes;
+using System.Security.AccessControl;
 using System.Security.Principal;
 using System.Text;
 
@@ -7,6 +8,7 @@ namespace BetterMuv.Services.ChildSession;
 /// <summary>
 /// 根实例 ↔ 分身内 Better-Muv：启动/停止一条龙任务。
 /// 分身实例开 Named Pipe Server；根实例作为 Client 发命令。
+/// 须放宽 PipeSecurity：Child Session 与主会话不是同一会话，默认 ACL 会导致连不上（超时显示 “The operation was canceled”）。
 /// </summary>
 internal sealed class ChildSessionTaskBridge : IDisposable
 {
@@ -36,6 +38,38 @@ internal sealed class ChildSessionTaskBridge : IDisposable
         return $"Better-Muv.v1.user-{sid}.childTask";
     }
 
+    private static PipeSecurity CreateCrossSessionPipeSecurity()
+    {
+        var security = new PipeSecurity();
+        // 允许同一用户在不同会话（主桌面 ↔ Child Session）读写。
+        SecurityIdentifier? user = WindowsIdentity.GetCurrent().User;
+        if (user is not null)
+        {
+            security.AddAccessRule(new PipeAccessRule(
+                user,
+                PipeAccessRights.FullControl,
+                AccessControlType.Allow));
+        }
+
+        // 认证用户可读可写：覆盖提权/非提权与跨会话常见 ACL 拦截。
+        security.AddAccessRule(new PipeAccessRule(
+            new SecurityIdentifier(WellKnownSidType.AuthenticatedUserSid, null),
+            PipeAccessRights.ReadWrite | PipeAccessRights.CreateNewInstance,
+            AccessControlType.Allow));
+        return security;
+    }
+
+    private static NamedPipeServerStream CreateServer(string pipeName) =>
+        NamedPipeServerStreamAcl.Create(
+            pipeName,
+            PipeDirection.InOut,
+            maxNumberOfServerInstances: 1,
+            PipeTransmissionMode.Byte,
+            PipeOptions.Asynchronous,
+            inBufferSize: 0,
+            outBufferSize: 0,
+            CreateCrossSessionPipeSecurity());
+
     internal void StartServer(Func<string, string> handler)
     {
         StopServer();
@@ -53,20 +87,44 @@ internal sealed class ChildSessionTaskBridge : IDisposable
         _handler = null;
     }
 
-    internal static async Task<string> SendAsync(string command, int timeoutMs = 4000)
+    internal static async Task<string> SendAsync(string command, int timeoutMs = 6000)
     {
-        using var cts = new CancellationTokenSource(timeoutMs);
-        await using var client = new NamedPipeClientStream(
-            ".",
-            ResolvePipeName(),
-            PipeDirection.InOut,
-            PipeOptions.Asynchronous);
-        await client.ConnectAsync(cts.Token);
-        await WriteLineAsync(client, command, cts.Token);
-        return await ReadLineAsync(client, cts.Token);
+        // 分身刚启动时管道可能尚未就绪；短重试优于一次失败弹窗。
+        const int attempts = 4;
+        int slice = Math.Max(800, timeoutMs / attempts);
+        Exception? last = null;
+        for (int i = 0; i < attempts; i++)
+        {
+            try
+            {
+                using var cts = new CancellationTokenSource(slice);
+                await using var client = new NamedPipeClientStream(
+                    ".",
+                    ResolvePipeName(),
+                    PipeDirection.InOut,
+                    PipeOptions.Asynchronous);
+                await client.ConnectAsync(cts.Token);
+                await WriteLineAsync(client, command, cts.Token);
+                return await ReadLineAsync(client, cts.Token);
+            }
+            catch (Exception ex) when (ex is TimeoutException
+                                           or OperationCanceledException
+                                           or IOException
+                                           or UnauthorizedAccessException)
+            {
+                last = ex;
+                if (i + 1 < attempts)
+                    await Task.Delay(350);
+            }
+        }
+
+        throw new InvalidOperationException(
+            "无法连接分身内 Better-Muv 任务管道（可能尚未启动，或跨会话管道被权限拦截）。"
+            + "请确认分身画面里已打开 Better-Muv。",
+            last);
     }
 
-    internal static async Task<bool?> TryQueryBusyAsync(int timeoutMs = 800)
+    internal static async Task<bool?> TryQueryBusyAsync(int timeoutMs = 1200)
     {
         try
         {
@@ -92,12 +150,7 @@ internal sealed class ChildSessionTaskBridge : IDisposable
         {
             try
             {
-                await using var server = new NamedPipeServerStream(
-                    pipeName,
-                    PipeDirection.InOut,
-                    1,
-                    PipeTransmissionMode.Byte,
-                    PipeOptions.Asynchronous);
+                await using NamedPipeServerStream server = CreateServer(pipeName);
                 await server.WaitForConnectionAsync(token);
                 string command = await ReadLineAsync(server, token);
                 string reply;

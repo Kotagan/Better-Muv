@@ -229,6 +229,17 @@ public static class ConfigStore
             config.DailyShopOkSize = new ConfigSize(420, 140);
             changed = true;
         }
+        // 迷宫事件双选项：旧点 (1300,825)/(1300,700) 落在按钮外空白（1.3.7 日志卡死）。
+        // 中间过渡点 (1400,610)/(1400,750) 仍偏上；按 1080p 实机按钮中心校正。
+        bool eventChoiceNeedsMigrate =
+            config.EventChoiceSecondOption is { X: 1300, Y: 825 } or { X: 1400, Y: 750 }
+            || config.EventChoiceFirstOption is { X: 1300, Y: 700 } or { X: 1400, Y: 610 };
+        if (eventChoiceNeedsMigrate)
+        {
+            config.EventChoiceFirstOption = new ConfigPoint(1400, 626);
+            config.EventChoiceSecondOption = new ConfigPoint(1400, 768);
+            changed = true;
+        }
         // 每日爬塔禁止持久化完成状态；清除所有旧版本遗留标记。
         if (!string.IsNullOrWhiteSpace(config.LastDailySimulationTowerDay) ||
             !string.IsNullOrWhiteSpace(config.LastDailySimulationTowerTenRunDay) ||
@@ -620,6 +631,10 @@ public static class ConfigStore
         config.BattleSkipSize = defaults.BattleSkipSize;
         config.EventChoiceTopLeft = defaults.EventChoiceTopLeft;
         config.EventChoiceSize = defaults.EventChoiceSize;
+        config.EventChoiceSelectUpperTopLeft = defaults.EventChoiceSelectUpperTopLeft;
+        config.EventChoiceSelectLowerTopLeft = defaults.EventChoiceSelectLowerTopLeft;
+        config.EventChoiceSelectSize = defaults.EventChoiceSelectSize;
+        config.EventChoiceSelectClickOffsetX = defaults.EventChoiceSelectClickOffsetX;
         config.EventChoiceFirstOption = defaults.EventChoiceFirstOption;
         config.EventChoiceSecondOption = defaults.EventChoiceSecondOption;
         config.EventRestTopLeft = defaults.EventRestTopLeft;

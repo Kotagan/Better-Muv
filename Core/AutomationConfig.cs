@@ -73,8 +73,17 @@ public sealed class AutomationConfig
     public ConfigPoint PopupCloseClick { get; set; } = new(1810, 55);
     public ConfigPoint EventChoiceTopLeft { get; set; } = new(1018, 628);
     public ConfigSize EventChoiceSize { get; set; } = new(814, 367);
-    public ConfigPoint EventChoiceFirstOption { get; set; } = new(1300, 700);
-    public ConfigPoint EventChoiceSecondOption { get; set; } = new(1300, 825);
+    /// <summary>事件选项按钮右侧「SELECT」搜索区（1080p；上条）。</summary>
+    public ConfigPoint EventChoiceSelectUpperTopLeft { get; set; } = new(1580, 560);
+    /// <summary>事件选项按钮右侧「SELECT」搜索区（1080p；下条）。</summary>
+    public ConfigPoint EventChoiceSelectLowerTopLeft { get; set; } = new(1580, 700);
+    public ConfigSize EventChoiceSelectSize { get; set; } = new(340, 150);
+    /// <summary>从 SELECT 命中点向左偏到按钮可点区域（1080p 逻辑像素）。</summary>
+    public int EventChoiceSelectClickOffsetX { get; set; } = 350;
+    /// <summary>事件双选项：上按钮中心兜底（1080p；SELECT 未命中时用）。</summary>
+    public ConfigPoint EventChoiceFirstOption { get; set; } = new(1400, 626);
+    /// <summary>事件双选项：下按钮中心兜底（1080p；SELECT 未命中时用）。旧 1300,825 落在按钮下方空白。</summary>
+    public ConfigPoint EventChoiceSecondOption { get; set; } = new(1400, 768);
     /// <summary>迷宫「一時の休息」按钮搜索区（1080p；右栏单选项）。</summary>
     public ConfigPoint EventRestTopLeft { get; set; } = new(900, 640);
     public ConfigSize EventRestSize { get; set; } = new(980, 160);
@@ -493,7 +502,7 @@ public sealed class AutomationConfig
             FirstSearchSize, SecondSearchSize, ThirdSearchSize, FourthSearchSize, FifthSearchSize,
             QuestBattleSimulateSize, QuestExercisesSize, QuestActivitySize, NavBackSize,
             HomeNavSize, QuestNavSize,
-            PartnerSelectionSize, BattleSkipSize, PopupCloseSize, EventChoiceSize, EventRestSize,
+            PartnerSelectionSize, BattleSkipSize, PopupCloseSize, EventChoiceSize, EventChoiceSelectSize, EventRestSize,
             CraftTitleSize, CraftEndSize,
             SettlementSearchSize,
             SettlementMultiplierSize, SettlementBuyButtonSearchSize, SettlementConfirmSize,

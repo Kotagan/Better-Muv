@@ -58,6 +58,7 @@ public sealed class MazeAutomation
     private readonly TemplateMatcher _battleSkipMatcher;
     private readonly TemplateMatcher _eventChoiceMatcher;
     private readonly TemplateMatcher _eventChoiceMgArmMatcher;
+    private readonly TemplateMatcher _eventChoiceSelectMatcher;
     private readonly TemplateMatcher _eventRestMatcher;
     private readonly TemplateMatcher _craftTitleMatcher;
     private readonly TemplateMatcher _craftEndMatcher;
@@ -87,6 +88,7 @@ public sealed class MazeAutomation
         _battleSkipMatcher = TemplateAssets.Load("battle-skip.png");
         _eventChoiceMatcher = TemplateAssets.Load("event-choice.png");
         _eventChoiceMgArmMatcher = TemplateAssets.Load("event-choice-mg-arm.png");
+        _eventChoiceSelectMatcher = TemplateAssets.Load("event-choice-select.png");
         _eventRestMatcher = TemplateAssets.Load("event-rest.png");
         _craftTitleMatcher = TemplateAssets.Load("maze-craft-title.png");
         _craftEndMatcher = TemplateAssets.Load("maze-craft-end.png");
@@ -1090,28 +1092,17 @@ public sealed class MazeAutomation
             if (eventChoiceProbe.IsMatch)
             {
                 if (eventChoiceHandled)
-                {
-                    // 上一轮点击后事件界面仍存在，允许重新点击，避免 handled 标记导致永久空转。
-                    _log($"事件选择界面仍在（{eventChoiceProbe.Score:F4}），重新点击第二选项。");
-                }
+                    _log($"事件选择界面仍在（{eventChoiceProbe.Score:F4}），重新选择选项。");
                 else
-                {
-                    _log($"{EventChoiceTaskName}识别成功（{eventChoiceProbe.Score:F4}），默认选择第二选项。");
-                }
+                    _log($"{EventChoiceTaskName}识别成功（{eventChoiceProbe.Score:F4}），识别 SELECT 选项。");
 
-                window = await _screen.ClickAsync(
-                    window, _config.EventChoiceSecondOption, "事件第二选项", cancellationToken);
+                // 优先模板点下选项；失败再补点 / 改点上选项；坐标仅作最后兜底。
+                window = await ClickEventOptionAsync(
+                    window, preferLower: true, "事件选项", cancellationToken);
                 eventChoiceHandled = true;
                 await Task.Delay(500, cancellationToken);
 
-                TemplateProbeResult normalEventAfter = await _screen.ProbeAsync(
-                    window, _eventChoiceMatcher, _config.EventChoiceTopLeft,
-                    _config.EventChoiceSize, cancellationToken, MazePresenceThreshold);
-                TemplateProbeResult mgArmEventAfter = await _screen.ProbeAsync(
-                    window, _eventChoiceMgArmMatcher, _config.EventChoiceTopLeft,
-                    _config.EventChoiceSize, cancellationToken, MazePresenceThreshold);
-                TemplateProbeResult eventAfter =
-                    mgArmEventAfter.Score > normalEventAfter.Score ? mgArmEventAfter : normalEventAfter;
+                TemplateProbeResult eventAfter = await ProbeEventChoicePresenceAsync(window, cancellationToken);
                 if (!eventAfter.IsMatch)
                 {
                     eventChoiceHandled = false;
@@ -1119,28 +1110,32 @@ public sealed class MazeAutomation
                     return State(true);
                 }
 
-                _log($"事件选择界面点击后仍在（{eventAfter.Score:F3}），补点第二选项。");
-                window = await _screen.ClickAsync(
-                    window, _config.EventChoiceSecondOption, "事件第二选项(补点)", cancellationToken);
+                _log($"事件选择界面点击后仍在（{eventAfter.Score:F3}），补点下选项。");
+                window = await ClickEventOptionAsync(
+                    window, preferLower: true, "事件选项(补点)", cancellationToken);
                 await Task.Delay(500, cancellationToken);
 
-                normalEventAfter = await _screen.ProbeAsync(
-                    window, _eventChoiceMatcher, _config.EventChoiceTopLeft,
-                    _config.EventChoiceSize, cancellationToken, MazePresenceThreshold);
-                mgArmEventAfter = await _screen.ProbeAsync(
-                    window, _eventChoiceMgArmMatcher, _config.EventChoiceTopLeft,
-                    _config.EventChoiceSize, cancellationToken, MazePresenceThreshold);
-                eventAfter = mgArmEventAfter.Score > normalEventAfter.Score
-                    ? mgArmEventAfter
-                    : normalEventAfter;
+                eventAfter = await ProbeEventChoicePresenceAsync(window, cancellationToken);
+                if (!eventAfter.IsMatch)
+                {
+                    eventChoiceHandled = false;
+                    _log("事件选择界面补点后已消失，继续探索。");
+                    return State(true);
+                }
+
+                _log($"事件选择界面补点后仍在（{eventAfter.Score:F3}），改点上选项。");
+                window = await ClickEventOptionAsync(
+                    window, preferLower: false, "事件选项(上)", cancellationToken);
+                await Task.Delay(500, cancellationToken);
+                eventAfter = await ProbeEventChoicePresenceAsync(window, cancellationToken);
                 eventChoiceHandled = false;
                 if (eventAfter.IsMatch)
                 {
-                    _log($"事件选择界面补点后仍在（{eventAfter.Score:F3}），本轮计无进度。");
+                    _log($"事件选择界面改点后仍在（{eventAfter.Score:F3}），本轮计无进度。");
                     return State(false);
                 }
 
-                _log("事件选择界面补点后已消失，继续探索。");
+                _log("事件选择界面改点后已消失，继续探索。");
                 return State(true);
             }
             if (screen is not null)
@@ -1639,6 +1634,98 @@ public sealed class MazeAutomation
              (clickOffset is null ? "" : $"（相对图标中心偏移 1080p {clickOffset.X},{clickOffset.Y}）"));
         await _screen.ClickScreenAsync(window, clickPoint, cancellationToken);
         return winner.Key;
+    }
+
+    private const double EventSelectThreshold = 0.85;
+
+    private async Task<TemplateProbeResult> ProbeEventChoicePresenceAsync(
+        GameWindow window, CancellationToken cancellationToken)
+    {
+        TemplateProbeResult normal = await _screen.ProbeAsync(
+            window, _eventChoiceMatcher, _config.EventChoiceTopLeft,
+            _config.EventChoiceSize, cancellationToken, MazePresenceThreshold);
+        TemplateProbeResult mgArm = await _screen.ProbeAsync(
+            window, _eventChoiceMgArmMatcher, _config.EventChoiceTopLeft,
+            _config.EventChoiceSize, cancellationToken, MazePresenceThreshold);
+        return mgArm.Score > normal.Score ? mgArm : normal;
+    }
+
+    /// <summary>
+    /// 在选项条右侧识别「SELECT」：默认点靠下的一条；识别失败则回退写死坐标。
+    /// </summary>
+    private async Task<GameWindow> ClickEventOptionAsync(
+        GameWindow window,
+        bool preferLower,
+        string reason,
+        CancellationToken cancellationToken)
+    {
+        TemplateProbeResult upper = await _screen.ProbeAsync(
+            window,
+            _eventChoiceSelectMatcher,
+            _config.EventChoiceSelectUpperTopLeft,
+            _config.EventChoiceSelectSize,
+            cancellationToken,
+            EventSelectThreshold);
+        TemplateProbeResult lower = await _screen.ProbeAsync(
+            window,
+            _eventChoiceSelectMatcher,
+            _config.EventChoiceSelectLowerTopLeft,
+            _config.EventChoiceSelectSize,
+            cancellationToken,
+            EventSelectThreshold);
+
+        TemplateProbeResult? chosen = null;
+        string chosenLabel;
+        if (preferLower)
+        {
+            if (lower.IsMatch)
+            {
+                chosen = lower;
+                chosenLabel = "下SELECT";
+            }
+            else if (upper.IsMatch)
+            {
+                chosen = upper;
+                chosenLabel = "上SELECT";
+            }
+            else
+            {
+                chosenLabel = "坐标下";
+            }
+        }
+        else
+        {
+            if (upper.IsMatch)
+            {
+                chosen = upper;
+                chosenLabel = "上SELECT";
+            }
+            else if (lower.IsMatch)
+            {
+                chosen = lower;
+                chosenLabel = "下SELECT";
+            }
+            else
+            {
+                chosenLabel = "坐标上";
+            }
+        }
+
+        if (chosen is { } select)
+        {
+            CaptureGeometry geometry = _screen.Geometry(window);
+            double offsetX = _config.EventChoiceSelectClickOffsetX * geometry.ScaleX;
+            var click = new System.Windows.Point(select.Center.X - offsetX, select.Center.Y);
+            _log($"{reason}：{chosenLabel} {select.Score:F3}，点击 screen({click.X:F0},{click.Y:F0})");
+            await _screen.ClickScreenAsync(window, click, cancellationToken);
+            return _screen.Refresh(window);
+        }
+
+        ConfigPoint fallback = preferLower
+            ? _config.EventChoiceSecondOption
+            : _config.EventChoiceFirstOption;
+        _log($"{reason}：SELECT 未命中（上 {upper.Score:F3} / 下 {lower.Score:F3}），改用{chosenLabel} ({fallback.X},{fallback.Y})");
+        return await _screen.ClickAsync(window, fallback, reason, cancellationToken);
     }
 
     /// <summary>

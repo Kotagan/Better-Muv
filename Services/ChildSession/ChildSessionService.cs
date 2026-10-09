@@ -577,15 +577,35 @@ public sealed class ChildSessionService : IDisposable
         var window = EnsureDesktopWindow();
         ShowDesktopWindow(window);
 
-        if (window.RdpHost.ConnectedState == 0)
+        _autoLaunchBetterMuvPending = existingSessionId is null;
+        _initialConnectionRetriesRemaining = _autoLaunchBetterMuvPending
+            ? InitialConnectionRetryCount
+            : 0;
+        if (_pendingLoginCredentials is not null)
+            window.RdpHost.SetLoginCredentials(_pendingLoginCredentials);
+
+        bool reuseLoggedOnSession = existingSessionId is not null;
+        int state = window.RdpHost.ConnectedState;
+        // 0=断开 1=已连接 2=连接中。卡在 Connecting 时必须先断开再连，否则会空等超时。
+        if (state == 1)
         {
-            _autoLaunchBetterMuvPending = existingSessionId is null;
-            _initialConnectionRetriesRemaining = _autoLaunchBetterMuvPending
-                ? InitialConnectionRetryCount
-                : 0;
-            if (_pendingLoginCredentials is not null)
-                window.RdpHost.SetLoginCredentials(_pendingLoginCredentials);
-            window.RdpHost.ConnectToChildSession(DefaultDesktopSize);
+            RefreshState(operationMessage);
+            return;
+        }
+
+        if (state != 0)
+        {
+            Log($"桌面分身：RDP 状态为 {state}，先断开再连接"
+                + (reuseLoggedOnSession ? $"（复用会话 {existingSessionId}）" : string.Empty));
+            window.RdpHost.ReconnectToChildSession(
+                DefaultDesktopSize,
+                sessionAlreadyLoggedOn: reuseLoggedOnSession);
+        }
+        else
+        {
+            window.RdpHost.ConnectToChildSession(
+                DefaultDesktopSize,
+                sessionAlreadyLoggedOn: reuseLoggedOnSession);
         }
 
         RefreshState(operationMessage);
@@ -848,7 +868,9 @@ public sealed class ChildSessionService : IDisposable
             RefreshState(
                 $"正在重试 RDP 自动连接（{retryNumber}/{RdpSettingsReconnectRetryCount}）");
             _rdpSettingsReconnectRetryInProgress = false;
-            EnsureDesktopWindow().RdpHost.ReconnectToChildSession(DefaultDesktopSize);
+            EnsureDesktopWindow().RdpHost.ReconnectToChildSession(
+                DefaultDesktopSize,
+                sessionAlreadyLoggedOn: ChildSessionNativeMethods.TryGetChildSessionId() is not null);
         }
         catch (OperationCanceledException) when (_disposed)
         {
@@ -904,7 +926,9 @@ public sealed class ChildSessionService : IDisposable
             _connectionRetryInProgress = false;
             // OnLogonError 触发后 ActiveX 可能仍处于连接状态，必须先断开再重连。
             // 否则这里直接退出会丢失已捕获的真实错误，最终只剩外层连接超时。
-            _desktopWindow.RdpHost.ReconnectToChildSession(DefaultDesktopSize);
+            _desktopWindow.RdpHost.ReconnectToChildSession(
+                DefaultDesktopSize,
+                sessionAlreadyLoggedOn: ChildSessionNativeMethods.TryGetChildSessionId() is not null);
         }
         catch (OperationCanceledException) when (_disposed)
         {
