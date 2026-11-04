@@ -800,6 +800,7 @@
                         <Button x:Name="MazeBasicNavButton" Style="{StaticResource MazeSettingsNavButton}" Margin="0" Content="探索" Click="ShowMazeBasicSettingsButton_Click"/>
                         <Button x:Name="MazeTreasureNavButton" Style="{StaticResource MazeSettingsNavButton}" Margin="4,0,0,0" Content="宝物优先级" Click="ShowMazeTreasureSettingsButton_Click"/>
                         <Button x:Name="MazeShopNavButton" Style="{StaticResource MazeSettingsNavButton}" Margin="4,0,0,0" Content="结算商店" Click="ShowMazeShopSettingsButton_Click"/>
+                        <Button x:Name="CircleShopNavButton" Style="{StaticResource MazeSettingsNavButton}" Margin="4,0,0,0" Content="社团商店" Click="ShowCircleShopSettingsButton_Click"/>
                     </StackPanel>
                 </Border>
                 <Grid Grid.Row="2">
@@ -881,6 +882,48 @@
                             <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,10,0,0">
                                 <Button x:Name="ResetShopCategoryButton" Style="{StaticResource PrimaryButton}" Click="ResetCurrentShopCategoryPurchases_Click"/>
                                 <Button Style="{StaticResource PrimaryButton}" Content="重置当前页面数量" Margin="8,0,0,0" Click="ResetCurrentShopPagePurchases_Click"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                    <Border x:Name="CircleShopSettingsSection" Style="{StaticResource Card}" Margin="0" Visibility="Collapsed" VerticalAlignment="Stretch">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <TextBlock Text="社团商店购买" FontSize="16" FontWeight="SemiBold"/>
+                            <Grid Grid.Row="1" Margin="0,10,0,8">
+                                <TextBlock Text="每日商店进入交換所后，切换左侧「サークル」按下列配置购买。格位对应当前页左上→右下。"
+                                           Foreground="#BEC7D2" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,120,0"/>
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                    <TextBlock Text="启用" Foreground="#BEC7D2" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                    <CheckBox x:Name="CircleShopEnabledSwitch" Style="{StaticResource ToggleSwitch}"
+                                              ToolTip="关闭后每日商店跳过社团页签"
+                                              Checked="CircleShopEnabledSwitch_Changed"
+                                              Unchecked="CircleShopEnabledSwitch_Changed"/>
+                                </StackPanel>
+                            </Grid>
+                            <Border Grid.Row="2" Background="#202630" CornerRadius="10" Padding="10">
+                                <DockPanel LastChildFill="True">
+                                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,0,8">
+                                        <TextBlock Text="整页全买" Foreground="#BEC7D2" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                        <CheckBox x:Name="CircleShopBuyAllSwitch" Style="{StaticResource ToggleSwitch}"
+                                                  ToolTip="将全部格位设为全买"
+                                                  Checked="CircleShopBuyAllSwitch_Changed"
+                                                  Unchecked="CircleShopBuyAllSwitch_Changed"/>
+                                    </StackPanel>
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                        <Grid x:Name="CircleShopItemGrid">
+                                            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                                            <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
+                                        </Grid>
+                                    </ScrollViewer>
+                                </DockPanel>
+                            </Border>
+                            <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,10,0,0">
+                                <Button Style="{StaticResource PrimaryButton}" Content="重置社团商店数量" Click="ResetCircleShopPurchases_Click"/>
                             </StackPanel>
                         </Grid>
                     </Border>

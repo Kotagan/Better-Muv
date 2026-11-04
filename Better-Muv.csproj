@@ -10,7 +10,7 @@
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <!-- WinForms：DPI 改由项目属性配置，勿再写在 app.manifest（WFO0003） -->
+    <!-- WinForms：DPI 改由项目属性配置，勿再写在 app.manifest（WFO0003�?-->
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
   </PropertyGroup>
 
@@ -29,9 +29,9 @@
   </ItemGroup>
 
   <PropertyGroup>
-    <Version>1.3.8</Version>
-    <AssemblyVersion>1.3.8.0</AssemblyVersion>
-    <FileVersion>1.3.8.0</FileVersion>
+    <Version>1.3.9</Version>
+    <AssemblyVersion>1.3.9.0</AssemblyVersion>
+    <FileVersion>1.3.9.0</FileVersion>
     <Product>Better-Muv</Product>
     <Company>Kotagan</Company>
     <Authors>Kotagan</Authors>
@@ -82,6 +82,9 @@
     <Content Include="Assets\Templates\daily-shop-hub-limited.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\daily-shop-ok.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\daily-shop-ticket-2500.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\daily-shop-ticket-3000.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\daily-shop-tab-circle.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\circle-exchange.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\shop-cat-daily-on.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\shop-cat-daily.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\shop-cat-equipment-on.png" CopyToOutputDirectory="PreserveNewest" />
@@ -150,6 +153,9 @@
     <Content Include="Assets\Templates\main-quest-next.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\main-quest-rematch.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\main-quest-to-home.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\battle-result-to-home.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\battle-result-rematch.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\battle-defeat-banner.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\hard-quest-difficulty.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\hard-quest-battle.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\hud-home.png" CopyToOutputDirectory="PreserveNewest" />

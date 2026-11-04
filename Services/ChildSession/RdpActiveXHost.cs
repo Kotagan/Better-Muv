@@ -426,7 +426,10 @@ internal sealed class RdpActiveXHost : WinForms.AxHost
         var message = string.IsNullOrWhiteSpace(errorDescription)
             ? $"{failureTitle}。\n\n断开原因：{FormatErrorCode(disconnectReason)}\n扩展原因：{FormatErrorCode(extendedDisconnectReason)}"
             : $"{failureTitle}：{errorDescription}\n\n断开原因：{FormatErrorCode(disconnectReason)}\n扩展原因：{FormatErrorCode(extendedDisconnectReason)}";
-        message += BuildDisconnectHint(disconnectReason, extendedDisconnectReason);
+        message += BuildDisconnectHint(
+            disconnectReason,
+            extendedDisconnectReason,
+            errorDescription);
 
         ReportConnectionFailure(
             message,
@@ -434,8 +437,26 @@ internal sealed class RdpActiveXHost : WinForms.AxHost
             extendedDisconnectReason);
     }
 
-    private static string BuildDisconnectHint(int disconnectReason, int extendedDisconnectReason)
+    private static string BuildDisconnectHint(
+        int disconnectReason,
+        int extendedDisconnectReason,
+        string? errorDescription)
     {
+        // Win11 并发会话上限：用了其他本地用户、残留分身占用槽位、或 mstsc 再连 localhost。
+        // LSM 事件常见 reason 12；客户端文案即「与此计算机的连接数量是有限的」。
+        if (IsConnectionLimitDescription(errorDescription)
+            || IsConnectionLimitDisconnectReason(disconnectReason, extendedDisconnectReason))
+        {
+            return """
+
+「连接数量有限」常见原因与处理：
+1. 必须用「当前控制台已登录的同一账户」密码（本机若还有其他本地用户，不要用它的密码）。
+2. 本机已有桌面分身会话时，请在 Better-Muv 里点启动以复用；不要另开 mstsc 连 127.0.0.1。
+3. 仍失败：在分身窗口点「关闭/注销分身」清掉残留会话后再连；或重启 TermService / 电脑。
+4. 若装了 RDP Wrapper：启动分身时选临时切回系统原生 RDP。
+""";
+        }
+
         // 断开原因 4：内部错误；本机事件日志常见 RDP_SEC Access Denied（0x80070005），
         // 多因用了非当前会话用户凭据，或残留损坏的 Child Session。
         if (disconnectReason is 4)
@@ -492,6 +513,28 @@ internal sealed class RdpActiveXHost : WinForms.AxHost
 
         return string.Empty;
     }
+
+    internal static bool IsConnectionLimitFailure(string? message) =>
+        IsConnectionLimitDescription(message);
+
+    private static bool IsConnectionLimitDescription(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return false;
+
+        return text.Contains("连接数量", StringComparison.Ordinal)
+            || text.Contains("连接数目", StringComparison.Ordinal)
+            || text.Contains("limited number of connections", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("number of connections to this computer is limited",
+                StringComparison.OrdinalIgnoreCase);
+    }
+
+    // LSM Operational 事件 reason 12 对应客户端「连接数量有限」；部分版本扩展原因也会带此语义。
+    private static bool IsConnectionLimitDisconnectReason(
+        int disconnectReason,
+        int extendedDisconnectReason) =>
+        disconnectReason is 12
+        || extendedDisconnectReason is 12;
 
     private async void ConnectPendingReconnect()
     {

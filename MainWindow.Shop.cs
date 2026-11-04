@@ -8,20 +8,29 @@ namespace BetterMuv;
 public partial class MainWindow
 {
     private SettlementPurchases _shopPurchases = new();
+    private CircleShopPurchases _circlePurchases = new();
     private string _shopCategory = "daily";
     private string? _shopSubcategory = "skillBook1";
     private readonly TextBox[] _shopQuantityBoxes = new TextBox[6];
     private readonly CheckBox[] _shopBuyAllSwitches = new CheckBox[6];
     private readonly TextBlock[] _shopItemNameBlocks = new TextBlock[6];
     private readonly Border[] _shopItemCards = new Border[6];
+    private readonly TextBox[] _circleQuantityBoxes = new TextBox[CircleShopCatalog.SlotCount];
+    private readonly CheckBox[] _circleBuyAllSwitches = new CheckBox[CircleShopCatalog.SlotCount];
+    private readonly TextBlock[] _circleItemNameBlocks = new TextBlock[CircleShopCatalog.SlotCount];
     private bool _isLoadingShopValues;
+    private bool _isLoadingCircleShopValues;
 
     private void InitializeShopPanel()
     {
-        _shopPurchases = ConfigStore.Load().SettlementPurchases;
+        AutomationConfig config = ConfigStore.Load();
+        _shopPurchases = config.SettlementPurchases;
+        _circlePurchases = config.CirclePurchases;
         BuildShopCategoryButtons();
         BuildShopItemCards();
+        BuildCircleShopItemCards();
         SelectShopCategory("daily");
+        LoadCircleShopValues();
     }
 
     /// <summary>自动购买可能关闭达到上限的栏位；任务结束后同步单格及两级全买开关。</summary>
@@ -207,5 +216,143 @@ public partial class MainWindow
         SettlementShopCatalog.SetQuantities(_shopPurchases, _shopCategory, _shopSubcategory, new int[6]);
         LoadShopItemValues();
         PersistShopPurchases();
+    }
+
+    private void BuildCircleShopItemCards()
+    {
+        CircleShopItemGrid.Children.Clear();
+        for (int i = 0; i < CircleShopCatalog.SlotCount; i++)
+        {
+            int slot = i;
+            var name = new TextBlock
+            {
+                Text = CircleShopCatalog.ItemNames[i],
+                FontWeight = FontWeights.SemiBold,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            var buyAllLabel = new TextBlock
+            {
+                Text = "全买",
+                Foreground = new SolidColorBrush(Color.FromRgb(190, 199, 210)),
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 7, 0)
+            };
+            var buyAll = new CheckBox
+            {
+                Style = (Style)FindResource("ToggleSwitch"),
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 10, 0)
+            };
+            var quantity = new TextBox
+            {
+                Width = 72,
+                Height = 32,
+                MinHeight = 32,
+                Padding = new Thickness(4, 2, 4, 2),
+                Text = "0",
+                FontSize = 14,
+                VerticalContentAlignment = VerticalAlignment.Center,
+                HorizontalContentAlignment = HorizontalAlignment.Center
+            };
+            quantity.LostKeyboardFocus += (_, _) => PersistCircleShopPurchases(true);
+            buyAll.Checked += (_, _) => UpdateCircleBuyAllState(slot);
+            buyAll.Unchecked += (_, _) => UpdateCircleBuyAllState(slot);
+            var content = new Grid();
+            content.ColumnDefinitions.Add(new ColumnDefinition());
+            content.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            content.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            content.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            content.Children.Add(name);
+            Grid.SetColumn(buyAllLabel, 1);
+            Grid.SetColumn(buyAll, 2);
+            Grid.SetColumn(quantity, 3);
+            content.Children.Add(buyAllLabel);
+            content.Children.Add(buyAll);
+            content.Children.Add(quantity);
+            var card = new Border
+            {
+                Background = new SolidColorBrush(Color.FromRgb(35, 42, 52)),
+                CornerRadius = new CornerRadius(8),
+                Margin = new Thickness(4),
+                Padding = new Thickness(14, 10, 12, 10),
+                Height = 58,
+                Child = content
+            };
+            Grid.SetRow(card, slot / 2);
+            Grid.SetColumn(card, slot % 2);
+            CircleShopItemGrid.Children.Add(card);
+            _circleQuantityBoxes[slot] = quantity;
+            _circleItemNameBlocks[slot] = name;
+            _circleBuyAllSwitches[slot] = buyAll;
+        }
+    }
+
+    private void LoadCircleShopValues()
+    {
+        _isLoadingCircleShopValues = true;
+        AutomationConfig config = ConfigStore.Load();
+        CircleShopEnabledSwitch.IsChecked = config.CircleShopEnabled;
+        int[] quantities = _circlePurchases.GetSlots();
+        for (int i = 0; i < CircleShopCatalog.SlotCount; i++)
+        {
+            bool buyAll = quantities[i] == -1;
+            _circleBuyAllSwitches[i].IsChecked = buyAll;
+            _circleQuantityBoxes[i].Text = buyAll ? "0" : quantities[i].ToString();
+            _circleQuantityBoxes[i].IsEnabled = !buyAll;
+        }
+
+        CircleShopBuyAllSwitch.IsChecked = CircleShopCatalog.IsPageBuyAll(_circlePurchases);
+        _isLoadingCircleShopValues = false;
+    }
+
+    private void PersistCircleShopPurchases(bool quiet = false)
+    {
+        var values = new int[CircleShopCatalog.SlotCount];
+        for (int i = 0; i < CircleShopCatalog.SlotCount; i++)
+            values[i] = _circleBuyAllSwitches[i].IsChecked == true
+                ? -1
+                : int.TryParse(_circleQuantityBoxes[i].Text, out int value) ? Math.Max(0, value) : 0;
+        _circlePurchases.SetSlots(values);
+        AutomationConfig config = ConfigStore.Load();
+        config.CirclePurchases = _circlePurchases;
+        config.CircleShopEnabled = CircleShopEnabledSwitch.IsChecked == true;
+        ConfigStore.Save(config);
+        if (!quiet)
+            AppendLog("社团商店购买配置已保存。");
+    }
+
+    private void UpdateCircleBuyAllState(int slot)
+    {
+        if (_isLoadingCircleShopValues)
+            return;
+        _circleQuantityBoxes[slot].IsEnabled = _circleBuyAllSwitches[slot].IsChecked != true;
+        PersistCircleShopPurchases(true);
+        _isLoadingCircleShopValues = true;
+        CircleShopBuyAllSwitch.IsChecked = CircleShopCatalog.IsPageBuyAll(_circlePurchases);
+        _isLoadingCircleShopValues = false;
+    }
+
+    private void CircleShopEnabledSwitch_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_isLoadingCircleShopValues)
+            return;
+        PersistCircleShopPurchases(true);
+    }
+
+    private void CircleShopBuyAllSwitch_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_isLoadingCircleShopValues)
+            return;
+        bool buyAll = CircleShopBuyAllSwitch.IsChecked == true;
+        CircleShopCatalog.SetPageBuyAll(_circlePurchases, buyAll);
+        LoadCircleShopValues();
+        PersistCircleShopPurchases(true);
+    }
+
+    private void ResetCircleShopPurchases_Click(object sender, RoutedEventArgs e)
+    {
+        _circlePurchases.Reset();
+        LoadCircleShopValues();
+        PersistCircleShopPurchases();
     }
 }

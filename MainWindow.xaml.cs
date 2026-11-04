@@ -144,7 +144,7 @@ public partial class MainWindow : Window
     }
 
     private enum Page { Home, Execute, Settings, MazeSettings }
-    private enum MazeSettingsSection { Basic, Treasure, Shop }
+    private enum MazeSettingsSection { Basic, Treasure, Shop, CircleShop }
     private enum SettingsSection { General, Hotkey, Redeem }
 
     private void SetPage(Page page)
@@ -356,16 +356,19 @@ public partial class MainWindow : Window
     private void ShowMazeBasicSettingsButton_Click(object sender, RoutedEventArgs e) => ShowMazeSettingsSection(MazeSettingsSection.Basic);
     private void ShowMazeTreasureSettingsButton_Click(object sender, RoutedEventArgs e) => ShowMazeSettingsSection(MazeSettingsSection.Treasure);
     private void ShowMazeShopSettingsButton_Click(object sender, RoutedEventArgs e) => ShowMazeSettingsSection(MazeSettingsSection.Shop);
+    private void ShowCircleShopSettingsButton_Click(object sender, RoutedEventArgs e) => ShowMazeSettingsSection(MazeSettingsSection.CircleShop);
 
     private void ShowMazeSettingsSection(MazeSettingsSection section)
     {
         MazeBasicSettingsSection.Visibility = section == MazeSettingsSection.Basic ? Visibility.Visible : Visibility.Collapsed;
         MazeTreasureSettingsSection.Visibility = section == MazeSettingsSection.Treasure ? Visibility.Visible : Visibility.Collapsed;
         MazeShopSettingsSection.Visibility = section == MazeSettingsSection.Shop ? Visibility.Visible : Visibility.Collapsed;
+        CircleShopSettingsSection.Visibility = section == MazeSettingsSection.CircleShop ? Visibility.Visible : Visibility.Collapsed;
         var active = new SolidColorBrush(Color.FromRgb(59, 66, 78));
         MazeBasicNavButton.Background = section == MazeSettingsSection.Basic ? active : Brushes.Transparent;
         MazeTreasureNavButton.Background = section == MazeSettingsSection.Treasure ? active : Brushes.Transparent;
         MazeShopNavButton.Background = section == MazeSettingsSection.Shop ? active : Brushes.Transparent;
+        CircleShopNavButton.Background = section == MazeSettingsSection.CircleShop ? active : Brushes.Transparent;
     }
 
     private void ReturnToExecutionButton_Click(object sender, RoutedEventArgs e) => SetPage(Page.Execute);
@@ -1072,12 +1075,38 @@ public partial class MainWindow : Window
         }
         catch (OperationCanceledException)
         {
-            AppendLog(_pauseRequested ? "每日模拟战斗爬塔已暂停。" : "每日模拟战斗爬塔已停止。");
+            if (_pauseRequested)
+            {
+                AppendLog("每日模拟战斗爬塔已暂停。");
+            }
+            else
+            {
+                AppendLog("每日模拟战斗爬塔已停止，标记失败并执行退出回主页。");
+                CaptureOnAutoStop("dailySimulationTower-stop");
+                try
+                {
+                    await new TaskFailureHandler(ConfigStore.Load(), AppendLog)
+                        .RecoverToHomeAsync("每日模拟战斗爬塔", CancellationToken.None);
+                }
+                catch
+                {
+                    // 退出恢复失败不掩盖停止本身。
+                }
+            }
         }
         catch (Exception exception)
         {
             AppendLog("每日模拟战斗爬塔错误：" + exception.Message);
             CaptureOnAutoStop("dailySimulationTower");
+            try
+            {
+                await new TaskFailureHandler(ConfigStore.Load(), AppendLog)
+                    .RecoverToHomeAsync("每日模拟战斗爬塔", CancellationToken.None);
+            }
+            catch
+            {
+                // 忽略
+            }
         }
         finally
         {
@@ -1319,6 +1348,8 @@ public partial class MainWindow : Window
                                 CaptureOnAutoStop("pipeline-no-home");
                                 break;
                             }
+
+                            AppendLog($"一条龙：{PipelineTaskDisplayName(id)} 已回主页，跳过并继续下一项。");
                         }
                         else
                         {
@@ -1331,16 +1362,29 @@ public partial class MainWindow : Window
                 }
                 catch (OperationCanceledException)
                 {
-                    SetPipelineResultHint(
-                        id,
-                        _pauseRequested ? PipelineHintState.Running : PipelineHintState.Cancelled,
-                        _pauseRequested ? "已暂停，可继续" : null);
                     if (_pauseRequested)
                     {
+                        SetPipelineResultHint(id, PipelineHintState.Running, "已暂停，可继续");
                         TextBlock? tip = PipelineResultTipFor(id);
                         if (tip is not null)
                             tip.Text = "已暂停";
+                        throw;
                     }
+
+                    // 停止（非暂停）：当前任务记失败，并走退出回主页，避免卡在战斗/结算页。
+                    SetPipelineResultHint(id, PipelineHintState.Failure, "运行中停止");
+                    AppendLog($"一条龙：{PipelineTaskDisplayName(id)} 已停止，标记失败并执行退出回主页。");
+                    CaptureOnAutoStop(id + "-stop");
+                    try
+                    {
+                        await new TaskFailureHandler(ConfigStore.Load(), AppendLog)
+                            .RecoverToHomeAsync(PipelineTaskDisplayName(id), CancellationToken.None);
+                    }
+                    catch
+                    {
+                        // 退出恢复失败不掩盖停止本身。
+                    }
+
                     throw;
                 }
                 catch (Exception taskEx)
@@ -1378,6 +1422,8 @@ public partial class MainWindow : Window
                                 CaptureOnAutoStop("pipeline-no-home");
                                 break;
                             }
+
+                            AppendLog($"一条龙：{PipelineTaskDisplayName(id)} 已回主页，跳过并继续下一项。");
                         }
                     }
                     catch (OperationCanceledException)

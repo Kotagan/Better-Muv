@@ -52,6 +52,13 @@ public sealed class AutomationConfig
     public ConfigPoint SecondSearchTopLeft { get; set; } = new(1470, 420);
     public ConfigSize SecondSearchSize { get; set; } = new(300, 100);
     /// <summary>
+    /// 点「メイズ探索」后若弹出通常/未開拓选择，搜索「普通爬塔/通常」的 ROI（1080p）。
+    /// </summary>
+    public ConfigPoint MazeNormalModeTopLeft { get; set; } = new(200, 200);
+    public ConfigSize MazeNormalModeSize { get; set; } = new(1520, 680);
+    /// <summary>OCR 未命中时点「普通/通常」兜底（1080p；双卡时左侧常见位）。</summary>
+    public ConfigPoint MazeNormalModeClick { get; set; } = new(640, 540);
+    /// <summary>
     /// 迷宫开始页「探索準備」定位带（1080p）。
     /// 粉钮中心约 (1723,888)；旧 ThirdClick y=1010 点到导航栏导致进不了下一页。
     /// </summary>
@@ -237,10 +244,34 @@ public sealed class AutomationConfig
     /// <summary>奖励确认弹窗粉钮「OK」搜索区（1080p；弹窗底部居中）。</summary>
     public ConfigPoint DailyShopOkTopLeft { get; set; } = new(760, 900);
     public ConfigSize DailyShopOkSize { get; set; } = new(420, 140);
-    public ConfigPoint DailyShopTicketTopLeft { get; set; } = new(200, 750);
-    public ConfigSize DailyShopTicketSize { get; set; } = new(500, 300);
+    /// <summary>交換所列表金币价搜索区（1080p；含中部与右缘 3,000 价签）。</summary>
+    public ConfigPoint DailyShopTicketTopLeft { get; set; } = new(250, 500);
+    public ConfigSize DailyShopTicketSize { get; set; } = new(1500, 450);
     public ConfigPoint DailyShopScrollPoint { get; set; } = new(960, 700);
-    public int DailyShopScrollWheelNotches { get; set; } = -8;
+    /// <summary>找金币价签单次滚轮格数（负=下滚）；过小会滑不到价签行。</summary>
+    public int DailyShopScrollWheelNotches { get; set; } = -6;
+    /// <summary>识别不到金币价签时最多再滚几次（每次 DailyShopScrollWheelNotches）。</summary>
+    public int DailyShopTicketScrollAttempts { get; set; } = 10;
+    /// <summary>交換所左侧「サークル」页签搜索区（1080p）。</summary>
+    public ConfigPoint DailyShopCircleTabTopLeft { get; set; } = new(10, 390);
+    public ConfigSize DailyShopCircleTabSize { get; set; } = new(200, 120);
+    /// <summary>社团商店未命中页签时的兜底点击（1080p）。</summary>
+    public ConfigPoint DailyShopCircleTabClick { get; set; } = new(105, 450);
+    /// <summary>社团商店商品价签/购买格中心（1080p，左上→右下）。</summary>
+    public List<ConfigPoint> CircleShopBuyButtons { get; set; } =
+    [
+        new(420, 590),
+        new(720, 590),
+        new(1020, 590),
+        new(1320, 590),
+        new(420, 890),
+        new(720, 890),
+        new(1020, 890),
+        new(1320, 890)
+    ];
+    /// <summary>是否启用社团商店购买（在每日商店进入交換所后切换サークル页签）。</summary>
+    public bool CircleShopEnabled { get; set; } = true;
+    public CircleShopPurchases CirclePurchases { get; set; } = new();
     /// <summary>商店左栏「お得パック」固定点击（1080p）。</summary>
     public ConfigPoint DailyFreeGiftOtokuClick { get; set; } = new(130, 380);
     /// <summary>主页商店选择层中央「期間限定」商店入口（1080p）。</summary>
@@ -277,13 +308,13 @@ public sealed class AutomationConfig
         ["fire"] = new(500, 635), ["water"] = new(1420, 635),
         ["earth"] = new(1420, 835), ["wood"] = new(500, 835)
     };
-    public ConfigPoint DailySimulationPrepareTopLeft { get; set; } = new(1500, 900);
-    public ConfigSize DailySimulationPrepareSize { get; set; } = new(420, 180);
+    public ConfigPoint DailySimulationPrepareTopLeft { get; set; } = new(1500, 940);
+    public ConfigSize DailySimulationPrepareSize { get; set; } = new(420, 140);
     public ConfigPoint DailySimulationPrepareClick { get; set; } = new(1740, 1020);
     public ConfigPoint DailySimulationTitleTopLeft { get; set; } = new(100, 0);
     public ConfigSize DailySimulationTitleSize { get; set; } = new(450, 110);
-    public ConfigPoint DailySimulationListTopLeft { get; set; } = new(1600, 100);
-    public ConfigSize DailySimulationListSize { get; set; } = new(320, 140);
+    public ConfigPoint DailySimulationListTopLeft { get; set; } = new(1400, 50);
+    public ConfigSize DailySimulationListSize { get; set; } = new(520, 220);
     public ConfigPoint DailySimulationRemainingTopLeft { get; set; } = new(1600, 900);
     public ConfigSize DailySimulationRemainingSize { get; set; } = new(320, 100);
     /// <summary>主页右侧「ミッション」入口（1080p）。</summary>
@@ -378,10 +409,12 @@ public sealed class AutomationConfig
     public ConfigSize MainQuestSkipSize { get; set; } = new(300, 120);
     public ConfigPoint MainQuestNextTopLeft { get; set; } = new(1500, 880);
     public ConfigSize MainQuestNextSize { get; set; } = new(360, 180);
-    public ConfigPoint MainQuestRematchTopLeft { get; set; } = new(1480, 900);
-    public ConfigSize MainQuestRematchSize { get; set; } = new(360, 120);
-    public ConfigPoint MainQuestToHomeTopLeft { get; set; } = new(40, 900);
-    public ConfigSize MainQuestToHomeSize { get; set; } = new(400, 120);
+    public ConfigPoint MainQuestRematchTopLeft { get; set; } = new(1480, 960);
+    public ConfigSize MainQuestRematchSize { get; set; } = new(440, 120);
+    public ConfigPoint MainQuestToHomeTopLeft { get; set; } = new(20, 960);
+    public ConfigSize MainQuestToHomeSize { get; set; } = new(480, 120);
+    /// <summary>结算/战败页「ホームへ」点击中心兜底（1080p）。</summary>
+    public ConfigPoint MainQuestToHomeClick { get; set; } = new(220, 1014);
     public ConfigPoint HardQuestDifficultyTopLeft { get; set; } = new(1600, 780);
     public ConfigSize HardQuestDifficultySize { get; set; } = new(300, 100);
     /// <summary>关卡列表左下「MAIN QUEST BATTLE」红底标记（困难已选中）。</summary>
@@ -497,6 +530,8 @@ public sealed class AutomationConfig
             throw new InvalidDataException("参考分辨率必须大于零。");
         if (SettlementSubcategoryTabs.Count < 4 || SettlementBuyButtons.Count < 6)
             throw new InvalidDataException("结算小类页签至少 4 个，购买格至少 6 个。");
+        if (CircleShopBuyButtons.Count < CircleShopCatalog.SlotCount)
+            throw new InvalidDataException($"社团商店购买格至少 {CircleShopCatalog.SlotCount} 个。");
         ConfigSize[] requiredSizes =
         [
             FirstSearchSize, SecondSearchSize, ThirdSearchSize, FourthSearchSize, FifthSearchSize,
@@ -517,11 +552,12 @@ public sealed class AutomationConfig
             HardQuestDifficultySize, HardQuestBattleSize, HudHomeSize, HudMenuSize,
             RedeemCodeEntrySize, RedeemConfirmSize, RedeemResultOkSize, RedeemAlreadyUsedSize,
             DailyShopFreeOffSize, DailyShopExchangeSize, DailyShopExchangeHallSize,
-            DailyShopOkSize, DailyShopTicketSize,
+            DailyShopOkSize, DailyShopTicketSize, DailyShopCircleTabSize,
             DailyFreeGiftOtokuSize, DailyFreeGiftTitleSize,
             DailyFreeGiftPurchaseSize, DailyFreeGiftOkSize,
             DailyExercisesPrepareSize, DailyExercisesRemainingSize, DailySimulationPrepareSize,
             DailySimulationTitleSize, DailySimulationListSize, DailySimulationRemainingSize,
+            MazeNormalModeSize,
             DailyMissionsEntrySize, DailyMissionsTitleSize, DailyMissionsClearedSize,
             DailyMissionsClaimSize, DailyMissionsOkSize, DailyMissionsTabSize,
             DailyCircleNavSize, DailyCircleTitleSize, DailyCircleMissionEntrySize, DailyCircleTabSize,
@@ -559,6 +595,8 @@ public sealed class AutomationConfig
         if (GameLaunchTimeoutSeconds is < 5 or > 600)
             throw new InvalidDataException("gameLaunchTimeoutSeconds 必须在 5–600 秒。");
         NormalizeSettlementPurchases();
+        CirclePurchases ??= new CircleShopPurchases();
+        CirclePurchases.SetSlots(NormalizeSlots(CirclePurchases.GetSlots(), CircleShopCatalog.SlotCount));
         if (SettlementShopTipSize.Width <= 0 || SettlementShopTipSize.Height <= 0)
             throw new InvalidDataException("settlementShopTipSize 宽高必须大于零。");
     }

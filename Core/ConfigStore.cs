@@ -240,6 +240,35 @@ public static class ConfigStore
             config.EventChoiceSecondOption = new ConfigPoint(1400, 768);
             changed = true;
         }
+        // 每日商店金币价：旧一次 -3/-8 滑不到位；改为每次 -6、最多 10 次，并扩 ROI。
+        if (config.DailyShopTicketTopLeft is { X: 200, Y: 750 } or { X: 120, Y: 680 }
+            || config.DailyShopTicketSize is { Width: 500, Height: 300 } or { Width: 900, Height: 380 }
+            || config.DailyShopScrollWheelNotches is -3 or -8
+            || Math.Abs(config.DailyShopScrollWheelNotches) < 6
+            || config.DailyShopTicketScrollAttempts < 10)
+        {
+            config.DailyShopTicketTopLeft = new ConfigPoint(250, 500);
+            config.DailyShopTicketSize = new ConfigSize(1500, 450);
+            config.DailyShopScrollWheelNotches = -6;
+            config.DailyShopTicketScrollAttempts = 10;
+            changed = true;
+        }
+        if (config.CircleShopBuyButtons is null || config.CircleShopBuyButtons.Count < CircleShopCatalog.SlotCount)
+        {
+            config.CircleShopBuyButtons =
+            [
+                new(420, 590), new(720, 590), new(1020, 590), new(1320, 590),
+                new(420, 890), new(720, 890), new(1020, 890), new(1320, 890)
+            ];
+            changed = true;
+        }
+        if (config.CirclePurchases is null)
+        {
+            config.CirclePurchases = new CircleShopPurchases();
+            changed = true;
+        }
+        else
+            _ = config.CirclePurchases.GetSlots();
         // 每日爬塔禁止持久化完成状态；清除所有旧版本遗留标记。
         if (!string.IsNullOrWhiteSpace(config.LastDailySimulationTowerDay) ||
             !string.IsNullOrWhiteSpace(config.LastDailySimulationTowerTenRunDay) ||
@@ -248,6 +277,36 @@ public static class ConfigStore
             config.LastDailySimulationTowerDay = null;
             config.LastDailySimulationTowerTenRunDay = null;
             config.LastDailySimulationTowerStableLoopDay = null;
+            changed = true;
+        }
+        // 出撃準備模板已换新裁切；旧 ROI 偏小/偏上导致匹配约 0.15。
+        if (config.DailySimulationPrepareTopLeft is { X: 1450, Y: 800 } or { X: 1500, Y: 900 }
+            || config.DailySimulationPrepareSize is { Width: 470, Height: 170 } or { Width: 420, Height: 180 })
+        {
+            config.DailySimulationPrepareTopLeft = new ConfigPoint(1500, 940);
+            config.DailySimulationPrepareSize = new ConfigSize(420, 140);
+            changed = true;
+        }
+        // 塔列表 ROI：旧窄区易漏检；扩到右上排行条。
+        if (config.DailySimulationListTopLeft is { X: 1600, Y: 100 }
+            || config.DailySimulationListSize is { Width: 320, Height: 140 })
+        {
+            config.DailySimulationListTopLeft = new ConfigPoint(1400, 50);
+            config.DailySimulationListSize = new ConfigSize(520, 220);
+            changed = true;
+        }
+        // 点メイズ后「普通爬塔/通常」vs「未開拓」选择（缺省写进旧配置）。
+        bool mazeNormalMissing =
+            config.MazeNormalModeTopLeft is null
+            || config.MazeNormalModeClick is null
+            || config.MazeNormalModeSize is null
+            || config.MazeNormalModeSize.Width <= 0
+            || config.MazeNormalModeSize.Height <= 0;
+        if (mazeNormalMissing)
+        {
+            config.MazeNormalModeTopLeft = new ConfigPoint(200, 200);
+            config.MazeNormalModeSize = new ConfigSize(1520, 680);
+            config.MazeNormalModeClick = new ConfigPoint(640, 540);
             changed = true;
         }
         if (config.DailyMissionsTabTopLeft == new ConfigPoint(0, 200) &&

@@ -4,7 +4,7 @@ namespace BetterMuv.Core;
 
 /// <summary>
 /// 每日模拟战斗爬塔：主页 → 战斗 → 模拟战斗 → 当日属性塔 → 通用出击/SKIP/次へ。
-/// 每座塔循环出击；识别到「本日あと0回」仅结束本次运行，禁止持久化完成标记。
+/// 每座塔循环出击；某塔中途失败则跳过并切下一座；禁止持久化完成标记。
 /// </summary>
 public sealed class DailySimulationTowerAutomation
 {
@@ -25,10 +25,15 @@ public sealed class DailySimulationTowerAutomation
     private readonly TemplateMatcher _skip = TemplateAssets.Load("battle-skip.png");
     private readonly TemplateMatcher _skipAlt = TemplateAssets.Load("main-quest-skip.png");
     private readonly TemplateMatcher _next = TemplateAssets.Load("main-quest-next.png");
-    private readonly TemplateMatcher _rematch = TemplateAssets.Load("main-quest-rematch.png");
+    private readonly BattleResultHome _resultHome;
 
     public DailySimulationTowerAutomation(AutomationConfig config, Action<string> log)
-    { _config = config; _log = log; _screen = new ScreenAutomation(config, log); }
+    {
+        _config = config;
+        _log = log;
+        _screen = new ScreenAutomation(config, log);
+        _resultHome = new BattleResultHome(config, _screen, log);
+    }
 
     public static IReadOnlyList<string> TowerKeysFor(DayOfWeek day) => day switch
     {
@@ -56,75 +61,232 @@ public sealed class DailySimulationTowerAutomation
     public async Task<TaskRunResult> RunOnceAsync(CancellationToken cancellationToken)
     {
         DateTime now = DateTime.Now;
-        GameWindow window = _screen.FindWindow(_config.WindowTitleKeyword);
-        if (!await _screen.FocusAsync(window.Handle, cancellationToken))
-            throw new InvalidOperationException("未能将游戏置于前台");
-        window = await _screen.EnsurePreferredClientAsync(window, cancellationToken);
-        window = await new QuestFromHomeEntry(_config, _screen, _log).RunAsync(
-            window, QuestFromHomeEntry.BattleSimulateClick(_config), "模拟战斗", cancellationToken,
-            _entry, _config.QuestBattleSimulateTopLeft, _config.QuestBattleSimulateSize,
-            singleClickTarget: true);
-        TemplateProbeResult title = await _screen.WaitForProbeAsync(window, _title,
-            _config.DailySimulationTitleTopLeft, _config.DailySimulationTitleSize,
-            cancellationToken, timeoutMs: 10_000, matchThreshold: 0.72);
-        if (!title.IsMatch)
-            throw new InvalidOperationException($"模拟战斗页面未就绪：左上标题未识别（最高 {title.Score:F4}）。");
-        TemplateProbeResult towerList = await _screen.WaitForProbeAsync(window, _towerList,
-            _config.DailySimulationListTopLeft, _config.DailySimulationListSize,
-            cancellationToken, timeoutMs: 10_000, matchThreshold: 0.72);
-        if (!towerList.IsMatch)
-            throw new InvalidOperationException($"模拟战斗页面未就绪：未识别到塔列表（最高 {towerList.Score:F4}），停止点击属性塔。");
-        _log($"每日模拟战斗：已确认塔列表（标题 {title.Score:F3}，列表 {towerList.Score:F3}）。");
-        window = _screen.Refresh(window);
-
-        DayOfWeek gameDay = DailyExercisesAutomation.CurrentExercisesDay(now).DayOfWeek;
-        IReadOnlyList<string> towerKeys = TowerKeysFor(gameDay);
-        _log("每日模拟战斗：今日依次挑战" + string.Join("、", towerKeys.Select(TowerNameFor)) + "。");
-        int finishedTowers = 0;
-        for (int towerIndex = 0; towerIndex < towerKeys.Count; towerIndex++)
+        GameWindow? window = null;
+        try
         {
-            string key = towerKeys[towerIndex];
-            string name = TowerNameFor(key);
-            ConfigPoint point = TowerPointFor(key);
-            _log($"每日模拟战斗：选择{name}（{point.X},{point.Y}），持续出击直到确认今日剩余 0 次。");
-            window = await _screen.ClickAsync(_screen.Refresh(window), point, name, cancellationToken);
-            await Task.Delay(1200, cancellationToken);
+            window = _screen.FindWindow(_config.WindowTitleKeyword);
+            if (!await _screen.FocusAsync(window.Handle, cancellationToken))
+                throw new InvalidOperationException("未能将游戏置于前台");
+            window = await _screen.EnsurePreferredClientAsync(window, cancellationToken);
+            window = await new QuestFromHomeEntry(_config, _screen, _log).RunAsync(
+                window, QuestFromHomeEntry.BattleSimulateClick(_config), "模拟战斗", cancellationToken,
+                _entry, _config.QuestBattleSimulateTopLeft, _config.QuestBattleSimulateSize,
+                singleClickTarget: true);
+            TemplateProbeResult title = await _screen.WaitForProbeAsync(window, _title,
+                _config.DailySimulationTitleTopLeft, _config.DailySimulationTitleSize,
+                cancellationToken, timeoutMs: 10_000, matchThreshold: 0.72);
+            if (!title.IsMatch)
+                throw new InvalidOperationException($"模拟战斗页面未就绪：左上标题未识别（最高 {title.Score:F4}）。");
+            TemplateProbeResult towerList = await _screen.WaitForProbeAsync(window, _towerList,
+                _config.DailySimulationListTopLeft, _config.DailySimulationListSize,
+                cancellationToken, timeoutMs: 10_000, matchThreshold: 0.72);
+            if (!towerList.IsMatch)
+                throw new InvalidOperationException($"模拟战斗页面未就绪：未识别到塔列表（最高 {towerList.Score:F4}），停止点击属性塔。");
+            _log($"每日模拟战斗：已确认塔列表（标题 {title.Score:F3}，列表 {towerList.Score:F3}）。");
+            window = _screen.Refresh(window);
 
-            bool towerOk = await PushTowerUntilCannotSortieAsync(window, name, cancellationToken);
-            if (!towerOk)
+            DayOfWeek gameDay = DailyExercisesAutomation.CurrentExercisesDay(now).DayOfWeek;
+            IReadOnlyList<string> towerKeys = TowerKeysFor(gameDay);
+            _log("每日模拟战斗：今日依次挑战" + string.Join("、", towerKeys.Select(TowerNameFor)) + "。");
+            int finishedTowers = 0;
+            int skippedTowers = 0;
+            for (int towerIndex = 0; towerIndex < towerKeys.Count; towerIndex++)
             {
-                _log($"每日模拟战斗：{name}中途中断，停止本日任务。");
-                break;
-            }
+                string key = towerKeys[towerIndex];
+                string name = TowerNameFor(key);
+                ConfigPoint point = TowerPointFor(key);
+                _log($"每日模拟战斗：选择{name}（{point.X},{point.Y}），持续出击直到确认今日剩余 0 次。");
+                window = await _screen.ClickAsync(_screen.Refresh(window), point, name, cancellationToken);
+                await Task.Delay(1200, cancellationToken);
 
-            finishedTowers++;
-            _log($"每日模拟战斗：{name}已确认今日剩余 0 次，本次不再出击。");
+                bool towerOk = await PushTowerUntilCannotSortieAsync(window, name, cancellationToken);
+                bool hasNext = towerIndex + 1 < towerKeys.Count;
+                if (!towerOk)
+                {
+                    skippedTowers++;
+                    _log($"每日模拟战斗：{name}中途失败，点ホームへ后跳过"
+                        + $"（已完成 {finishedTowers}，已跳过 {skippedTowers}）。");
+                    window = await LeaveResultOrHomeAsync(window, $"{name}失败", cancellationToken);
+                    if (!hasNext)
+                        break;
 
-            if (towerIndex + 1 < towerKeys.Count)
-            {
-                window = await _screen.ClickAsync(_screen.Refresh(window), QuestFromHomeEntry.NavBackClick(_config),
-                    "返回塔列表", cancellationToken);
-                TemplateProbeResult listAgain = await _screen.WaitForProbeAsync(window, _towerList,
-                    _config.DailySimulationListTopLeft, _config.DailySimulationListSize,
-                    cancellationToken, timeoutMs: 10_000, matchThreshold: 0.72);
-                if (!listAgain.IsMatch)
+                    (window, bool backOk) = await TryResumeTowerListForNextAsync(
+                        window, $"{name}失败后", cancellationToken);
+                    if (!backOk)
+                    {
+                        _log($"每日模拟战斗：{name}失败后未能回到塔列表，停止切换下一塔。");
+                        break;
+                    }
+
+                    continue;
+                }
+
+                finishedTowers++;
+                _log($"每日模拟战斗：{name}已确认今日剩余 0 次，本次不再出击。");
+
+                if (!hasNext)
+                    continue;
+
+                (window, bool listOk) = await TryReturnToTowerListAsync(
+                    window, $"完成{name}后", cancellationToken);
+                if (!listOk)
                 {
                     _log($"每日模拟战斗：完成{name}后未返回塔列表，停止切换下一塔。");
                     break;
                 }
-                window = _screen.Refresh(window);
             }
+
+            // 成功/失败都要退出回主页；失败路径用 None，避免停止令牌已取消导致退不出。
+            CancellationToken homeToken = cancellationToken.IsCancellationRequested
+                ? CancellationToken.None
+                : cancellationToken;
+            if (finishedTowers == towerKeys.Count)
+            {
+                _log($"每日模拟战斗：今日 {finishedTowers} 座塔均已确认剩余 0 次；不写任何完成标记。");
+                await TryExitToHomeAsync(window, homeToken);
+                return TaskRunResult.Success();
+            }
+
+            string skipText = skippedTowers > 0 ? $"，跳过 {skippedTowers}" : "";
+            _log($"每日模拟战斗：完成 {finishedTowers}/{towerKeys.Count} 座塔{skipText}，不写完成标记。");
+            await TryExitToHomeAsync(window, CancellationToken.None);
+            return TaskRunResult.Fail($"仅完成 {finishedTowers}/{towerKeys.Count} 座塔");
+        }
+        catch (OperationCanceledException)
+        {
+            _log("每日模拟战斗：已取消，执行退出回主页。");
+            await TryExitToHomeAsync(window, CancellationToken.None);
+            throw;
+        }
+    }
+
+    private async Task TryExitToHomeAsync(GameWindow? window, CancellationToken cancellationToken)
+    {
+        try
+        {
+            window ??= _screen.FindWindow(_config.WindowTitleKeyword);
+            window = await LeaveResultOrHomeAsync(window, "每日模拟战斗退出", cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _log($"每日模拟战斗：退出回主页失败：{ex.Message}");
+        }
+        catch (OperationCanceledException)
+        {
+            // 退出流程使用 None 时不应走到这里；忽略以免掩盖主结果。
+        }
+    }
+
+    /// <summary>结算/战败优先点「ホームへ」，再尝试 HUD 房子钮。</summary>
+    private async Task<GameWindow> LeaveResultOrHomeAsync(
+        GameWindow window, string reason, CancellationToken cancellationToken)
+    {
+        window = _screen.Refresh(window);
+        if (await _resultHome.TryClickHomeAsync(window, reason, cancellationToken))
+        {
+            await Task.Delay(700, cancellationToken);
+            return _screen.Refresh(window);
         }
 
-        if (finishedTowers == towerKeys.Count)
+        await new HudHomeReturn(_config, _screen, _log).TryAsync(window, cancellationToken);
+        return _screen.Refresh(window);
+    }
+
+    /// <summary>失败回主页后重新进模拟战斗塔列表，以便切下一座。</summary>
+    private async Task<(GameWindow Window, bool Ok)> TryResumeTowerListForNextAsync(
+        GameWindow window, string reason, CancellationToken cancellationToken)
+    {
+        (window, bool listOk) = await TryReturnToTowerListAsync(window, reason, cancellationToken);
+        if (listOk)
+            return (window, true);
+
+        _log($"每日模拟战斗：{reason}未在塔列表，从主页重新进入模拟战斗。");
+        try
         {
-            _log($"每日模拟战斗：今日 {finishedTowers} 座塔均已确认剩余 0 次；不写任何完成标记。");
-            await new HudHomeReturn(_config, _screen, _log).TryAsync(_screen.Refresh(window), cancellationToken);
-            return TaskRunResult.Success();
+            window = await new QuestFromHomeEntry(_config, _screen, _log).RunAsync(
+                window, QuestFromHomeEntry.BattleSimulateClick(_config), "模拟战斗", cancellationToken,
+                _entry, _config.QuestBattleSimulateTopLeft, _config.QuestBattleSimulateSize,
+                singleClickTarget: true);
+            TemplateProbeResult title = await _screen.WaitForProbeAsync(window, _title,
+                _config.DailySimulationTitleTopLeft, _config.DailySimulationTitleSize,
+                cancellationToken, timeoutMs: 10_000, matchThreshold: 0.72);
+            TemplateProbeResult list = await _screen.WaitForProbeAsync(window, _towerList,
+                _config.DailySimulationListTopLeft, _config.DailySimulationListSize,
+                cancellationToken, timeoutMs: 10_000, matchThreshold: 0.72);
+            if (title.IsMatch && list.IsMatch)
+            {
+                _log($"每日模拟战斗：已重新进入塔列表（标题 {title.Score:F3}，列表 {list.Score:F3}）。");
+                return (_screen.Refresh(window), true);
+            }
+
+            _log($"每日模拟战斗：重新进入后未确认塔列表（标题 {title.Score:F3}，列表 {list.Score:F3}）。");
+            return (_screen.Refresh(window), false);
         }
-        _log($"每日模拟战斗：完成 {finishedTowers}/{towerKeys.Count} 座塔，不写完成标记。");
-        await new HudHomeReturn(_config, _screen, _log).TryAsync(_screen.Refresh(window), cancellationToken);
-        return TaskRunResult.Fail($"仅完成 {finishedTowers}/{towerKeys.Count} 座塔");
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _log($"每日模拟战斗：重新进入模拟战斗失败：{ex.Message}");
+            return (_screen.Refresh(window), false);
+        }
+    }
+
+    /// <summary>从关卡/结算页回到四塔列表，供切下一座塔。</summary>
+    private async Task<(GameWindow Window, bool Ok)> TryReturnToTowerListAsync(
+        GameWindow window, string reason, CancellationToken cancellationToken)
+    {
+        window = _screen.Refresh(window);
+        TemplateProbeResult already = await _screen.ProbeAsync(
+            window, _towerList,
+            _config.DailySimulationListTopLeft, _config.DailySimulationListSize,
+            cancellationToken, 0.72);
+        if (already.IsMatch)
+            return (window, true);
+
+        // 结算卡住时先 Esc / 点次へ，再返回。
+        for (int i = 0; i < 2; i++)
+        {
+            TemplateProbeResult next = await _screen.ProbeAsync(
+                window, _next,
+                _config.MainQuestNextTopLeft, _config.MainQuestNextSize,
+                cancellationToken, 0.68);
+            if (next.IsMatch)
+            {
+                await _screen.ClickProbeAsync(window, next, $"模拟战斗 {reason}次へ", cancellationToken, 700);
+                window = _screen.Refresh(window);
+            }
+            else
+                break;
+        }
+
+        window = await _screen.ClickAsync(
+            window, QuestFromHomeEntry.NavBackClick(_config), $"返回塔列表（{reason}）", cancellationToken);
+        TemplateProbeResult list = await _screen.WaitForProbeAsync(
+            window, _towerList,
+            _config.DailySimulationListTopLeft, _config.DailySimulationListSize,
+            cancellationToken, timeoutMs: 8_000, matchThreshold: 0.72);
+        if (list.IsMatch)
+            return (_screen.Refresh(window), true);
+
+        _log($"每日模拟战斗：{reason}返回未命中塔列表（最高 {list.Score:F3}），Esc 后再试。");
+        for (int i = 0; i < 2; i++)
+        {
+            await _screen.Mouse.SendEscapeAsync(window.Handle, cancellationToken);
+            await Task.Delay(350, cancellationToken);
+            window = _screen.Refresh(window);
+            TemplateProbeResult afterEsc = await _screen.ProbeAsync(
+                window, _towerList,
+                _config.DailySimulationListTopLeft, _config.DailySimulationListSize,
+                cancellationToken, 0.72);
+            if (afterEsc.IsMatch)
+                return (window, true);
+        }
+
+        window = await _screen.ClickAsync(
+            window, QuestFromHomeEntry.NavBackClick(_config), $"返回塔列表再试（{reason}）", cancellationToken);
+        list = await _screen.WaitForProbeAsync(
+            window, _towerList,
+            _config.DailySimulationListTopLeft, _config.DailySimulationListSize,
+            cancellationToken, timeoutMs: 8_000, matchThreshold: 0.72);
+        return (_screen.Refresh(window), list.IsMatch);
     }
 
     /// <summary>循环出击，只有明确读到今日剩余 0 次才返回完成。</summary>
@@ -187,7 +349,12 @@ public sealed class DailySimulationTowerAutomation
                 return false;
             }
 
-            await _screen.ClickProbeAsync(window, sortie, "模拟战斗 出撃開始", cancellationToken, 1400);
+            if (!await ClickSortieUntilBattleAsync(window, name, sortie, cancellationToken))
+            {
+                _log($"每日模拟战斗：{name}出撃未离开准备页，中断。");
+                return false;
+            }
+
             if (!await RunBattleAsync(window, cancellationToken))
             {
                 _log($"每日模拟战斗：{name}战斗/结算未完成，中断。");
@@ -240,39 +407,131 @@ public sealed class DailySimulationTowerAutomation
     public static bool IsStrongZeroMatch(double templateScore, int? ocrRemaining) =>
         ocrRemaining is null && templateScore >= RemainingZeroStrongThreshold;
 
+    /// <summary>
+    /// 点「出撃」直到离开准备页。日志常见命中 0.99 仍停在クエスト準備，需重试且勿立刻挪光标。
+    /// </summary>
+    private async Task<bool> ClickSortieUntilBattleAsync(
+        GameWindow window, string name, TemplateProbeResult firstSortie, CancellationToken cancellationToken)
+    {
+        const int maxAttempts = 3;
+        TemplateProbeResult sortie = firstSortie;
+        for (int attempt = 1; attempt <= maxAttempts; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            window = _screen.Refresh(window);
+            if (!await _screen.FocusAsync(window.Handle, cancellationToken))
+                _log($"每日模拟战斗：{name}未能置前台，「出撃」可能点不中。");
+
+            _log($"每日模拟战斗：{name}点击「出撃」（{sortie.Score:F3}，{attempt}/{maxAttempts}）。");
+            await _screen.ClickScreenAsync(window, sortie.Center, cancellationToken, parkCursor: false);
+            await Task.Delay(1600, cancellationToken);
+            _screen.ParkCursorAway(window);
+            window = _screen.Refresh(window);
+
+            TemplateProbeResult skip = await _screen.ProbeAsync(
+                window, _skip, _config.BattleSkipTopLeft, _config.BattleSkipSize, cancellationToken, 0.58);
+            if (!skip.IsMatch)
+                skip = await _screen.ProbeAsync(
+                    window, _skipAlt, _config.MainQuestSkipTopLeft, _config.MainQuestSkipSize,
+                    cancellationToken, 0.52);
+            if (skip.IsMatch)
+            {
+                _log($"每日模拟战斗：{name}已进入战斗（SKIP {skip.Score:F3}）。");
+                return true;
+            }
+
+            TemplateProbeResult stillSortie = await _screen.ProbeAsync(
+                window, _sortie, _config.MainQuestSortieTopLeft, _config.MainQuestSortieSize,
+                cancellationToken, 0.80);
+            if (!stillSortie.IsMatch)
+            {
+                _log($"每日模拟战斗：{name}准备页「出撃」已消失，进入战斗等待。");
+                return true;
+            }
+
+            _log($"每日模拟战斗：{name}仍在准备页（出撃 {stillSortie.Score:F3}），重试。");
+            sortie = stillSortie;
+        }
+
+        return false;
+    }
+
     private async Task<bool> RunBattleAsync(GameWindow window, CancellationToken cancellationToken)
     {
         var timer = System.Diagnostics.Stopwatch.StartNew();
+        DateTime lastProgressLog = DateTime.MinValue;
         while (timer.ElapsedMilliseconds < 180_000)
         {
-            cancellationToken.ThrowIfCancellationRequested(); window = _screen.Refresh(window);
+            cancellationToken.ThrowIfCancellationRequested();
+            window = _screen.Refresh(window);
+
+            // 战败/再戦：直接点ホームへ，结束本塔（不点再戦空耗）。
+            if (await _resultHome.LooksLikeDefeatOrRematchAsync(window, cancellationToken))
+            {
+                if (await _resultHome.TryClickHomeAsync(window, "每日模拟战斗战败", cancellationToken))
+                {
+                    _log("每日模拟战斗：已点ホームへ离开战败页，本塔中止。");
+                    return false;
+                }
+            }
+
+            // 仍停在准备页说明出撃未生效，尽快失败交给外层重试/中断，勿空等 3 分钟。
+            if (timer.ElapsedMilliseconds >= 12_000)
+            {
+                TemplateProbeResult stillSortie = await _screen.ProbeAsync(
+                    window, _sortie, _config.MainQuestSortieTopLeft, _config.MainQuestSortieSize,
+                    cancellationToken, 0.85);
+                if (stillSortie.IsMatch)
+                {
+                    _log($"每日模拟战斗：战斗等待中仍见「出撃」（{stillSortie.Score:F3}，"
+                        + $"已 {timer.Elapsed.TotalSeconds:0}s），判定未开战。");
+                    return false;
+                }
+            }
+
             TemplateProbeResult next = await _screen.ProbeAsync(window, _next,
                 _config.MainQuestNextTopLeft, _config.MainQuestNextSize, cancellationToken, 0.70);
-            TemplateProbeResult rematch = await _screen.ProbeAsync(window, _rematch,
-                _config.MainQuestRematchTopLeft, _config.MainQuestRematchSize, cancellationToken, 0.72);
-            if (next.IsMatch || rematch.IsMatch)
+            if (next.IsMatch)
             {
-                TemplateProbeResult done = next.IsMatch ? next : rematch;
-                await _screen.ClickProbeAsync(window, done, next.IsMatch ? "模拟战斗 次へ" : "模拟战斗 再戦",
-                    cancellationToken, 1000);
+                await _screen.ClickProbeAsync(window, next, "模拟战斗 次へ", cancellationToken, 1000);
                 return await AdvanceSettlementToTowerStageAsync(_screen.Refresh(window), cancellationToken);
             }
+
             TemplateProbeResult skip = await _screen.ProbeAsync(window, _skip,
                 _config.BattleSkipTopLeft, _config.BattleSkipSize, cancellationToken, 0.58);
             if (!skip.IsMatch)
                 skip = await _screen.ProbeAsync(window, _skipAlt, _config.MainQuestSkipTopLeft,
                     _config.MainQuestSkipSize, cancellationToken, 0.52);
-            if (skip.IsMatch) await _screen.ClickProbeAsync(window, skip, "模拟战斗 SKIP", cancellationToken, 180);
-            else await Task.Delay(250, cancellationToken);
+            if (skip.IsMatch)
+            {
+                await _screen.ClickProbeAsync(window, skip, "模拟战斗 SKIP", cancellationToken, 180);
+            }
+            else
+            {
+                if ((DateTime.UtcNow - lastProgressLog).TotalSeconds >= 10)
+                {
+                    lastProgressLog = DateTime.UtcNow;
+                    _log($"每日模拟战斗：战斗中未命中 SKIP/次へ/ホームへ（已 {timer.Elapsed.TotalSeconds:0}s / 180s）。");
+                }
+                await Task.Delay(250, cancellationToken);
+            }
         }
+
+        // 超时前再试一次ホームへ，避免卡在 DEFEAT。
+        window = _screen.Refresh(window);
+        if (await _resultHome.TryClickHomeAsync(window, "每日模拟战斗超时", cancellationToken))
+            _log("每日模拟战斗：战斗超时后已点ホームへ。");
         return false;
     }
 
     private async Task<bool> AdvanceSettlementToTowerStageAsync(
         GameWindow window, CancellationToken cancellationToken)
     {
+        // FLASH SALE 等宣传层会盖住结算「次へ」：连点无效时需清弹窗 / Esc。
+        var promo = new PromoPopupDismisser(_config, _screen, _log);
         var timer = System.Diagnostics.Stopwatch.StartNew();
-        while (timer.ElapsedMilliseconds < 25_000)
+        int stagnantNextClicks = 0;
+        while (timer.ElapsedMilliseconds < 35_000)
         {
             cancellationToken.ThrowIfCancellationRequested();
             window = _screen.Refresh(window);
@@ -285,14 +544,33 @@ public sealed class DailySimulationTowerAutomation
                 return true;
             }
 
+            if (await promo.DismissAllAsync(window, cancellationToken) > 0)
+            {
+                stagnantNextClicks = 0;
+                await Task.Delay(400, cancellationToken);
+                continue;
+            }
+
             TemplateProbeResult next = await _screen.ProbeAsync(window, _next,
                 _config.MainQuestNextTopLeft, _config.MainQuestNextSize,
                 cancellationToken, 0.68);
             if (next.IsMatch)
             {
                 await _screen.ClickProbeAsync(window, next, "模拟战斗 奖励次へ", cancellationToken, 900);
+                stagnantNextClicks++;
+                // 点了仍像卡在结算（常见被 FLASH SALE 挡住）：Esc 清层后再试。
+                if (stagnantNextClicks >= 3)
+                {
+                    _log("每日模拟战斗：结算「次へ」多次无效，发送 Esc 清弹层。");
+                    await _screen.Mouse.SendEscapeAsync(window.Handle, cancellationToken);
+                    await Task.Delay(500, cancellationToken);
+                    stagnantNextClicks = 0;
+                }
+
                 continue;
             }
+
+            stagnantNextClicks = 0;
             await Task.Delay(250, cancellationToken);
         }
         _log("每日模拟战斗：结算后未能返回塔关卡页。");

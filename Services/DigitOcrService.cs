@@ -81,6 +81,65 @@ public static class DigitOcrService
         return null;
     }
 
+    /// <summary>在 ROI 内定位包含任一关键词的词块中心（截图像素坐标）。</summary>
+    /// <param name="rejectIfLineContains">行内若含这些词则跳过（例如点「通常」时避开「未開拓」）。</param>
+    public static async Task<(double X, double Y, string Hit)?> TryLocatePhraseAsync(
+        BitmapSource image,
+        IReadOnlyList<string> phrases,
+        CancellationToken cancellationToken,
+        IReadOnlyList<string>? rejectIfLineContains = null)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (phrases.Count == 0)
+            return null;
+
+        OcrEngine?[] engines =
+        [
+            OcrEngine.TryCreateFromLanguage(new Windows.Globalization.Language("ja")),
+            OcrEngine.TryCreateFromLanguage(new Windows.Globalization.Language("zh-Hans")),
+            OcrEngine.TryCreateFromLanguage(new Windows.Globalization.Language("en-US")),
+            OcrEngine.TryCreateFromUserProfileLanguages()
+        ];
+
+        foreach (OcrEngine? engine in engines)
+        {
+            if (engine is null)
+                continue;
+            using SoftwareBitmap bitmap = await ToSoftwareBitmapAsync(image, cancellationToken);
+            OcrResult result = await engine.RecognizeAsync(bitmap).AsTask(cancellationToken);
+            foreach (OcrLine line in result.Lines)
+            {
+                string lineText = string.Concat(line.Words.Select(w => w.Text));
+                string combined = lineText + line.Text;
+                if (rejectIfLineContains is { Count: > 0 } &&
+                    rejectIfLineContains.Any(r =>
+                        !string.IsNullOrWhiteSpace(r) &&
+                        combined.Contains(r, StringComparison.OrdinalIgnoreCase)))
+                    continue;
+
+                foreach (string phrase in phrases)
+                {
+                    if (string.IsNullOrWhiteSpace(phrase))
+                        continue;
+                    if (lineText.Contains(phrase, StringComparison.OrdinalIgnoreCase) ||
+                        line.Text.Contains(phrase, StringComparison.OrdinalIgnoreCase))
+                    {
+                        OcrWord[] words = line.Words.ToArray();
+                        if (words.Length == 0)
+                            continue;
+                        double left = words.Min(w => w.BoundingRect.X);
+                        double top = words.Min(w => w.BoundingRect.Y);
+                        double right = words.Max(w => w.BoundingRect.X + w.BoundingRect.Width);
+                        double bottom = words.Max(w => w.BoundingRect.Y + w.BoundingRect.Height);
+                        return ((left + right) / 2, (top + bottom) / 2, phrase);
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
+
     /// <summary>从「0 / 4」「0/4」「12 / ・」「0 /」一类文案取左侧次数；失败则返回 null。</summary>
     public static int? TryParseRatioLeft(string? text)
     {

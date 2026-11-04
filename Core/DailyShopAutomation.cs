@@ -4,15 +4,17 @@ namespace BetterMuv.Core;
 
 /// <summary>
 /// 每日商店：主页 → 商店 → 交換所 → 100%OFF（可跳过）→ 交換 → OK
-/// → 滚轮下拉 → 左下角 2500 → 交換 → OK（×2；首次未识别则回主页结束）→ 回主页。
+/// → 滚轮找金币价签（2,500 / 3,000）→ 交換 → OK（尽量买满 2 次；至少 1 次即算成功）
+/// → 可选：切左侧「サークル」按配置购买 → 回主页。
 /// </summary>
 public sealed class DailyShopAutomation
 {
     private const int AfterHomeDelayMs = 400;
     private const int AfterHallOpenDelayMs = 250;
     private const int AfterItemClickDelayMs = 450;
-    private const int AfterScrollDelayMs = 400;
+    private const int AfterScrollDelayMs = 550;
     private const int AfterOkDelayMs = 450;
+    private const int AfterTabDelayMs = 700;
     private const int RecognizeTimeoutMs = 5000;
     private const int ExchangeTimeoutMs = 4000;
     private const double OffThreshold = 0.75;
@@ -20,6 +22,8 @@ public sealed class DailyShopAutomation
     private const double HallThreshold = 0.68;
     private const double TicketThreshold = 0.65;
     private const double OkThreshold = 0.70;
+    private const double CircleTabThreshold = 0.70;
+    private const int TargetGoldBuys = 2;
 
     private readonly AutomationConfig _config;
     private readonly ScreenAutomation _screen;
@@ -27,9 +31,11 @@ public sealed class DailyShopAutomation
     private readonly TemplateMatcher _hallMatcher;
     private readonly TemplateMatcher _hubExchangeMatcher;
     private readonly TemplateMatcher _offMatcher;
-    private readonly TemplateMatcher _ticketMatcher;
+    private readonly TemplateMatcher _ticket2500Matcher;
+    private readonly TemplateMatcher _ticket3000Matcher;
     private readonly TemplateMatcher _exchangeMatcher;
     private readonly TemplateMatcher _okMatcher;
+    private readonly TemplateMatcher _circleTabMatcher;
     /// <summary>LIMITED SHOP 枢纽内「交換所」卡片搜索区（1080p）。</summary>
     private static readonly ConfigPoint HubExchangeTopLeft = new(1200, 620);
     private static readonly ConfigSize HubExchangeSize = new(560, 360);
@@ -42,9 +48,11 @@ public sealed class DailyShopAutomation
         _hallMatcher = TemplateAssets.Load("daily-shop-exchange-hall.png");
         _hubExchangeMatcher = TemplateAssets.Load("daily-shop-hub-exchange.png");
         _offMatcher = TemplateAssets.Load("daily-shop-100off.png");
-        _ticketMatcher = TemplateAssets.Load("daily-shop-ticket-2500.png");
+        _ticket2500Matcher = TemplateAssets.Load("daily-shop-ticket-2500.png");
+        _ticket3000Matcher = TemplateAssets.Load("daily-shop-ticket-3000.png");
         _exchangeMatcher = TemplateAssets.Load("daily-shop-exchange.png");
         _okMatcher = TemplateAssets.Load("daily-shop-ok.png");
+        _circleTabMatcher = TemplateAssets.Load("daily-shop-tab-circle.png");
     }
 
     public async Task<TaskRunResult> RunOnceAsync(CancellationToken cancellationToken)
@@ -69,7 +77,6 @@ public sealed class DailyShopAutomation
 
         await Task.Delay(AfterHomeDelayMs, cancellationToken);
         window = _screen.Refresh(window);
-        // 底栏ショップ → 枢纽「交換所」卡片（模板定位）→ 左页签确认落地。
         (window, bool shopOpened) = await new ShopEntryAccess(_config, _screen, _log).OpenAsync(
             window,
             "每日商店",
@@ -85,38 +92,59 @@ public sealed class DailyShopAutomation
         if (!shopOpened)
             return TaskRunResult.Fail("未能进入商店");
 
-        // 落地已确认在交換所时跳过重复点击；仅未命中时补点一次。
         window = await ClickExchangeHallAsync(window, cancellationToken);
-
-        // 1) 100%OFF → 交換 → OK；未识别则跳过，直接滚轮。
         window = await TryBuyFreeOffAsync(window, cancellationToken);
 
-        // 2) 滚轮下拉
-        _log($"每日商店：列表滚轮下拉 {_config.DailyShopScrollWheelNotches} 格。");
-        await _screen.WheelAsync(
-            window,
-            _config.DailyShopScrollPoint,
-            _config.DailyShopScrollWheelNotches,
-            "商店列表滚轮",
-            cancellationToken);
-        await Task.Delay(AfterScrollDelayMs, cancellationToken);
-        window = _screen.Refresh(window);
-
-        // 3) 左下角 2500 ×2；首次未识别则直接失败（清弹窗交由失败处理）。
+        // 金币价商品在列表偏下；先下滚再找，避免停在宝石价行上。
+        int goldBought = 0;
         ConfigPoint? ticketClick = null;
-        for (int i = 1; i <= 2; i++)
+        int maxScrolls = Math.Max(1, _config.DailyShopTicketScrollAttempts);
+        int notches = _config.DailyShopScrollWheelNotches;
+        if (notches >= 0)
+            notches = -Math.Max(6, notches == 0 ? 6 : notches);
+
+        for (int scroll = 1; scroll <= maxScrolls && goldBought < TargetGoldBuys; scroll++)
         {
-            _log($"每日商店：购买 2500 票券（第 {i}/2 次）。");
-            (window, ticketClick, bool bought) =
-                await TryBuyTicket2500Async(window, ticketClick, cancellationToken);
-            if (!bought)
+            _log($"每日商店：列表下滚 {notches} 格（{scroll}/{maxScrolls}）。");
+            await _screen.WheelAsync(
+                window,
+                _config.DailyShopScrollPoint,
+                notches,
+                "商店列表滚轮",
+                cancellationToken);
+            await Task.Delay(AfterScrollDelayMs, cancellationToken);
+            window = _screen.Refresh(window);
+            ticketClick = null;
+
+            while (goldBought < TargetGoldBuys)
             {
-                _log("每日商店：未识别到 2500，返回主页并结束任务。");
-                await new HudHomeReturn(_config, _screen, _log).TryAsync(window, cancellationToken);
-                _log("每日商店：结束。");
-                return TaskRunResult.Fail("未识别到 2500 票券");
+                _log($"每日商店：购买金币价商品（第 {goldBought + 1}/{TargetGoldBuys} 次）。");
+                (window, ticketClick, bool bought) =
+                    await TryBuyGoldTicketAsync(window, ticketClick, cancellationToken);
+                if (!bought)
+                    break;
+                goldBought++;
+                ticketClick = null;
             }
         }
+
+        bool circleConfigured = _config.CircleShopEnabled && _config.CirclePurchases.HasAny();
+        if (circleConfigured)
+        {
+            _log("每日商店：进入社团商店（サークル）。");
+            window = await BuyCircleShopAsync(window, cancellationToken);
+        }
+
+        if (goldBought <= 0 && !circleConfigured)
+        {
+            _log("每日商店：滚动后仍未识别到金币价签，返回主页并结束任务。");
+            await new HudHomeReturn(_config, _screen, _log).TryAsync(window, cancellationToken);
+            _log("每日商店：结束。");
+            return TaskRunResult.Fail("未识别到金币价签");
+        }
+
+        if (goldBought < TargetGoldBuys)
+            _log($"每日商店：金币价商品仅买到 {goldBought}/{TargetGoldBuys}，继续结束流程。");
 
         _log("每日商店：完成，返回主页。");
         await new HudHomeReturn(_config, _screen, _log).TryAsync(window, cancellationToken);
@@ -139,7 +167,6 @@ public sealed class DailyShopAutomation
             return window;
         }
 
-        // OpenAsync 已用同一落地模板确认成功时，再点页签只会空等；直接进入购物流。
         _log($"每日商店：已在交換所（{hall.Score:F4}），跳过重复点击。");
         await Task.Delay(AfterHallOpenDelayMs, cancellationToken);
         return _screen.Refresh(window);
@@ -162,7 +189,6 @@ public sealed class DailyShopAutomation
             return window;
         }
 
-        // 点折扣条下方价格区，避免只点到橙色条本身；偏移按当前客户区缩放。
         CaptureGeometry geometry = _screen.Geometry(window);
         var itemScreen = new System.Windows.Point(
             off.Center.X,
@@ -175,7 +201,7 @@ public sealed class DailyShopAutomation
         return await ExchangeThenOkAsync(window, "零元购", cancellationToken);
     }
 
-    private async Task<(GameWindow Window, ConfigPoint? TicketClick, bool Bought)> TryBuyTicket2500Async(
+    private async Task<(GameWindow Window, ConfigPoint? TicketClick, bool Bought)> TryBuyGoldTicketAsync(
         GameWindow window,
         ConfigPoint? knownClick,
         CancellationToken cancellationToken)
@@ -184,46 +210,143 @@ public sealed class DailyShopAutomation
         if (knownClick is { } reuse)
         {
             click = reuse;
-            _log($"每日商店：复用左下角 2500 点击（{click.X},{click.Y}）。");
+            _log($"每日商店：复用金币价点击（{click.X},{click.Y}）。");
         }
         else
         {
-            _log($"每日商店：等待识别「2500」票价，最多 {RecognizeTimeoutMs / 1000} 秒。");
-            var ticketTopLeft = new ConfigPoint(
-                Math.Max(0, _config.DailyShopTicketTopLeft.X - 60),
-                Math.Max(0, _config.DailyShopTicketTopLeft.Y - 40));
-            var ticketSize = new ConfigSize(
-                Math.Max(_config.DailyShopTicketSize.Width + 120, 600),
-                Math.Max(_config.DailyShopTicketSize.Height + 80, 360));
-            TemplateProbeResult ticket = await _screen.WaitForProbeAsync(
-                window,
-                _ticketMatcher,
-                ticketTopLeft,
-                ticketSize,
-                cancellationToken,
-                timeoutMs: RecognizeTimeoutMs,
-                matchThreshold: TicketThreshold);
+            _log($"每日商店：等待识别金币价签（2,500/3,000），最多 {RecognizeTimeoutMs / 1000} 秒。");
+            (TemplateProbeResult ticket, string label) = await WaitForGoldTicketAsync(window, cancellationToken);
             if (!ticket.IsMatch)
             {
-                _log($"每日商店：未识别到「2500」票价（最高 {ticket.Score:F4}）。");
+                _log($"每日商店：未识别到金币价签（最高 {ticket.Score:F4}）。");
                 return (window, null, false);
             }
 
-            // 点价格条中心（实机验证可弹出交換）。
             click = new ConfigPoint(
                 (int)Math.Round(ticket.Center.X),
                 (int)Math.Round(ticket.Center.Y));
-            _log($"每日商店：已识别「2500」（{ticket.Score:F4}），屏幕中心（{click.X},{click.Y}）。");
+            _log($"每日商店：已识别「{label}」（{ticket.Score:F4}），屏幕中心（{click.X},{click.Y}）。");
         }
 
-        // 模板中心已经是屏幕坐标，不能再按 1080p 配置点缩放一次。
-        _log($"每日商店：点击 2500 票券屏幕坐标（{click.X},{click.Y}）。");
+        _log($"每日商店：点击金币价商品屏幕坐标（{click.X},{click.Y}）。");
         await _screen.ClickScreenAsync(
             window, new System.Windows.Point(click.X, click.Y), cancellationToken);
         await Task.Delay(AfterItemClickDelayMs, cancellationToken);
         window = _screen.Refresh(window);
-        window = await ExchangeThenOkAsync(window, "2500票券", cancellationToken);
+        window = await ExchangeThenOkAsync(window, "金币价商品", cancellationToken);
         return (window, click, true);
+    }
+
+    private async Task<(TemplateProbeResult Probe, string Label)> WaitForGoldTicketAsync(
+        GameWindow window, CancellationToken cancellationToken)
+    {
+        var deadline = DateTime.UtcNow.AddMilliseconds(RecognizeTimeoutMs);
+        TemplateProbeResult best = TemplateProbes.Empty;
+        string bestLabel = "金币价";
+        while (DateTime.UtcNow < deadline)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            window = _screen.Refresh(window);
+
+            TemplateProbeResult p3000 = await _screen.ProbeAsync(
+                window,
+                _ticket3000Matcher,
+                _config.DailyShopTicketTopLeft,
+                _config.DailyShopTicketSize,
+                cancellationToken,
+                TicketThreshold);
+            if (p3000.IsMatch)
+                return (p3000, "3,000");
+
+            TemplateProbeResult p2500 = await _screen.ProbeAsync(
+                window,
+                _ticket2500Matcher,
+                _config.DailyShopTicketTopLeft,
+                _config.DailyShopTicketSize,
+                cancellationToken,
+                TicketThreshold);
+            if (p2500.IsMatch)
+                return (p2500, "2,500");
+
+            if (p3000.Score >= best.Score)
+            {
+                best = p3000;
+                bestLabel = "3,000";
+            }
+            if (p2500.Score > best.Score)
+            {
+                best = p2500;
+                bestLabel = "2,500";
+            }
+
+            await Task.Delay(200, cancellationToken);
+        }
+
+        return (best, bestLabel);
+    }
+
+    private async Task<GameWindow> BuyCircleShopAsync(GameWindow window, CancellationToken cancellationToken)
+    {
+        TemplateProbeResult tab = await _screen.WaitForProbeAsync(
+            window,
+            _circleTabMatcher,
+            _config.DailyShopCircleTabTopLeft,
+            _config.DailyShopCircleTabSize,
+            cancellationToken,
+            timeoutMs: RecognizeTimeoutMs,
+            matchThreshold: CircleTabThreshold);
+        if (tab.IsMatch)
+        {
+            _log($"每日商店：已识别「サークル」页签（{tab.Score:F4}），点击。");
+            await _screen.ClickProbeAsync(window, tab, "サークル页签", cancellationToken, settleDelayMs: 200);
+        }
+        else
+        {
+            _log($"每日商店：未识别「サークル」页签（最高 {tab.Score:F4}），改用固定点击"
+                + $"（{_config.DailyShopCircleTabClick.X},{_config.DailyShopCircleTabClick.Y}）。");
+            await _screen.ClickAsync(window, _config.DailyShopCircleTabClick, "サークル页签", cancellationToken);
+        }
+
+        await Task.Delay(AfterTabDelayMs, cancellationToken);
+        window = _screen.Refresh(window);
+
+        int[] plan = _config.CirclePurchases.GetSlots();
+        _log($"每日商店：社团商店计划 {CircleShopCatalog.FormatPlan(plan)}。");
+        IReadOnlyList<ConfigPoint> buttons = _config.CircleShopBuyButtons;
+        for (int slot = 0; slot < plan.Length && slot < buttons.Count; slot++)
+        {
+            int quantity = plan[slot];
+            if (quantity == 0)
+                continue;
+
+            string name = slot < CircleShopCatalog.ItemNames.Length
+                ? CircleShopCatalog.ItemNames[slot]
+                : $"第{slot + 1}格";
+            int target = quantity < 0 ? 20 : quantity;
+            int bought = 0;
+            for (int n = 0; n < target; n++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                _log($"每日商店：社团商店购买 {name}（{n + 1}/{target}）。");
+                await _screen.ClickAsync(window, buttons[slot], $"社团商店-{name}", cancellationToken);
+                await Task.Delay(AfterItemClickDelayMs, cancellationToken);
+                window = _screen.Refresh(window);
+                try
+                {
+                    window = await ExchangeThenOkAsync(window, $"社团-{name}", cancellationToken);
+                    bought++;
+                }
+                catch (InvalidOperationException ex)
+                {
+                    _log($"每日商店：社团商店 {name} 中止 — {ex.Message}");
+                    break;
+                }
+            }
+
+            _log($"每日商店：社团商店 {name} 完成 {bought} 次。");
+        }
+
+        return window;
     }
 
     private async Task<GameWindow> ExchangeThenOkAsync(

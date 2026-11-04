@@ -41,7 +41,7 @@ internal static class ChildSessionCredentialHints
             + $"  也可填：.\\{user}  或  {sam}\n"
             + "  密码：账户「密码」（不要用 PIN / Windows Hello）\n"
             + blankHint
-            + "注意：不要用新建的其他用户（会导致断开原因 4）。\n\n"
+            + "注意：不要用本机其他本地用户（会导致「连接数量有限」或断开原因 4）。\n\n"
             + "若「凭据不工作」：\n"
             + "1. 设置 → 账户 → 登录选项 → 密码：为当前账户添加/更改密码\n"
             + "2. 微软账户：关闭「仅允许 Windows Hello 登录」\n"

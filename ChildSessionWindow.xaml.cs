@@ -69,6 +69,51 @@ public partial class ChildSessionWindow : Window
 
     private async void OnConnectionFailed(ChildSessionConnectionFailedEventArgs e)
     {
+        if (RdpActiveXHost.IsConnectionLimitFailure(e.Message)
+            || e.ErrorCode is 12
+            || e.ExtendedErrorCode is 12)
+        {
+            MessageBoxResult clearAndRetry = MessageBox.Show(
+                this,
+                e.Message + "\n\n"
+                + "这通常不是密码错误，而是本机并发远程会话已满：\n"
+                + "• 必须用当前控制台账户（与桌面登录同一用户）的密码\n"
+                + "• 不要用本机其他本地用户登录分身\n"
+                + "• 不要同时用 mstsc 再连 127.0.0.1\n\n"
+                + "是否注销残留桌面分身会话并重试？",
+                "桌面分身连接失败",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+            if (clearAndRetry == MessageBoxResult.Yes)
+            {
+                try
+                {
+                    await Task.Run(() =>
+                    {
+                        try
+                        {
+                            ChildSessionNativeMethods.TerminateChildSession(wait: true);
+                        }
+                        catch
+                        {
+                            // 无残留会话或注销失败时仍继续重试。
+                        }
+
+                        if (ElevationHelper.IsElevated())
+                            RdpWrapperSwitch.TryRestartTermService(_ => { });
+                    });
+                }
+                catch
+                {
+                    // 清理失败不阻断重试。
+                }
+
+                await StartSessionAsync(forceCredentialPrompt: false);
+            }
+
+            return;
+        }
+
         bool credentialLikely = IsLikelyCredentialFailure(e);
         // 本机未挂 RDP Wrapper 时，516 多数是密码/PIN/空密码问题。
         bool treat516AsCredential = e.ErrorCode is 516 or 0x204
@@ -115,6 +160,8 @@ public partial class ChildSessionWindow : Window
         if (e.ErrorCode is 0 or 264)
             return true;
         string msg = e.Message;
+        if (RdpActiveXHost.IsConnectionLimitFailure(msg))
+            return false;
         return msg.Contains("凭据", StringComparison.Ordinal)
             || msg.Contains("密码", StringComparison.Ordinal)
             || msg.Contains("credential", StringComparison.OrdinalIgnoreCase)
@@ -520,12 +567,12 @@ public partial class ChildSessionWindow : Window
             return;
         }
 
-        // 是=保留会话仅隐藏；否=注销后再关闭窗口；取消=不关。
+        // 是=保留会话仅隐藏；否=发起注销并立刻关窗；取消=不关。
         MessageBoxResult choice = MessageBox.Show(
             this,
             "关闭桌面分身窗口：\n\n"
             + "「是」：只断开画面并隐藏窗口，分身会话和游戏继续跑（登录保留）\n"
-            + "「否」：先注销分身，完成后再关闭窗口（下次需重新登录游戏）\n"
+            + "「否」：发起注销并立刻关闭窗口（下次需重新登录游戏）\n"
             + "「取消」：不关闭",
             "关闭 Better-Muv 桌面分身",
             MessageBoxButton.YesNoCancel,
@@ -540,7 +587,8 @@ public partial class ChildSessionWindow : Window
     {
         MessageBoxResult confirm = MessageBox.Show(
             this,
-            "将注销桌面分身会话，其中游戏等都会关闭，下次进入需重新登录。\n\n注销完成后会关闭本窗口。是否继续？",
+            "将注销桌面分身会话，其中游戏等都会关闭，下次进入需重新登录。\n\n"
+            + "会立刻关闭本窗口（注销在后台继续）。是否继续？",
             "注销分身会话",
             MessageBoxButton.YesNo,
             MessageBoxImage.Warning);
@@ -551,7 +599,7 @@ public partial class ChildSessionWindow : Window
     }
 
     /// <summary>
-    /// 注销路径：等会话注销完成后再真正 Close；仅断开则 Hide 以便下次复用。
+    /// 注销：发起注销后立刻 Close；仅断开则 Hide 以便下次复用。
     /// </summary>
     private async Task FinishCloseWindowAsync(bool logoff)
     {

@@ -422,7 +422,9 @@ public sealed class ChildSessionService : IDisposable
         }
     }
 
-    /// <summary>注销 Child Session（最多等待约 15 秒）。调用方负责随后关闭窗口。</summary>
+    /// <summary>
+    /// 发起注销 Child Session（不等待会话真正消失）。调用方应立刻关闭窗口。
+    /// </summary>
     public async Task LogoffAndHideAsync()
     {
         ThrowIfDisposed();
@@ -438,16 +440,9 @@ public sealed class ChildSessionService : IDisposable
             TryDisconnectRdpHost();
             RefreshState("正在断开 RDP 并注销 Better-Muv 桌面分身…");
 
-            // wait:false，避免 WTSLogoffSession 永久卡住导致窗口关不掉。
+            // wait:false：只发起注销，窗口可马上关，不必空等会话消失。
             uint? terminatedSessionId = await Task.Run(() =>
                 ChildSessionNativeMethods.TerminateChildSession(wait: false));
-
-            for (int i = 0; i < 30; i++)
-            {
-                if (ChildSessionNativeMethods.TryGetChildSessionId() is null)
-                    break;
-                await Task.Delay(500);
-            }
 
             await Task.Run(() =>
             {
@@ -455,11 +450,9 @@ public sealed class ChildSessionService : IDisposable
                 RdpWrapperSwitch.RestoreIfNeeded(Log);
             });
             ChildSessionId = ChildSessionNativeMethods.TryGetChildSessionId();
-            RefreshState(ChildSessionId is null
-                ? (terminatedSessionId is null
-                    ? "当前没有桌面分身会话"
-                    : $"桌面分身会话 {terminatedSessionId.Value} 已注销")
-                : $"已请求注销分身会话，仍可能残留（会话 {ChildSessionId.Value}）");
+            RefreshState(terminatedSessionId is null
+                ? "当前没有桌面分身会话"
+                : $"已请求注销分身会话 {terminatedSessionId.Value}");
         }
         finally
         {

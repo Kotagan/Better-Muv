@@ -42,6 +42,10 @@ public sealed class PromoPopupDismisser
     private static readonly ConfigSize OshiraseTitleSize = new(520, 120);
     /// <summary>閉じる固定点击（1080p；模板漏检兜底）。</summary>
     private static readonly ConfigPoint TojiruClick = new(957, 974);
+    /// <summary>居中宣传弹窗关闭钮搜索区（避开右上 HUD）。</summary>
+    private static readonly ConfigPoint PopupCloseAltTopLeft = new(1400, 40);
+    private static readonly ConfigSize PopupCloseAltSize = new(320, 200);
+    private const double PopupCloseAltThreshold = 0.58;
 
     public PromoPopupDismisser(AutomationConfig config, ScreenAutomation screen, Action<string> log)
     {
@@ -92,6 +96,17 @@ public sealed class PromoPopupDismisser
             window, _closeMatcher,
             _config.PopupCloseTopLeft, _config.PopupCloseSize,
             cancellationToken, CloseThreshold);
+        // FLASH SALE 等居中弹窗的 X 常在默认右上 ROI 外；补扫中上区域（避开 HUD 角）。
+        if (!probe.IsMatch)
+        {
+            TemplateProbeResult alt = await _screen.ProbeAsync(
+                window, _closeMatcher,
+                PopupCloseAltTopLeft, PopupCloseAltSize,
+                cancellationToken, PopupCloseAltThreshold);
+            if (alt.IsMatch)
+                probe = alt;
+        }
+
         if (probe.IsMatch)
             return await DismissPromoCloseAsync(window, probe, cancellationToken);
 
@@ -109,14 +124,21 @@ public sealed class PromoPopupDismisser
     private async Task<bool> DismissPromoCloseAsync(
         GameWindow window, TemplateProbeResult probe, CancellationToken cancellationToken)
     {
+        // 居中弹窗 X 与右上 HUD 关闭钮分属不同 ROI；复查须用同一区域，避免误判「仍在」。
+        bool usedAlt = probe.Center.X < 1700;
+        ConfigPoint roiTopLeft = usedAlt ? PopupCloseAltTopLeft : _config.PopupCloseTopLeft;
+        ConfigSize roiSize = usedAlt ? PopupCloseAltSize : _config.PopupCloseSize;
+        double threshold = usedAlt ? PopupCloseAltThreshold : CloseThreshold;
+        ConfigPoint fallbackClick = usedAlt
+            ? new ConfigPoint((int)Math.Round(probe.Center.X), (int)Math.Round(probe.Center.Y))
+            : _config.PopupCloseClick;
+
         _log($"检测到宣传弹窗关闭钮（{probe.Score:F3}），点击关闭。");
         await _screen.ClickScreenAsync(window, probe.Center, cancellationToken);
         await Task.Delay(400, cancellationToken);
 
         TemplateProbeResult still = await _screen.ProbeAsync(
-            window, _closeMatcher,
-            _config.PopupCloseTopLeft, _config.PopupCloseSize,
-            cancellationToken, CloseThreshold);
+            window, _closeMatcher, roiTopLeft, roiSize, cancellationToken, threshold);
         if (!still.IsMatch)
         {
             _failedBursts = 0;
@@ -124,13 +146,11 @@ public sealed class PromoPopupDismisser
         }
 
         _log($"关闭钮仍在（{still.Score:F3}），再点一次固定点。");
-        await _screen.ClickAsync(window, _config.PopupCloseClick, "宣传弹窗关闭", cancellationToken);
+        await _screen.ClickAsync(window, fallbackClick, "宣传弹窗关闭", cancellationToken);
         await Task.Delay(400, cancellationToken);
 
         TemplateProbeResult after = await _screen.ProbeAsync(
-            window, _closeMatcher,
-            _config.PopupCloseTopLeft, _config.PopupCloseSize,
-            cancellationToken, CloseThreshold);
+            window, _closeMatcher, roiTopLeft, roiSize, cancellationToken, threshold);
         if (!after.IsMatch)
         {
             _failedBursts = 0;

@@ -59,7 +59,7 @@
                 <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="520">
                     <TextBlock Text="桌面分身" FontSize="28" FontWeight="SemiBold" HorizontalAlignment="Center"/>
                     <TextBlock Margin="0,12,0,0" TextWrapping="Wrap" Foreground="#AEB8C5" LineHeight="22"
-                               Text="点击「启动」创建独立 Windows Child Session。需要管理员与账户密码（非 PIN）；勿用 RDP Wrapper。&#10;&#10;关闭窗口选「是」可保留分身与游戏登录；选「否」才会注销。Chrome 登录先关主桌面浏览器；Clash 主桌面开 TUN。"/>
+                               Text="点击「启动」创建独立 Windows Child Session。需要管理员与账户密码（非 PIN）；勿用 RDP Wrapper。&#10;&#10;关闭窗口选「是」可保留分身与游戏登录；选「否」发起注销并立刻关窗。Chrome 登录先关主桌面浏览器；Clash 主桌面开 TUN。"/>
                     <Button Content="启动并连接" Margin="0,22,0,0" HorizontalAlignment="Center" Padding="20,10"
                             Click="ConnectButton_Click" Background="#3EA6F1" Foreground="White" BorderThickness="0"/>
                 </StackPanel>
@@ -67,7 +67,7 @@
             <Border x:Name="ClosingOverlay" Background="#CC151A21" Visibility="Collapsed">
                 <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
                     <TextBlock Text="正在关闭桌面分身…" FontSize="18" HorizontalAlignment="Center"/>
-                    <TextBlock Margin="0,8,0,0" Foreground="#AEB8C5" Text="请稍候，注销完成后窗口会自动隐藏。"/>
+                    <TextBlock Margin="0,8,0,0" Foreground="#AEB8C5" Text="已发起注销，窗口即将关闭。"/>
                 </StackPanel>
             </Border>
         </Grid>
