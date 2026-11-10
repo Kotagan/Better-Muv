@@ -77,7 +77,7 @@ public sealed class DailyMissionsAutomation
         window = _screen.Refresh(window);
 
         _log("每日任务：领取デイリー。");
-        bool dailyCleared = await ClaimUntilClearedAsync(window, cancellationToken);
+        (int dailyClaims, bool dailyCleared) = await ClaimDailyAsync(window, cancellationToken);
         window = _screen.Refresh(window);
 
         (window, bool onWeekly) = await SwitchWeeklyTabAsync(window, cancellationToken);
@@ -103,6 +103,8 @@ public sealed class DailyMissionsAutomation
 
         if (dailyCleared)
             _log("每日任务：デイリー已清完。");
+        else if (dailyClaims > 0)
+            _log($"每日任务：デイリー已领奖 {dailyClaims} 次（仍有未达成项属正常）。");
         else
             _log("每日任务：デイリー未能确认清完（可能仍有未达成项）。");
         if (weeklyClaims > 0)
@@ -118,9 +120,9 @@ public sealed class DailyMissionsAutomation
         await new HudHomeReturn(_config, _screen, _log).TryAsync(window, cancellationToken);
         _log("每日任务：结束。");
 
-        if (dailyCleared || weeklyClaims > 0 || achievementClaims > 0)
+        // 与社团一致：有确认 OK 的领奖即成功；未清完文案不能单独否决已领奖。
+        if (dailyClaims > 0 || dailyCleared || weeklyClaims > 0 || achievementClaims > 0)
             return TaskRunResult.Success();
-        // 未能确认清完且零领取：按失败处理，避免红点仍在却显示成功。
         return TaskRunResult.Fail("未能领取（一括受取未命中或未确认清完）");
     }
 
@@ -190,8 +192,11 @@ public sealed class DailyMissionsAutomation
         return (_screen.Refresh(window), true);
     }
 
-    private async Task<bool> ClaimUntilClearedAsync(GameWindow window, CancellationToken cancellationToken)
+    /// <returns>确认领奖次数，以及是否识别到「クリアしました」。</returns>
+    private async Task<(int Claims, bool Cleared)> ClaimDailyAsync(
+        GameWindow window, CancellationToken cancellationToken)
     {
+        int claims = 0;
         for (int round = 1; round <= MaxClaimRounds; round++)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -200,7 +205,7 @@ public sealed class DailyMissionsAutomation
             if (await IsClearedAsync(window, cancellationToken))
             {
                 _log("每日任务：已识别「デイリーミッションをクリアしました」。");
-                return true;
+                return (claims, true);
             }
 
             TemplateProbeResult claim = await _screen.WaitForProbeAsync(
@@ -214,7 +219,7 @@ public sealed class DailyMissionsAutomation
             if (!claim.IsMatch)
             {
                 _log($"每日任务：第 {round} 轮デイリー无一括受取（最高 {claim.Score:F4}）。");
-                return await IsClearedAsync(window, cancellationToken);
+                return (claims, await IsClearedAsync(window, cancellationToken));
             }
 
             _log($"每日任务：第 {round} 轮点击デイリー「一括受取」（{claim.Score:F4}）。");
@@ -224,11 +229,13 @@ public sealed class DailyMissionsAutomation
             {
                 _log("每日任务：点了一括受取但无 OK，停止デイリー连点。");
                 // 无 OK 不能凭「クリア」文案单独报成功（文案可能残留/误匹配）。
-                return false;
+                return (claims, false);
             }
+
+            claims++;
         }
 
-        return await IsClearedAsync(window, cancellationToken);
+        return (claims, await IsClearedAsync(window, cancellationToken));
     }
 
     private async Task<int> ClaimRoundsAsync(GameWindow window, string scope, CancellationToken cancellationToken)

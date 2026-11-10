@@ -160,8 +160,17 @@ public class AutomationConfigTests
         Assert.Equal("", config.PauseHotkey);
         Assert.Equal("F10", config.StopHotkey);
         Assert.Equal(90, config.GameLaunchTimeoutSeconds);
-        Assert.Equal(["maze", "mainQuest", "hardMainQuest", "dailyShop", "dailyFreeGift", "dailyExercises", "dailySimulationTower", "dailyMissions", "dailyCircle", "dailyHarvest", "dailyFreeBoost"], AutomationConfig.NormalizePipelineTaskOrder(null));
-        Assert.Equal(["mainQuest", "maze", "hardMainQuest", "dailyShop", "dailyFreeGift", "dailyExercises", "dailySimulationTower", "dailyMissions", "dailyCircle", "dailyHarvest", "dailyFreeBoost"], AutomationConfig.NormalizePipelineTaskOrder(["mainQuest", "maze", "unknown"]));
+        Assert.Equal(AutomationConfig.DefaultPipelineTaskOrder, AutomationConfig.NormalizePipelineTaskOrder(null));
+        Assert.Equal(
+            ["mainQuest", "maze", "dailyHarvest", "dailyExercises", "dailySimulationTower", "dailyShop", "dailyFreeGift", "dailyCircle", "dailyFreeBoost", "dailyActivity", "dailyMgArena", "dailyMissions", "hardMainQuest"],
+            AutomationConfig.NormalizePipelineTaskOrder(["mainQuest", "maze", "unknown"]));
+        Assert.True(AutomationConfig.IsLegacyDefaultPipelineTaskOrder(
+        [
+            "maze", "mainQuest", "hardMainQuest", "dailyShop", "dailyFreeGift",
+            "dailyExercises", "dailySimulationTower", "dailyActivity", "dailyMgArena", "dailyMissions",
+            "dailyCircle", "dailyHarvest", "dailyFreeBoost"
+        ]));
+        Assert.False(AutomationConfig.IsLegacyDefaultPipelineTaskOrder(AutomationConfig.DefaultPipelineTaskOrder));
         Assert.Equal(new ConfigPoint(1840, 1025), new AutomationConfig().DailyShopEntryClick);
         Assert.Equal(new ConfigPoint(1420, 800), new AutomationConfig().DailyShopExchangeHallClick);
         Assert.Equal(new ConfigPoint(300, 240), new AutomationConfig().DailyFreeGiftTitleTopLeft);
@@ -204,9 +213,15 @@ public class AutomationConfigTests
         Assert.Equal("muv_luv_girlsgardenx_cl.exe", GamePathLocator.ExecutableName);
         Assert.False(GamePathLocator.IsValid(null));
         Assert.False(GamePathLocator.IsValid(@"C:\missing\muv_luv_girlsgardenx_cl.exe"));
+        Assert.False(GamePathLocator.IsValid(@"C:\missing\any.exe"));
+        // DMM 快速启动：裸 schtasks 不行；带 /run /tn 可以；更推荐保存 .lnk。
+        Assert.True(GamePathLocator.IsSchtasksLauncher(@"C:\Windows\System32\schtasks.exe"));
         Assert.False(GamePathLocator.IsValid(@"C:\Windows\System32\schtasks.exe"));
-        Assert.Null(GamePathLocator.TryNormalize(@"C:\Windows\System32\schtasks.exe", out string rejectReason));
-        Assert.Contains("不是游戏程序", rejectReason);
+        Assert.True(GamePathLocator.IsValid(
+            @"C:\Windows\System32\schtasks.exe",
+            @"/run /tn \Microsoft\Windows\DMMGamePlayerFastLauncher\demo"));
+        Assert.Null(GamePathLocator.TryNormalize(@"C:\Windows\System32\drivers\etc\hosts", out string rejectReason));
+        Assert.Contains(".exe", rejectReason);
     }
 
     [Theory]
@@ -658,6 +673,21 @@ public class TemplateMatcherTests
         Assert.True(match.Score > 0.99);
         Assert.Equal(7, match.X);
         Assert.Equal(4, match.Y);
+    }
+}
+
+public class DailyActivityTests
+{
+    [Fact]
+    public void ActivityDayStartsAtFiveAm()
+    {
+        Assert.Equal(new DateOnly(2026, 11, 7), DailyActivityAutomation.CurrentActivityDay(new DateTime(2026, 11, 7, 5, 0, 0)));
+        Assert.Equal(new DateOnly(2026, 11, 6), DailyActivityAutomation.CurrentActivityDay(new DateTime(2026, 11, 7, 4, 59, 0)));
+        Assert.Equal("2026-11-07", DailyActivityAutomation.CurrentActivityDayKey(new DateTime(2026, 11, 7, 12, 0, 0)));
+        Assert.True(DailyActivityAutomation.QuotaFilledThisDay("2026-11-07", new DateTime(2026, 11, 7, 23, 0, 0)));
+        Assert.False(DailyActivityAutomation.QuotaFilledThisDay("2026-11-07", new DateTime(2026, 11, 8, 5, 0, 0)));
+        Assert.Equal(new DateTime(2026, 11, 8, 5, 0, 0), DailyActivityAutomation.NextReset(new DateTime(2026, 11, 7, 12, 0, 0)));
+        Assert.Equal(new DateTime(2026, 11, 7, 5, 0, 0), DailyActivityAutomation.NextReset(new DateTime(2026, 11, 7, 3, 0, 0)));
     }
 }
 

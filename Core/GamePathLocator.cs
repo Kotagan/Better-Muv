@@ -3,10 +3,12 @@ using System.Text.RegularExpressions;
 
 namespace BetterMuv.Core;
 
-/// <summary>定位 マブラヴ・ガールズガーデンX 客户端 exe。</summary>
+/// <summary>定位并校验用户配置的游戏启动路径（任意 .exe / 指向 exe 的 .lnk）。</summary>
 public static class GamePathLocator
 {
+    /// <summary>自动搜索时优先查找的进程名（不限制用户手动配置的文件名）。</summary>
     public const string ProcessName = "muv_luv_girlsgardenx_cl";
+    /// <summary>自动搜索时优先查找的文件名（不限制用户手动配置的文件名）。</summary>
     public const string ExecutableName = "muv_luv_girlsgardenx_cl.exe";
 
     private static readonly string[] RelativeHints =
@@ -21,13 +23,45 @@ public static class GamePathLocator
         @"Program Files (x86)\DMMGamePlayer\GameContents\muv_luv_girlsgardenx_cl"
     ];
 
-    public static bool IsValid(string? path) =>
+    public static bool IsShortcut(string? path) =>
         !string.IsNullOrWhiteSpace(path) &&
-        File.Exists(path) &&
-        string.Equals(Path.GetFileName(path), ExecutableName, StringComparison.OrdinalIgnoreCase);
+        path.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
-    /// 解析用户选择的路径（支持 .lnk）。成功时返回游戏 exe 绝对路径；失败返回 null 并给出原因。
+    /// DMMGamePlayerFastLauncher 快捷方式目标常是 schtasks.exe，真正启动靠 /run /tn。
+    /// 这种启动方式支持：请保存 .lnk，或保存 schtasks.exe 并带上计划任务参数。
+    /// </summary>
+    public static bool IsSchtasksLauncher(string? path) =>
+        !string.IsNullOrWhiteSpace(path) &&
+        string.Equals(Path.GetFileName(path), "schtasks.exe", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>兼容旧名。</summary>
+    public static bool IsBareSchtasksStub(string? path) => IsSchtasksLauncher(path);
+
+    public static bool HasSchtasksRunArguments(string? arguments) =>
+        !string.IsNullOrWhiteSpace(arguments) &&
+        arguments.Contains("/run", StringComparison.OrdinalIgnoreCase) &&
+        arguments.Contains("/tn", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>路径本身是否可保存（.lnk / 普通 exe；裸 schtasks 需另配参数才可启动）。</summary>
+    public static bool IsValid(string? path) =>
+        IsValid(path, launchArguments: null, allowSchtasksWithoutArgs: false);
+
+    public static bool IsValid(string? path, string? launchArguments, bool allowSchtasksWithoutArgs = false)
+    {
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+            return false;
+        if (IsShortcut(path))
+            return true;
+        if (!path.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+            return false;
+        if (IsSchtasksLauncher(path))
+            return allowSchtasksWithoutArgs || HasSchtasksRunArguments(launchArguments);
+        return true;
+    }
+
+    /// <summary>
+    /// 规范化用户选择的路径。DMM 快速启动请直接选桌面 .lnk（会原样保留，启动时等价双击快捷方式）。
     /// </summary>
     public static string? TryNormalize(string? selectedPath, out string reason)
     {
@@ -39,16 +73,27 @@ public static class GamePathLocator
         }
 
         string path = selectedPath.Trim().Trim('"');
-        if (path.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase))
+
+        if (IsShortcut(path))
         {
-            string? target = TryResolveShortcut(path);
-            if (target is null)
+            if (!File.Exists(path))
             {
-                reason = "无法解析快捷方式：" + path;
+                reason = "快捷方式不存在：" + path;
                 return null;
             }
 
-            path = target;
+            // 保留 .lnk：DMM FastLauncher / 计划任务参数都在快捷方式里。
+            return Path.GetFullPath(path);
+        }
+
+        if (Directory.Exists(path))
+        {
+            string? inDir = FindPreferredExecutableNearby(path);
+            if (inDir is not null)
+                return inDir;
+
+            reason = "目录中未找到可用的 .exe：" + path;
+            return null;
         }
 
         if (!File.Exists(path))
@@ -57,19 +102,63 @@ public static class GamePathLocator
             return null;
         }
 
-        if (!string.Equals(Path.GetFileName(path), ExecutableName, StringComparison.OrdinalIgnoreCase))
+        if (IsSchtasksLauncher(path))
         {
+            // 支持这种启动方式，但裸路径不够；优先找回对应的桌面 .lnk。
+            string? shortcut = EnumerateLikelyShortcuts().FirstOrDefault(IsValid);
+            if (shortcut is not null)
+            {
+                reason = "";
+                return Path.GetFullPath(shortcut);
+            }
+
             reason =
-                $"不是游戏程序（需要 {ExecutableName}，实际为 {Path.GetFileName(path)}）。" +
-                "请选游戏目录下的 exe，或指向该 exe 的快捷方式。";
+                "检测到 schtasks.exe（DMM 快速启动常用）。" +
+                "请改选桌面上的游戏快捷方式 .lnk（推荐），" +
+                "或在启动参数里填写该快捷方式的 /run /tn … 后再保存 schtasks.exe。";
             return null;
         }
 
-        return Path.GetFullPath(path);
+        if (path.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+            return Path.GetFullPath(path);
+
+        reason = $"请选择 .exe 或 .lnk（当前为 {Path.GetFileName(path)}）。";
+        return null;
     }
 
-    /// <summary>读取 .lnk 目标路径；失败返回 null。</summary>
-    public static string? TryResolveShortcut(string shortcutPath)
+    /// <summary>构造启动用的 ProcessStartInfo。.lnk 按资源管理器双击方式打开。</summary>
+    public static ProcessStartInfo CreateLaunchStartInfo(
+        string launchPath,
+        string? extraArguments = null,
+        string? workingDirectory = null)
+    {
+        string path = launchPath.Trim().Trim('"');
+        if (IsShortcut(path))
+        {
+            return new ProcessStartInfo
+            {
+                FileName = "explorer.exe",
+                Arguments = "\"" + path + "\"",
+                UseShellExecute = true
+            };
+        }
+
+        string args = extraArguments ?? "";
+        string workDir = workingDirectory ?? "";
+        if (string.IsNullOrWhiteSpace(workDir))
+            workDir = Path.GetDirectoryName(path) ?? AppContext.BaseDirectory;
+
+        return new ProcessStartInfo
+        {
+            FileName = path,
+            Arguments = args,
+            WorkingDirectory = workDir,
+            UseShellExecute = true
+        };
+    }
+
+    /// <summary>读取快捷方式参数。</summary>
+    public static string? TryResolveShortcutArguments(string shortcutPath)
     {
         if (string.IsNullOrWhiteSpace(shortcutPath) || !File.Exists(shortcutPath))
             return null;
@@ -86,18 +175,158 @@ public static class GamePathLocator
                 null,
                 shell,
                 [shortcutPath])!;
-            string? target = shortcut.GetType().InvokeMember(
-                "TargetPath",
+            string? arguments = shortcut.GetType().InvokeMember(
+                "Arguments",
                 System.Reflection.BindingFlags.GetProperty,
                 null,
                 shortcut,
                 null) as string;
-            return string.IsNullOrWhiteSpace(target) ? null : target.Trim().Trim('"');
+            return string.IsNullOrWhiteSpace(arguments) ? null : arguments.Trim();
         }
         catch
         {
             return null;
         }
+    }
+
+    /// <summary>配置缺参数时，尝试找回桌面快捷方式或默认客户端。</summary>
+    public static string? TryRecoverLaunchPath(string? current, string? launchArguments = null)
+    {
+        if (!string.IsNullOrWhiteSpace(current) && IsValid(current, launchArguments))
+            return Path.GetFullPath(current);
+
+        foreach (string candidate in EnumerateLikelyShortcuts())
+        {
+            if (IsValid(candidate))
+                return Path.GetFullPath(candidate);
+        }
+
+        return TryFind(null);
+    }
+
+    private static IEnumerable<string> EnumerateLikelyShortcuts()
+    {
+        string desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+        string publicDesktop = Environment.GetFolderPath(Environment.SpecialFolder.CommonDesktopDirectory);
+        foreach (string dir in new[] { desktop, publicDesktop })
+        {
+            if (string.IsNullOrWhiteSpace(dir) || !Directory.Exists(dir))
+                continue;
+
+            string preferred = Path.Combine(dir, "muv.lnk");
+            if (File.Exists(preferred))
+                yield return preferred;
+
+            string[] files;
+            try
+            {
+                files = Directory.GetFiles(dir, "*.lnk");
+            }
+            catch
+            {
+                continue;
+            }
+
+            foreach (string file in files)
+            {
+                (string? target, _) = TryResolveShortcutDetails(file);
+                if (IsBareSchtasksStub(target) ||
+                    (!string.IsNullOrWhiteSpace(target) &&
+                     target.Contains("muv_luv", StringComparison.OrdinalIgnoreCase)))
+                    yield return file;
+            }
+        }
+    }
+
+    /// <summary>读取 .lnk 目标路径；失败返回 null。</summary>
+    public static string? TryResolveShortcut(string shortcutPath)
+    {
+        (string? target, _) = TryResolveShortcutDetails(shortcutPath);
+        return target;
+    }
+
+    /// <summary>读取 .lnk 的 TargetPath 与 WorkingDirectory。</summary>
+    public static (string? TargetPath, string? WorkingDirectory) TryResolveShortcutDetails(string shortcutPath)
+    {
+        if (string.IsNullOrWhiteSpace(shortcutPath) || !File.Exists(shortcutPath))
+            return (null, null);
+        try
+        {
+            Type? shellType = Type.GetTypeFromProgID("WScript.Shell");
+            if (shellType is null)
+                return (null, null);
+            object shell = Activator.CreateInstance(shellType)
+                ?? throw new InvalidOperationException("WScript.Shell");
+            object shortcut = shellType.InvokeMember(
+                "CreateShortcut",
+                System.Reflection.BindingFlags.InvokeMethod,
+                null,
+                shell,
+                [shortcutPath])!;
+            Type shortcutType = shortcut.GetType();
+            string? target = shortcutType.InvokeMember(
+                "TargetPath",
+                System.Reflection.BindingFlags.GetProperty,
+                null,
+                shortcut,
+                null) as string;
+            string? working = shortcutType.InvokeMember(
+                "WorkingDirectory",
+                System.Reflection.BindingFlags.GetProperty,
+                null,
+                shortcut,
+                null) as string;
+            target = string.IsNullOrWhiteSpace(target) ? null : target.Trim().Trim('"');
+            working = string.IsNullOrWhiteSpace(working) ? null : working.Trim().Trim('"');
+            return (target, working);
+        }
+        catch
+        {
+            return (null, null);
+        }
+    }
+
+    /// <summary>目录旁优先找推荐游戏名，其次任意 .exe（仅当前目录，不全盘乱扫）。</summary>
+    private static string? FindPreferredExecutableNearby(params string?[] directories)
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (string? dir in directories)
+        {
+            if (string.IsNullOrWhiteSpace(dir) || !Directory.Exists(dir) || !seen.Add(dir))
+                continue;
+
+            string preferred = Path.Combine(dir, ExecutableName);
+            if (IsValid(preferred))
+                return Path.GetFullPath(preferred);
+
+            try
+            {
+                foreach (string child in Directory.EnumerateDirectories(dir))
+                {
+                    string candidate = Path.Combine(child, ExecutableName);
+                    if (IsValid(candidate))
+                        return Path.GetFullPath(candidate);
+                }
+            }
+            catch
+            {
+                // 忽略无权访问的目录。
+            }
+
+            try
+            {
+                string? anyExe = Directory.EnumerateFiles(dir, "*.exe")
+                    .FirstOrDefault(IsValid);
+                if (anyExe is not null)
+                    return Path.GetFullPath(anyExe);
+            }
+            catch
+            {
+                // 忽略无权访问的目录。
+            }
+        }
+
+        return null;
     }
 
     /// <summary>按优先级查找：已配置路径 → 运行中进程 → 常见目录 → Steam 库 → 各盘全盘文件名搜索。</summary>

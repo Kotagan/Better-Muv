@@ -38,10 +38,80 @@ BmCli — Better-Muv 调试 CLI（不进安装包，给 AI/人工联调用）
   crop <key> --preset <p> [--out path]
   rois [all|maze|main|hard|entry] [--json]
   points              常用点击点（FirstClick 等）
+  run <flow>          实机跑一条自动化（dailyActivity / dailyMgArena）；--force 忽略今日已完成
 
 示例见: tools/README.md
 """);
         return 0;
+    }
+
+    public static async Task<int> RunAsync(CliContext ctx, string[] rest, CancellationToken ct)
+    {
+        if (rest.Length == 0)
+        {
+            Console.Error.WriteLine("用法: run <dailyActivity|dailyMgArena> [--force]");
+            return 1;
+        }
+
+        string flow = rest[0].Trim();
+        bool force = rest.Any(a => a is "--force" or "-f") ||
+                     ctx.RawArgs.Any(a => a is "--force" or "-f");
+        EnsureTemplatesBesideExe(ctx.TemplatesDir);
+
+        AutomationConfig config = ctx.Config;
+        TaskRunResult result;
+        switch (flow.ToLowerInvariant())
+        {
+            case "dailyactivity":
+            case "activity":
+            case "课外活动":
+                if (force)
+                {
+                    config.LastDailyActivityDay = null;
+                    ConfigStore.Save(config);
+                    Console.WriteLine("已清除 LastDailyActivityDay（--force）。");
+                }
+
+                result = await new DailyActivityAutomation(config, msg => Console.WriteLine(msg))
+                    .RunOnceAsync(ct);
+                break;
+            case "dailymgarena":
+            case "mgarena":
+            case "公式mg竞技":
+                if (force)
+                {
+                    config.LastDailyMgArenaDay = null;
+                    ConfigStore.Save(config);
+                    Console.WriteLine("已清除 LastDailyMgArenaDay（--force）。");
+                }
+
+                result = await new DailyMgArenaAutomation(config, msg => Console.WriteLine(msg))
+                    .RunOnceAsync(ct);
+                break;
+            default:
+                Console.Error.WriteLine($"暂不支持 run「{flow}」。可用: dailyActivity, dailyMgArena");
+                return 1;
+        }
+
+        Console.WriteLine(result.Ok
+            ? $"成功{(string.IsNullOrWhiteSpace(result.Detail) ? "" : "：" + result.Detail)}"
+            : $"失败：{result.Detail}");
+        return result.Ok ? 0 : 2;
+    }
+
+    /// <summary>DailyActivity 等走 TemplateAssets.DirectoryPath（exe 旁 Assets/Templates）。</summary>
+    private static void EnsureTemplatesBesideExe(string sourceDir)
+    {
+        string dest = Path.Combine(AppContext.BaseDirectory, "Assets", "Templates");
+        Directory.CreateDirectory(dest);
+        foreach (string src in Directory.EnumerateFiles(sourceDir, "*.png", SearchOption.AllDirectories))
+        {
+            string rel = Path.GetRelativePath(sourceDir, src);
+            string target = Path.Combine(dest, rel);
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            if (!File.Exists(target) || File.GetLastWriteTimeUtc(src) > File.GetLastWriteTimeUtc(target))
+                File.Copy(src, target, overwrite: true);
+        }
     }
 
     public static int Flows(CliContext ctx)

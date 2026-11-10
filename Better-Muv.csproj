@@ -10,7 +10,7 @@
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <!-- WinForms：DPI 改由项目属性配置，勿再写在 app.manifest（WFO0003�?-->
+    <!-- WinForms: DPI via project property; do not put in app.manifest (WFO0003). -->
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
   </PropertyGroup>
 
@@ -29,9 +29,9 @@
   </ItemGroup>
 
   <PropertyGroup>
-    <Version>1.3.9</Version>
-    <AssemblyVersion>1.3.9.0</AssemblyVersion>
-    <FileVersion>1.3.9.0</FileVersion>
+    <Version>1.4.0</Version>
+    <AssemblyVersion>1.4.0.0</AssemblyVersion>
+    <FileVersion>1.4.0.0</FileVersion>
     <Product>Better-Muv</Product>
     <Company>Kotagan</Company>
     <Authors>Kotagan</Authors>
@@ -48,6 +48,15 @@
     <Content Include="Assets\Templates\quest-battle-simulate.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\quest-exercises.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\quest-activity.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\quest-mg-arena.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\mg-arena-challenge.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\mg-arena-prepare.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\mg-arena-sortie.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\activity-title.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\activity-claim-all.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\activity-start-all.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\activity-close.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\activity-batch-ok.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\nav-back.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\exploration-ready.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\exploration-action.png" CopyToOutputDirectory="PreserveNewest" />

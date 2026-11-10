@@ -48,6 +48,7 @@ try
         "crop" => await Commands.CropAsync(ctx, args, rest, cts.Token),
         "rois" or "roi" => Commands.Rois(ctx, rest),
         "points" or "clicks" => Commands.Points(ctx),
+        "run" => await Commands.RunAsync(ctx, rest, cts.Token),
         _ => Unknown(cmd)
     };
 }

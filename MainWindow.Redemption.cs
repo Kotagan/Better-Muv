@@ -206,6 +206,7 @@ public partial class MainWindow
         BeginDiagnosticRun(resume: false);
         _isPaused = false;
         _pauseRequested = false;
+        _userStopRequested = false;
         _activeTask = ActiveTask.Redeem;
         _runCancellation = new CancellationTokenSource();
         UpdateRunUi();

@@ -365,11 +365,14 @@ public sealed class MazeAutomation
         _log("不在迷宫内：回主页后连点进メイズ探索。");
         try
         {
+            // 单击：双击第二下常落在已切出的中转页右侧（未開拓卡），反而进错或卡住。
             window = await new QuestFromHomeEntry(_config, _screen, _log).RunAsync(
-                window, _config.SecondClick, "メイズ探索", cancellationToken, _secondMatcher);
-            // 点メイズ后常先出「普通/通常 vs 未開拓」新弹层，不点则永远进不了开始页。
+                window, _config.SecondClick, "メイズ探索", cancellationToken, _secondMatcher,
+                singleClickTarget: true);
+            window = await EnsureLeftQuestMazeTileAsync(window, cancellationToken);
+            // 点メイズ后常先出中转页（默认未開拓卡）；要选通常才能到开始页。
             window = await TrySelectNormalMazeModeAsync(
-                window, cancellationToken, budgetMs: 4500, forceFallbackIfStuck: true);
+                window, cancellationToken, budgetMs: 6500, forceFallbackIfStuck: true);
         }
         catch (InvalidOperationException ex)
         {
@@ -387,6 +390,86 @@ public sealed class MazeAutomation
 
         _log("连点后未能完成进关（开始页/探索準備/探索按钮），停止本轮。");
         return false;
+    }
+
+    /// <summary>
+    /// 点メイズ后若仍停在任务页磁贴，优先点识别中心再换点位重试
+    /// （固定坐标偶发偏到文字带无响应；弹窗/失焦也会导致连点无效）。
+    /// </summary>
+    private async Task<GameWindow> EnsureLeftQuestMazeTileAsync(
+        GameWindow window, CancellationToken cancellationToken)
+    {
+        ConfigPoint[] fallbackPoints =
+        [
+            _config.SecondClick,
+            // 磁贴立绘中心（文字带偏下时点文字可能无响应）。
+            new(1611, 360),
+            new(1550, 400),
+            new(1640, 380),
+            new(
+                _config.SecondSearchTopLeft.X + _config.SecondSearchSize.Width / 2,
+                _config.SecondSearchTopLeft.Y + _config.SecondSearchSize.Height / 2),
+        ];
+
+        int maxAttempts = fallbackPoints.Length + 2;
+        for (int attempt = 1; attempt <= maxAttempts; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            window = _screen.Refresh(window);
+            await _promo.TryAsync(window, cancellationToken);
+            window = _screen.Refresh(window);
+            await Task.Delay(500, cancellationToken);
+            window = _screen.Refresh(window);
+
+            TemplateProbeResult mazeTile = await _screen.ProbeAsync(
+                window, _secondMatcher,
+                _config.SecondSearchTopLeft, _config.SecondSearchSize,
+                cancellationToken, 0.80);
+            if (!mazeTile.IsMatch)
+            {
+                _log($"已离开任务页メイズ磁贴（复检 {attempt}）。");
+                return window;
+            }
+
+            if (await IsMazeStartReadyAsync(window, cancellationToken))
+                return window;
+
+            if (!await _screen.FocusAsync(window.Handle, cancellationToken))
+                _log("未能将游戏置于前台，メイズ点击可能无效。");
+
+            // 前两次：直接点模板命中中心；之后再用固定点位兜底。
+            if (attempt <= 2)
+            {
+                _log($"仍在任务页メイズ磁贴（{mazeTile.Score:F3}），点识别中心再进关 {attempt}/{maxAttempts}"
+                    + $" screen({mazeTile.Center.X:F0},{mazeTile.Center.Y:F0})。");
+                await _screen.ClickProbeAsync(
+                    window, mazeTile, $"メイズ探索再点{attempt}", cancellationToken, settleDelayMs: 0);
+            }
+            else
+            {
+                ConfigPoint point = fallbackPoints[Math.Min(attempt - 3, fallbackPoints.Length - 1)];
+                _log($"仍在任务页メイズ磁贴（{mazeTile.Score:F3}），再点进关 {attempt}/{maxAttempts}"
+                    + $"（{point.X},{point.Y}）。");
+                window = await _screen.ClickAsync(
+                    window, point, $"メイズ探索再点{attempt}", cancellationToken, parkCursor: false);
+            }
+
+            await Task.Delay(1200, cancellationToken);
+            _screen.ParkCursorAway(window);
+        }
+
+        _log("多次点击后仍见任务页メイズ磁贴，继续后续模式识别。");
+        return _screen.Refresh(window);
+    }
+
+    private async Task<bool> IsMazeStartReadyAsync(GameWindow window, CancellationToken cancellationToken)
+    {
+        TemplateProbeResult prep = await _screen.ProbeAsync(
+            window, _thirdMatcher, _config.ThirdSearchTopLeft, _config.ThirdSearchSize,
+            cancellationToken, ThirdPresenceThreshold);
+        if (prep.IsMatch)
+            return true;
+        return await _difficulty.TryReadTrustedFloorAsync(window, cancellationToken) is not null;
     }
 
     /// <summary>
@@ -455,8 +538,8 @@ public sealed class MazeAutomation
     }
 
     /// <summary>
-    /// 点「メイズ探索」后的新弹层：选「普通爬塔/通常」，避开「未開拓」。
-    /// 已能看到探索準備或可读层数则跳过；仍卡住且任务页メイズ已消失时点左侧兜底。
+    /// 点「メイズ探索」后的中转页：选「普通爬塔/通常」，避开「未開拓」。
+    /// 活动期常默认停在未開拓空卡；需左右滑出通常或回退再选。
     /// </summary>
     private async Task<GameWindow> TrySelectNormalMazeModeAsync(
         GameWindow window,
@@ -467,6 +550,24 @@ public sealed class MazeAutomation
         static string Compact(string? text) =>
             string.IsNullOrWhiteSpace(text) ? "" : new string(text.Where(c => !char.IsWhiteSpace(c)).ToArray());
 
+        static bool HasNormalHint(string compact) =>
+            compact.Contains("普通爬塔", StringComparison.Ordinal) ||
+            compact.Contains("通常メイズ", StringComparison.Ordinal) ||
+            compact.Contains("通常エリア", StringComparison.Ordinal) ||
+            compact.Contains("通常探索", StringComparison.Ordinal) ||
+            compact.Contains("爬塔", StringComparison.Ordinal) ||
+            compact.Contains("ノーマル", StringComparison.Ordinal) ||
+            (compact.Contains("通常", StringComparison.Ordinal) &&
+             (compact.Contains("未開拓", StringComparison.Ordinal) ||
+              compact.Contains("未开拓", StringComparison.Ordinal)));
+
+        static bool HasUnexploredOnly(string compact) =>
+            (compact.Contains("未開拓", StringComparison.Ordinal) ||
+             compact.Contains("未开拓", StringComparison.Ordinal)) &&
+            !compact.Contains("通常", StringComparison.Ordinal) &&
+            !compact.Contains("普通", StringComparison.Ordinal) &&
+            !compact.Contains("ノーマル", StringComparison.Ordinal);
+
         string[] prefer =
         [
             "普通爬塔", "通常メイズ", "通常エリア", "通常探索", "通常挑戦", "通常挑戰",
@@ -476,6 +577,9 @@ public sealed class MazeAutomation
         var deadline = DateTime.UtcNow.AddMilliseconds(Math.Max(800, budgetMs));
         bool sawModeHint = false;
         bool leftQuestMazeTile = false;
+        bool sawUnexploredHub = false;
+        int swipeAttempts = 0;
+        int backAttempts = 0;
 
         while (DateTime.UtcNow < deadline)
         {
@@ -484,18 +588,9 @@ public sealed class MazeAutomation
             await _promo.TryAsync(window, cancellationToken);
             window = _screen.Refresh(window);
 
-            TemplateProbeResult prep = await _screen.ProbeAsync(
-                window, _thirdMatcher, _config.ThirdSearchTopLeft, _config.ThirdSearchSize,
-                cancellationToken, ThirdPresenceThreshold);
-            if (prep.IsMatch)
+            if (await IsMazeStartReadyAsync(window, cancellationToken))
             {
-                _log($"迷宫模式选择：已见探索準備（{prep.Score:F3}），跳过。");
-                return window;
-            }
-
-            if (await _difficulty.TryReadTrustedFloorAsync(window, cancellationToken) is int floor)
-            {
-                _log($"迷宫模式选择：已读到层数 {floor}，跳过。");
+                _log("迷宫模式选择：已见开始页（探索準備/层数），跳过。");
                 return window;
             }
 
@@ -523,31 +618,92 @@ public sealed class MazeAutomation
 
             string? raw = await DigitOcrService.TryReadTextAsync(region.Image, cancellationToken);
             string compact = Compact(raw);
-            if (compact.Length > 0 &&
-                (compact.Contains("未開拓", StringComparison.Ordinal) ||
-                 compact.Contains("未开拓", StringComparison.Ordinal) ||
-                 compact.Contains("普通爬塔", StringComparison.Ordinal) ||
-                 compact.Contains("通常メイズ", StringComparison.Ordinal) ||
-                 compact.Contains("通常エリア", StringComparison.Ordinal) ||
-                 compact.Contains("爬塔", StringComparison.Ordinal)))
+            // 任务页磁贴「未開拓エリア解放中」不能单独当模式弹层；中转页离开磁贴后才认。
+            if (leftQuestMazeTile && HasNormalHint(compact))
                 sawModeHint = true;
+            if (leftQuestMazeTile && HasUnexploredOnly(compact))
+                sawUnexploredHub = true;
+
+            // 已进メイズ中转且只见未開拓：左右滑找通常卡（活动期默认停在未開拓空卡）。
+            if (leftQuestMazeTile && sawUnexploredHub && swipeAttempts < 2)
+            {
+                swipeAttempts++;
+                bool swipeLeft = swipeAttempts == 1;
+                _log($"迷宫模式选择：中转页见未開拓，滑动找通常（{swipeAttempts}/2，"
+                    + $"{(swipeLeft ? "右→左" : "左→右")}）。");
+                ConfigPoint from = swipeLeft ? new(1450, 520) : new(520, 520);
+                ConfigPoint to = swipeLeft ? new(520, 520) : new(1450, 520);
+                await _screen.DragAsync(window, from, to, "迷宫模式卡滑动", cancellationToken, steps: 14);
+                await Task.Delay(800, cancellationToken);
+                continue;
+            }
+
+            // 滑完仍无通常：点一次返回，回到双卡/模式选择再认。
+            if (leftQuestMazeTile && sawUnexploredHub && swipeAttempts >= 2 && backAttempts < 1)
+            {
+                backAttempts++;
+                _log("迷宫模式选择：滑动未见通常，点返回再选模式。");
+                window = await _screen.ClickAsync(
+                    window, QuestFromHomeEntry.NavBackClick(_config), "迷宫中转返回", cancellationToken);
+                await Task.Delay(900, cancellationToken);
+                sawUnexploredHub = false;
+                continue;
+            }
 
             await Task.Delay(250, cancellationToken);
         }
 
-        // 新弹层挡住开始页：OCR 见模式文案，或已离开任务页メイズ磁贴却仍无开始页 → 点普通侧兜底。
-        if (sawModeHint || (forceFallbackIfStuck && leftQuestMazeTile))
+        // 仍卡在任务页磁贴：再点一次识别中心，给中转页一个机会出现。
+        if (forceFallbackIfStuck && !leftQuestMazeTile)
         {
-            _log($"迷宫模式选择：{(sawModeHint ? "OCR 见模式文案" : "已离开メイズ磁贴仍无开始页")}"
-                + $"，改点普通爬塔固定坐标"
-                + $"（{_config.MazeNormalModeClick.X},{_config.MazeNormalModeClick.Y}）。");
-            window = await _screen.ClickAsync(
-                window, _config.MazeNormalModeClick, "普通爬塔/通常（兜底）", cancellationToken);
-            await Task.Delay(1000, cancellationToken);
-            return _screen.Refresh(window);
+            TemplateProbeResult stillTile = await _screen.ProbeAsync(
+                window, _secondMatcher,
+                _config.SecondSearchTopLeft, _config.SecondSearchSize,
+                cancellationToken, 0.80);
+            if (stillTile.IsMatch)
+            {
+                _log($"迷宫模式选择：仍停在メイズ磁贴（{stillTile.Score:F3}），补点识别中心。");
+                await _screen.ClickProbeAsync(
+                    window, stillTile, "メイズ探索补点", cancellationToken, settleDelayMs: 0);
+                await Task.Delay(1400, cancellationToken);
+                window = _screen.Refresh(window);
+                TemplateProbeResult after = await _screen.ProbeAsync(
+                    window, _secondMatcher,
+                    _config.SecondSearchTopLeft, _config.SecondSearchSize,
+                    cancellationToken, 0.80);
+                if (!after.IsMatch)
+                    leftQuestMazeTile = true;
+            }
         }
 
-        _log("迷宫模式选择：未确认新弹层，继续等开始页。");
+        // OCR 见通常文案，或已离开任务页仍无开始页 → 点普通侧兜底（多点位）。
+        if (sawModeHint || (forceFallbackIfStuck && leftQuestMazeTile))
+        {
+            ConfigPoint[] fallbacks =
+            [
+                _config.MazeNormalModeClick,
+                new(520, 500),
+                new(800, 520),
+                new(1100, 520),
+            ];
+            _log($"迷宫模式选择：{(sawModeHint ? "OCR 见模式文案" : "已离开メイズ磁贴仍无开始页")}"
+                + "，改点普通爬塔固定坐标。");
+            foreach (ConfigPoint point in fallbacks)
+            {
+                if (await IsMazeStartReadyAsync(window, cancellationToken))
+                    return _screen.Refresh(window);
+                window = await _screen.ClickAsync(
+                    window, point, $"普通爬塔/通常（{point.X},{point.Y}）", cancellationToken);
+                await Task.Delay(900, cancellationToken);
+                window = _screen.Refresh(window);
+            }
+
+            return window;
+        }
+
+        _log(forceFallbackIfStuck && !leftQuestMazeTile
+            ? "迷宫模式选择：多次点击后仍停在任务页メイズ磁贴，未能打开中转/开始页。"
+            : "迷宫模式选择：未确认新弹层，继续等开始页。");
         return window;
     }
 
@@ -1402,6 +1558,7 @@ public sealed class MazeAutomation
         var jobs = new (string Key, TemplateMatcher Matcher, BitmapSource Image, ScreenRect Rect, int Lw, int Lh, double Threshold)[probeList.Count];
         for (int i = 0; i < probeList.Count; i++)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             TemplateProbe probe = probeList[i];
             ConfigPoint topLeft = probe.TopLeft;
             ConfigSize size = ScreenAutomation.EnsureFitsTemplate(probe.Size, probe.Matcher);

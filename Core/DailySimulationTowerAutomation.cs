@@ -12,6 +12,8 @@ public sealed class DailySimulationTowerAutomation
     private static readonly TimeSpan TowerWallClockLimit = TimeSpan.FromMinutes(90);
     private const int SortieMissTimeoutMs = 8000;
     private const double RemainingZeroStrongThreshold = 0.98;
+    /// <summary>与演习/迷宫一致：SKIP 弱命中时写死点兜底，避免卡在战斗演出。</summary>
+    private const double SkipFallbackScore = 0.28;
 
     private readonly AutomationConfig _config;
     private readonly ScreenAutomation _screen;
@@ -96,8 +98,8 @@ public sealed class DailySimulationTowerAutomation
                 string name = TowerNameFor(key);
                 ConfigPoint point = TowerPointFor(key);
                 _log($"每日模拟战斗：选择{name}（{point.X},{point.Y}），持续出击直到确认今日剩余 0 次。");
-                window = await _screen.ClickAsync(_screen.Refresh(window), point, name, cancellationToken);
-                await Task.Delay(1200, cancellationToken);
+                window = await EnterTowerFromListAsync(
+                    _screen.Refresh(window), point, name, cancellationToken);
 
                 bool towerOk = await PushTowerUntilCannotSortieAsync(window, name, cancellationToken);
                 bool hasNext = towerIndex + 1 < towerKeys.Count;
@@ -154,8 +156,8 @@ public sealed class DailySimulationTowerAutomation
         }
         catch (OperationCanceledException)
         {
-            _log("每日模拟战斗：已取消，执行退出回主页。");
-            await TryExitToHomeAsync(window, CancellationToken.None);
+            // 用户停止时不再做完整「退回主页」，避免一条龙停住还要跑几十秒恢复。
+            _log("每日模拟战斗：已取消。");
             throw;
         }
     }
@@ -189,6 +191,29 @@ public sealed class DailySimulationTowerAutomation
         }
 
         await new HudHomeReturn(_config, _screen, _log).TryAsync(window, cancellationToken);
+        return _screen.Refresh(window);
+    }
+
+    /// <summary>
+    /// 点属性塔；若仍停在塔列表（常见于动画/误点）再点一次，避免直接判「未出関卡页」。
+    /// </summary>
+    private async Task<GameWindow> EnterTowerFromListAsync(
+        GameWindow window, ConfigPoint point, string name, CancellationToken cancellationToken)
+    {
+        window = await _screen.ClickAsync(window, point, name, cancellationToken);
+        await Task.Delay(1400, cancellationToken);
+        window = _screen.Refresh(window);
+
+        TemplateProbeResult listStill = await _screen.ProbeAsync(
+            window, _towerList,
+            _config.DailySimulationListTopLeft, _config.DailySimulationListSize,
+            cancellationToken, 0.72);
+        if (!listStill.IsMatch)
+            return window;
+
+        _log($"每日模拟战斗：{name}点击后仍见塔列表（{listStill.Score:F3}），再点一次。");
+        window = await _screen.ClickAsync(window, point, $"{name}再点", cancellationToken);
+        await Task.Delay(1400, cancellationToken);
         return _screen.Refresh(window);
     }
 
@@ -428,12 +453,7 @@ public sealed class DailySimulationTowerAutomation
             _screen.ParkCursorAway(window);
             window = _screen.Refresh(window);
 
-            TemplateProbeResult skip = await _screen.ProbeAsync(
-                window, _skip, _config.BattleSkipTopLeft, _config.BattleSkipSize, cancellationToken, 0.58);
-            if (!skip.IsMatch)
-                skip = await _screen.ProbeAsync(
-                    window, _skipAlt, _config.MainQuestSkipTopLeft, _config.MainQuestSkipSize,
-                    cancellationToken, 0.52);
+            TemplateProbeResult skip = await ProbeSkipAsync(window, cancellationToken);
             if (skip.IsMatch)
             {
                 _log($"每日模拟战斗：{name}已进入战斗（SKIP {skip.Score:F3}）。");
@@ -460,6 +480,8 @@ public sealed class DailySimulationTowerAutomation
     {
         var timer = System.Diagnostics.Stopwatch.StartNew();
         DateTime lastProgressLog = DateTime.MinValue;
+        DateTime lastSkipClickAt = DateTime.MinValue;
+        bool usedSkipFallback = false;
         while (timer.ElapsedMilliseconds < 180_000)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -497,24 +519,45 @@ public sealed class DailySimulationTowerAutomation
                 return await AdvanceSettlementToTowerStageAsync(_screen.Refresh(window), cancellationToken);
             }
 
-            TemplateProbeResult skip = await _screen.ProbeAsync(window, _skip,
-                _config.BattleSkipTopLeft, _config.BattleSkipSize, cancellationToken, 0.58);
-            if (!skip.IsMatch)
-                skip = await _screen.ProbeAsync(window, _skipAlt, _config.MainQuestSkipTopLeft,
-                    _config.MainQuestSkipSize, cancellationToken, 0.52);
-            if (skip.IsMatch)
+            TemplateProbeResult skip = await ProbeSkipAsync(window, cancellationToken);
+            if (skip.IsMatch && ReadyToClick(lastSkipClickAt, 600))
             {
+                lastSkipClickAt = DateTime.UtcNow;
                 await _screen.ClickProbeAsync(window, skip, "模拟战斗 SKIP", cancellationToken, 180);
+                continue;
             }
-            else
+
+            // 演习同款：弱命中也点写死 SKIP，避免加载/特效导致阈值抖动空等。
+            if (skip.Score >= SkipFallbackScore && ReadyToClick(lastSkipClickAt, 1500))
             {
-                if ((DateTime.UtcNow - lastProgressLog).TotalSeconds >= 10)
-                {
-                    lastProgressLog = DateTime.UtcNow;
-                    _log($"每日模拟战斗：战斗中未命中 SKIP/次へ/ホームへ（已 {timer.Elapsed.TotalSeconds:0}s / 180s）。");
-                }
-                await Task.Delay(250, cancellationToken);
+                lastSkipClickAt = DateTime.UtcNow;
+                usedSkipFallback = true;
+                _log($"每日模拟战斗：SKIP 分偏高（{skip.Score:F2}），写死点兜底。");
+                await _screen.ClickAsync(window, _config.BattleSkipClick, "模拟战斗 SKIP(坐标)", cancellationToken);
+                continue;
             }
+
+            // 出撃消失后常见加载页：数秒仍无 SKIP 时盲点一次右上角。
+            if (!usedSkipFallback &&
+                timer.ElapsedMilliseconds >= 5_000 &&
+                ReadyToClick(lastSkipClickAt, 4_000))
+            {
+                lastSkipClickAt = DateTime.UtcNow;
+                usedSkipFallback = true;
+                _log("每日模拟战斗：开战后未见 SKIP，盲点右上角坐标一次。");
+                await _screen.ClickAsync(window, _config.BattleSkipClick, "模拟战斗 SKIP(盲点)", cancellationToken);
+                continue;
+            }
+
+            if ((DateTime.UtcNow - lastProgressLog).TotalSeconds >= 10)
+            {
+                lastProgressLog = DateTime.UtcNow;
+                TemplateProbeResult home = await _resultHome.ProbeBestToHomeAsync(window, cancellationToken);
+                _log($"每日模拟战斗：战斗中未命中 SKIP/次へ/ホームへ（已 {timer.Elapsed.TotalSeconds:0}s / 180s）"
+                    + $" SKIP={skip.Score:F3} 次へ={next.Score:F3} ホームへ={home.Score:F3}。");
+            }
+
+            await Task.Delay(250, cancellationToken);
         }
 
         // 超时前再试一次ホームへ，避免卡在 DEFEAT。
@@ -523,6 +566,30 @@ public sealed class DailySimulationTowerAutomation
             _log("每日模拟战斗：战斗超时后已点ホームへ。");
         return false;
     }
+
+    /// <summary>迷宫同款加宽 ROI，再回退主线 SKIP 区。</summary>
+    private async Task<TemplateProbeResult> ProbeSkipAsync(
+        GameWindow window, CancellationToken cancellationToken)
+    {
+        var wideTl = new ConfigPoint(
+            Math.Max(0, _config.BattleSkipTopLeft.X - 40),
+            Math.Max(0, _config.BattleSkipTopLeft.Y - 40));
+        var wideSize = new ConfigSize(
+            Math.Max(_config.BattleSkipSize.Width + 80, 260),
+            Math.Max(_config.BattleSkipSize.Height + 80, 140));
+        TemplateProbeResult skip = await _screen.ProbeAsync(
+            window, _skip, wideTl, wideSize, cancellationToken, 0.58);
+        if (skip.IsMatch)
+            return skip;
+
+        TemplateProbeResult alt = await _screen.ProbeAsync(
+            window, _skipAlt, _config.MainQuestSkipTopLeft, _config.MainQuestSkipSize,
+            cancellationToken, 0.52);
+        return skip.Score >= alt.Score ? skip : alt;
+    }
+
+    private static bool ReadyToClick(DateTime lastAt, int cooldownMs) =>
+        (DateTime.UtcNow - lastAt).TotalMilliseconds >= cooldownMs;
 
     private async Task<bool> AdvanceSettlementToTowerStageAsync(
         GameWindow window, CancellationToken cancellationToken)

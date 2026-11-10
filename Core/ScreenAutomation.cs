@@ -416,6 +416,25 @@ public sealed class ScreenAutomation
         await _mouse.WheelAsync(window.Handle, point, wheelNotches, cancellationToken);
     }
 
+    /// <summary>1080p 两点之间拖动（迷宫模式卡左右滑等）。</summary>
+    public async Task DragAsync(
+        GameWindow window,
+        ConfigPoint fromRef,
+        ConfigPoint toRef,
+        string reason,
+        CancellationToken cancellationToken,
+        int steps = 12)
+    {
+        window = Refresh(window);
+        EnsureUsableViewport(window);
+        CaptureGeometry geometry = Geometry(window);
+        Point from = geometry.ToScreen(fromRef);
+        Point to = geometry.ToScreen(toRef);
+        _log($"{reason}：1080p({fromRef.X},{fromRef.Y})→({toRef.X},{toRef.Y}) ×({geometry.ScaleX:F3},{geometry.ScaleY:F3})"
+            + $" → screen({from.X:F0},{from.Y:F0})→({to.X:F0},{to.Y:F0})");
+        await _mouse.DragAsync(window.Handle, from, to, cancellationToken, steps);
+    }
+
     /// <summary>点击输入框后 Ctrl+V 粘贴剪贴板文本（调用方先 Clipboard.SetText）。</summary>
     public async Task PasteClipboardAsync(
         GameWindow window, string reason, CancellationToken cancellationToken)

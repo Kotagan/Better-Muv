@@ -37,16 +37,17 @@ public static class CircleShopCatalog
 {
     public const int SlotCount = 8;
 
+    /// <summary>交換所「サークル」页左上→右下 8 格显示名（与点击格对齐）。</summary>
     public static readonly string[] ItemNames =
     [
-        "ガチャチケット",
-        "素材1",
-        "素材2",
-        "素材3",
-        "素材4",
-        "素材5",
-        "素材6",
-        "素材7"
+        "社团抽奖券",
+        "资金（12小时）",
+        "橙卡",
+        "补给物资",
+        "技术报告",
+        "加速卡带",
+        "能量卡带",
+        "其他"
     ];
 
     public static string FormatPlan(IReadOnlyList<int> quantities)

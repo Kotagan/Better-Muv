@@ -72,29 +72,41 @@ public sealed class GameCaptureSession
     private async Task LaunchGameAndWaitAsync(
         AutomationConfig config, ScreenAutomation screen, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(config.GameExecutablePath) || !GamePathLocator.IsValid(config.GameExecutablePath))
+        if (string.IsNullOrWhiteSpace(config.GameExecutablePath) ||
+            !GamePathLocator.IsValid(config.GameExecutablePath, config.GameLaunchArguments))
         {
-            string? found = GamePathLocator.TryFind(config.GameExecutablePath);
+            string? found = GamePathLocator.TryRecoverLaunchPath(
+                config.GameExecutablePath, config.GameLaunchArguments);
             if (found is null)
-                throw new InvalidOperationException("已启用“同时启动游戏”，但尚未找到游戏 exe。请在设置中自动搜索或手动浏览。");
+                throw new InvalidOperationException(
+                    "已启用“同时启动游戏”，但路径无效。" +
+                    (GamePathLocator.IsSchtasksLauncher(config.GameExecutablePath)
+                        ? "DMM 快速启动请选择桌面 .lnk，或为 schtasks.exe 配置 /run /tn 参数。"
+                        : "请在设置中自动搜索或手动浏览 .exe / .lnk。"));
             config.GameExecutablePath = found;
+            if (GamePathLocator.IsShortcut(found))
+            {
+                string? lnkArgs = GamePathLocator.TryResolveShortcutArguments(found);
+                if (GamePathLocator.HasSchtasksRunArguments(lnkArgs))
+                    config.GameLaunchArguments = lnkArgs!;
+            }
             ConfigStore.Save(config);
-            _log("已自动找到并永久保存游戏：" + found);
+            _log("已自动恢复游戏启动路径：" + found);
         }
-        if (!GamePathLocator.IsValid(config.GameExecutablePath))
-            throw new FileNotFoundException("游戏 exe 无效（必须是 muv_luv_girlsgardenx_cl.exe）。", config.GameExecutablePath);
+        if (!GamePathLocator.IsValid(config.GameExecutablePath, config.GameLaunchArguments))
+            throw new FileNotFoundException("游戏路径无效（请选择存在的 .exe 或 .lnk）。", config.GameExecutablePath);
 
-        _log("正在启动游戏：" + Path.GetFileName(config.GameExecutablePath));
-        Process.Start(new ProcessStartInfo
-        {
-            FileName = config.GameExecutablePath,
-            Arguments = config.GameLaunchArguments,
-            WorkingDirectory = Path.GetDirectoryName(config.GameExecutablePath) ?? AppContext.BaseDirectory,
-            UseShellExecute = true
-        });
+        string launchPath = config.GameExecutablePath;
+        if (GamePathLocator.IsShortcut(launchPath))
+            _log($"正在按快捷方式启动（DMM/计划任务均可）：{Path.GetFileName(launchPath)}");
+        else if (GamePathLocator.IsSchtasksLauncher(launchPath))
+            _log($"正在通过计划任务启动：schtasks {config.GameLaunchArguments}");
+        else
+            _log($"正在启动游戏：{Path.GetFileName(launchPath)}");
+        Process.Start(GamePathLocator.CreateLaunchStartInfo(launchPath, config.GameLaunchArguments));
 
         // 拉起后立刻轮询找窗口；只有「还没找到窗口」时才继续等，不再写死空等几十秒。
-        _log($"游戏已拉起，等待出现窗口（最多 {config.GameLaunchTimeoutSeconds} 秒）…");
+        _log($"已请求启动，等待出现窗口（最多 {config.GameLaunchTimeoutSeconds} 秒）…");
         var timeout = Stopwatch.StartNew();
         while (timeout.Elapsed.TotalSeconds < config.GameLaunchTimeoutSeconds)
         {

@@ -103,8 +103,15 @@
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Width" Value="12"/>
             <Setter Property="MinWidth" Value="12"/>
+            <Setter Property="Opacity" Value="0"/>
+            <Setter Property="IsHitTestVisible" Value="False"/>
             <Setter Property="Template" Value="{StaticResource VerticalScrollBarTemplate}"/>
             <Style.Triggers>
+                <!-- 仅鼠标进入主窗体时显示滚动条；滚轮滚动不受影响。 -->
+                <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                    <Setter Property="Opacity" Value="1"/>
+                    <Setter Property="IsHitTestVisible" Value="True"/>
+                </DataTrigger>
                 <Trigger Property="Orientation" Value="Horizontal">
                     <Setter Property="Width" Value="Auto"/>
                     <Setter Property="Height" Value="12"/>
@@ -575,6 +582,52 @@
                                 <CheckBox x:Name="DailySimulationTowerPipelineToggle" Grid.Column="5" Style="{StaticResource ToggleSwitch}" Margin="10,0,0,0" ToolTip="纳入一条龙" Checked="PipelineTaskToggle_Changed" Unchecked="PipelineTaskToggle_Changed"/>
                             </Grid>
                         </Border>
+                        <Border x:Name="DailyActivityTaskCard" Style="{StaticResource Card}" Tag="dailyActivity" Cursor="SizeAll" ToolTip="拖动调整顺序"
+                                PreviewMouseLeftButtonDown="TaskCard_PreviewMouseLeftButtonDown" MouseMove="TaskCard_MouseMove" PreviewMouseLeftButtonUp="TaskCard_PreviewMouseLeftButtonUp">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="TaskRun"/>
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="TaskPause"/>
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="TaskStop"/>
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="TaskSettings"/>
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="TaskToggle"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Text="每日课外活动" FontSize="16"/>
+                                    <TextBlock x:Name="DailyActivityStatusText" Visibility="Collapsed"/>
+                                    <TextBlock x:Name="DailyActivityPipelineResultText" FontSize="13" FontWeight="SemiBold" Margin="0,3,0,0" Visibility="Collapsed"/>
+                                </StackPanel>
+                                <Button x:Name="RunDailyActivityButton" Grid.Column="1" Style="{StaticResource IconButton}" MinWidth="36" Content="&#xE768;" ToolTip="运行" Click="RunDailyActivityButton_Click"/>
+                                <Button x:Name="PauseDailyActivityButton" Grid.Column="2" Style="{StaticResource IconButton}" Content="&#xE769;" ToolTip="暂停" Visibility="Collapsed" Click="PauseResumeButton_Click"/>
+                                <Button x:Name="StopDailyActivityButton" Grid.Column="3" Style="{StaticResource IconButton}" Content="&#xE71A;" ToolTip="停止" Visibility="Collapsed" Click="StopButton_Click"/>
+                                <Button Grid.Column="4" Style="{StaticResource IconButton}" MinWidth="36" Visibility="Hidden" IsHitTestVisible="False" Focusable="False" Content="&#xE713;"/>
+                                <CheckBox x:Name="DailyActivityPipelineToggle" Grid.Column="5" Style="{StaticResource ToggleSwitch}" Margin="10,0,0,0" ToolTip="纳入一条龙" Checked="PipelineTaskToggle_Changed" Unchecked="PipelineTaskToggle_Changed"/>
+                            </Grid>
+                        </Border>
+                        <Border x:Name="DailyMgArenaTaskCard" Style="{StaticResource Card}" Tag="dailyMgArena" Cursor="SizeAll" ToolTip="拖动调整顺序"
+                                PreviewMouseLeftButtonDown="TaskCard_PreviewMouseLeftButtonDown" MouseMove="TaskCard_MouseMove" PreviewMouseLeftButtonUp="TaskCard_PreviewMouseLeftButtonUp">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="TaskRun"/>
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="TaskPause"/>
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="TaskStop"/>
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="TaskSettings"/>
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="TaskToggle"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Text="公式MG竞技" FontSize="16"/>
+                                    <TextBlock x:Name="DailyMgArenaStatusText" Visibility="Collapsed"/>
+                                    <TextBlock x:Name="DailyMgArenaPipelineResultText" FontSize="13" FontWeight="SemiBold" Margin="0,3,0,0" Visibility="Collapsed"/>
+                                </StackPanel>
+                                <Button x:Name="RunDailyMgArenaButton" Grid.Column="1" Style="{StaticResource IconButton}" MinWidth="36" Content="&#xE768;" ToolTip="运行" Click="RunDailyMgArenaButton_Click"/>
+                                <Button x:Name="PauseDailyMgArenaButton" Grid.Column="2" Style="{StaticResource IconButton}" Content="&#xE769;" ToolTip="暂停" Visibility="Collapsed" Click="PauseResumeButton_Click"/>
+                                <Button x:Name="StopDailyMgArenaButton" Grid.Column="3" Style="{StaticResource IconButton}" Content="&#xE71A;" ToolTip="停止" Visibility="Collapsed" Click="StopButton_Click"/>
+                                <Button Grid.Column="4" Style="{StaticResource IconButton}" MinWidth="36" Visibility="Hidden" IsHitTestVisible="False" Focusable="False" Content="&#xE713;"/>
+                                <CheckBox x:Name="DailyMgArenaPipelineToggle" Grid.Column="5" Style="{StaticResource ToggleSwitch}" Margin="10,0,0,0" ToolTip="纳入一条龙" Checked="PipelineTaskToggle_Changed" Unchecked="PipelineTaskToggle_Changed"/>
+                            </Grid>
+                        </Border>
                         <Border x:Name="DailyMissionsTaskCard" Style="{StaticResource Card}" Tag="dailyMissions" Cursor="SizeAll" ToolTip="拖动调整顺序"
                                 PreviewMouseLeftButtonDown="TaskCard_PreviewMouseLeftButtonDown" MouseMove="TaskCard_MouseMove" PreviewMouseLeftButtonUp="TaskCard_PreviewMouseLeftButtonUp">
                             <Grid>
@@ -690,9 +743,10 @@
                             <Border x:Name="GameSettingsCard" Style="{StaticResource Card}" Margin="0">
                                 <StackPanel>
                                     <TextBlock Text="选择游戏路径" FontSize="16"/>
+                                    <TextBlock Text="支持任意 .exe，也支持 DMM 快速启动快捷方式（.lnk，目标可为 schtasks）。选 .lnk 会按系统双击方式启动。也可粘贴路径后失焦保存。" Foreground="#AEB9C5" FontSize="12" Margin="0,4,0,0" TextWrapping="Wrap"/>
                                     <Grid Margin="0,10,0,0">
                                         <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                        <TextBox x:Name="GamePathBox" IsReadOnly="True"/>
+                                        <TextBox x:Name="GamePathBox" AcceptsReturn="False" LostKeyboardFocus="GamePathBox_LostKeyboardFocus"/>
                                         <Button Grid.Column="1" Style="{StaticResource PrimaryButton}" Margin="10,0,0,0" Content="自动搜索" Click="FindGameButton_Click"/>
                                         <Button Grid.Column="2" Style="{StaticResource PrimaryButton}" Margin="8,0,0,0" Content="浏览" Click="BrowseGameButton_Click"/>
                                     </Grid>
@@ -748,16 +802,16 @@
                     <Border x:Name="SettingsHotkeySection" Style="{StaticResource Card}" Margin="0" Visibility="Collapsed" VerticalAlignment="Top">
                         <StackPanel>
                             <TextBlock Text="快捷键" FontSize="16" FontWeight="SemiBold"/>
-                            <TextBlock Text="仅支持 F1–F12，且两项不能相同。启动键默认留空；停止键默认为 F10。" Foreground="#AEB9C5" Margin="0,4,0,12"/>
+                            <TextBlock Text="点击输入框后直接按 F1–F12 录入（不要手打）。两项不能相同；启动键可留空，停止键默认 F10。" Foreground="#AEB9C5" Margin="0,4,0,12" TextWrapping="Wrap"/>
                             <Grid Margin="0,0,0,10">
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="100"/></Grid.ColumnDefinitions>
                                 <TextBlock Text="启动（可留空）" VerticalAlignment="Center"/>
-                                <TextBox x:Name="PauseHotkeyBox" Grid.Column="1" LostKeyboardFocus="HotkeyBoxes_LostKeyboardFocus"/>
+                                <TextBox x:Name="PauseHotkeyBox" Grid.Column="1" IsReadOnly="True" IsReadOnlyCaretVisible="True" PreviewKeyDown="HotkeyBox_PreviewKeyDown" LostKeyboardFocus="HotkeyBoxes_LostKeyboardFocus"/>
                             </Grid>
                             <Grid>
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="100"/></Grid.ColumnDefinitions>
                                 <TextBlock Text="停止" VerticalAlignment="Center"/>
-                                <TextBox x:Name="StopHotkeyBox" Grid.Column="1" LostKeyboardFocus="HotkeyBoxes_LostKeyboardFocus"/>
+                                <TextBox x:Name="StopHotkeyBox" Grid.Column="1" IsReadOnly="True" IsReadOnlyCaretVisible="True" PreviewKeyDown="HotkeyBox_PreviewKeyDown" LostKeyboardFocus="HotkeyBoxes_LostKeyboardFocus"/>
                             </Grid>
                         </StackPanel>
                     </Border>
@@ -895,7 +949,7 @@
                             </Grid.RowDefinitions>
                             <TextBlock Text="社团商店购买" FontSize="16" FontWeight="SemiBold"/>
                             <Grid Grid.Row="1" Margin="0,10,0,8">
-                                <TextBlock Text="每日商店进入交換所后，切换左侧「サークル」按下列配置购买。格位对应当前页左上→右下。"
+                                <TextBlock Text="路径：商店 → 交換所 → 左侧「サークル」。格位左上→右下：社团抽奖券 / 资金（12小时） / 橙卡 / 补给物资 等，数量 0=不买、-1=全买。"
                                            Foreground="#BEC7D2" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,120,0"/>
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
                                     <TextBlock Text="启用" Foreground="#BEC7D2" VerticalAlignment="Center" Margin="0,0,8,0"/>
@@ -945,7 +999,7 @@
                             <ColumnDefinition Width="48"/>
                         </Grid.ColumnDefinitions>
                         <TextBlock Text="运行日志" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" Margin="16,0,0,0"/>
-                        <Button x:Name="ExportLogButton" Grid.Column="1" Style="{StaticResource PrimaryButton}" Padding="10,6" MinHeight="30" Margin="0,0,4,0" Content="导出" ToolTip="导出日志和截图到 Better-Muv 文件夹并打开位置" Click="ExportLogButton_Click"/>
+                        <Button x:Name="ExportLogButton" Grid.Column="1" Style="{StaticResource PrimaryButton}" Padding="10,6" MinHeight="30" Margin="0,0,4,0" Content="导出日志" ToolTip="导出日志和截图到 Better-Muv 文件夹并打开位置" Click="ExportLogButton_Click"/>
                         <Button Grid.Column="2" Content="×" Background="Transparent" Foreground="White" BorderThickness="0" FontSize="22" Click="CloseLogDrawerButton_Click"/>
                     </Grid>
                     <TextBox x:Name="LogBox" Grid.Row="1" Margin="12,8,12,12" Style="{StaticResource LogTextBox}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" Background="#171C23" BorderThickness="0" Padding="10" FontFamily="Consolas" FontSize="12" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"/>

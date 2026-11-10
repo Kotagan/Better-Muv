@@ -46,8 +46,20 @@ internal static class FlowCatalog
             ]),
             Flow("pipeline", "一条龙", "MainWindow.xaml.cs", null,
             [
-                "按 PipelineTaskOrder 串行 maze / mainQuest / hardMainQuest / dailyShop / dailyFreeGift / dailyExercises / dailyMissions / dailyCircle / dailyHarvest / dailyFreeBoost",
+                "按 PipelineTaskOrder 串行 dailyHarvest / dailyExercises / dailySimulationTower / dailyShop / dailyFreeGift / dailyCircle / dailyFreeBoost / dailyActivity / dailyMgArena / dailyMissions / maze / mainQuest / hardMainQuest",
                 "共享 DiagnosticTaskSession 诊断目录"
+            ]),
+            Flow("dailyActivity", "每日课外活动", "Core/DailyActivityAutomation.cs", null,
+            [
+                "QuestFromHomeEntry → 課外活動",
+                "一括受取 → 奖励 OK；一括活動 → 确认 OK；閉じる → 回主页",
+                "每天 5:00 刷新；无可操作也记日"
+            ]),
+            Flow("dailyMgArena", "公式MG竞技", "Core/DailyMgArenaAutomation.cs", null,
+            [
+                "QuestFromHomeEntry → 公式MG競技",
+                "対戦相手選択 → 変更/抽選换人 → 选对手 → 対戦準備 → 出撃 → 次へ",
+                "同对手不计进度故每场先変更；战后停在对手选择；每天最多 5 次"
             ]),
             Flow("dailyShop", "每日商店", "Core/DailyShopAutomation.cs", null,
             [

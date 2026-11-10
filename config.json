@@ -1,9 +1,24 @@
-{
-  "windowTitleKeyword": "マブラヴ",
+﻿{
+  "windowTitleKeyword": "銉炪儢銉┿兇",
   "launchGameWithCapture": false,
   "gameExecutablePath": "",
   "gameLaunchArguments": "",
   "gameLaunchTimeoutSeconds": 90,
+  "pipelineTaskOrder": [
+    "dailyHarvest",
+    "dailyExercises",
+    "dailySimulationTower",
+    "dailyShop",
+    "dailyFreeGift",
+    "dailyCircle",
+    "dailyFreeBoost",
+    "dailyActivity",
+    "dailyMgArena",
+    "dailyMissions",
+    "maze",
+    "mainQuest",
+    "hardMainQuest"
+  ],
   "matchThreshold": 0.78,
   "saveDiagnostics": false,
   "diagnosticDirectory": "diagnostics",

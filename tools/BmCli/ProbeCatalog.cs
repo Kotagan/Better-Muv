@@ -7,7 +7,7 @@ internal static class ProbeCatalog
 {
     public static IReadOnlyList<string> PresetNames { get; } =
     [
-        "entry", "mainquest", "maze", "hard", "promo", "hud"
+        "entry", "mainquest", "maze", "hard", "promo", "hud", "activity"
     ];
 
     public static IReadOnlyList<TemplateProbe> Build(string preset, CliContext ctx)
@@ -114,6 +114,25 @@ internal static class ProbeCatalog
             "hud" =>
             [
                 P(ctx, "hudHome", "hud-home.png", c.HudHomeTopLeft, c.HudHomeSize, 0.70),
+            ],
+            "activity" or "dailyActivity" =>
+            [
+                P(ctx, "entry", "quest-activity.png",
+                    c.QuestActivityTopLeft, c.QuestActivitySize, 0.78),
+                P(ctx, "title", "activity-title.png",
+                    c.DailyActivityTitleTopLeft, c.DailyActivityTitleSize, 0.72),
+                P(ctx, "claim", "activity-claim-all.png",
+                    c.DailyActivityClaimTopLeft, c.DailyActivityClaimSize, 0.70),
+                P(ctx, "start", "activity-start-all.png",
+                    c.DailyActivityStartTopLeft, c.DailyActivityStartSize, 0.70),
+                P(ctx, "close", "activity-close.png",
+                    c.DailyActivityCloseTopLeft, c.DailyActivityCloseSize, 0.70),
+                P(ctx, "batchOk", "activity-batch-ok.png",
+                    c.DailyActivityBatchOkTopLeft, c.DailyActivityBatchOkSize, 0.70),
+                P(ctx, "rewardOk", "settlement-confirm.png",
+                    c.DailyActivityRewardOkTopLeft, c.DailyActivityRewardOkSize, 0.70),
+                P(ctx, "rewardOkAlt", "daily-shop-ok.png",
+                    c.DailyActivityRewardOkTopLeft, c.DailyActivityRewardOkSize, 0.70),
             ],
             _ => throw new ArgumentException(
                 $"未知 preset「{preset}」。可用: {string.Join(", ", PresetNames)}")

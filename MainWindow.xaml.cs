@@ -1,4 +1,4 @@
-using System.ComponentModel;
+﻿using System.ComponentModel;
 using System.Diagnostics;
 using System.Reflection;
 using System.Windows;
@@ -32,13 +32,15 @@ public partial class MainWindow : Window
     private CancellationTokenSource? _runCancellation;
     private bool _pauseRequested;
     private bool _isPaused;
+    /// <summary>用户点停止/热键停止：打断整条一条龙，跳过冗长恢复。</summary>
+    private bool _userStopRequested;
     private bool _isLogDrawerOpen;
     private double? _widthBeforeLogDrawer;
     private const double LogDrawerWidth = 360;
     private const string FluentPlay = "\uE768";
     private const string FluentPause = "\uE769";
     private const string FluentStop = "\uE71A";
-    private enum ActiveTask { None, Maze, MainQuest, HardMainQuest, DailyShop, DailyFreeGift, DailyExercises, DailySimulationTower, DailyMissions, DailyCircle, DailyHarvest, DailyFreeBoost, Redeem, Pipeline }
+    private enum ActiveTask { None, Maze, MainQuest, HardMainQuest, DailyShop, DailyFreeGift, DailyExercises, DailySimulationTower, DailyActivity, DailyMgArena, DailyMissions, DailyCircle, DailyHarvest, DailyFreeBoost, Redeem, Pipeline }
     private ActiveTask _activeTask = ActiveTask.None;
     private readonly List<string> _pipelineQueue = [];
     private int _pipelineIndex;
@@ -205,7 +207,7 @@ public partial class MainWindow : Window
     }
 
     private bool IsAnyTaskBusy() =>
-        _activeTask != ActiveTask.None && (_runCancellation is not null || _isPaused);
+        _runCancellation is not null || _isPaused;
 
     /// <summary>分身观看窗经 Named Pipe 遥控本实例启动/停止任务。</summary>
     internal string HandleChildSessionTaskCommand(string command)
@@ -392,7 +394,7 @@ public partial class MainWindow : Window
             return;
 
         ExportLogButton.IsEnabled = false;
-        string previousContent = ExportLogButton.Content as string ?? "导出";
+        string previousContent = ExportLogButton.Content as string ?? "导出日志";
         ExportLogButton.Content = "导出中…";
         try
         {
@@ -478,24 +480,43 @@ public partial class MainWindow : Window
     {
         var dialog = new OpenFileDialog
         {
-            Title = "选择游戏程序或快捷方式",
-            Filter = "游戏程序|muv_luv_girlsgardenx_cl.exe|快捷方式 (*.lnk)|*.lnk|程序 (*.exe)|*.exe",
+            Title = "选择游戏 exe 或快捷方式（.lnk）",
+            Filter =
+                "可执行文件或快捷方式|*.exe;*.lnk|" +
+                "可执行文件 (*.exe)|*.exe|" +
+                "快捷方式 (*.lnk)|*.lnk|" +
+                "所有文件|*.*",
+            FilterIndex = 1,
+            CheckFileExists = true,
             // 不自动解引用，避免快捷方式目标被静默换成 schtasks 等非游戏路径。
             DereferenceLinks = false
         };
+        if (!string.IsNullOrWhiteSpace(GamePathBox.Text))
+        {
+            try
+            {
+                string? dir = Path.GetDirectoryName(GamePathBox.Text.Trim().Trim('"'));
+                if (!string.IsNullOrWhiteSpace(dir) && Directory.Exists(dir))
+                    dialog.InitialDirectory = dir;
+            }
+            catch
+            {
+                // 忽略非法路径
+            }
+        }
+
         if (dialog.ShowDialog(this) != true) return;
         string selected = dialog.FileName;
         string? normalized = GamePathLocator.TryNormalize(selected, out string reason);
         if (normalized is null)
         {
             AppendLog("未保存游戏路径：" + reason);
-            if (!string.Equals(selected, reason, StringComparison.Ordinal))
-                AppendLog("你选择的是：" + selected);
+            AppendLog("你选择的是：" + selected);
+            MessageBox.Show(this, reason + "\n\n已选：" + selected, "游戏路径无效",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
-        if (!string.Equals(selected, normalized, StringComparison.OrdinalIgnoreCase))
-            AppendLog($"快捷方式已解析：{selected} → {normalized}");
         ApplyGamePath(normalized, quiet: false);
     }
 
@@ -504,11 +525,35 @@ public partial class MainWindow : Window
         string? found = GamePathLocator.TryFind(GamePathBox.Text);
         if (found is null)
         {
-            AppendLog("未找到游戏：请确认已安装，或手动浏览选择 muv_luv_girlsgardenx_cl.exe。");
+            const string msg = "未找到游戏：请确认已安装，或手动浏览选择要启动的 .exe / 指向它的快捷方式。";
+            AppendLog(msg);
+            MessageBox.Show(this, msg, "未找到游戏", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
         ApplyGamePath(found, quiet: false);
+    }
+
+    private void GamePathBox_LostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        if (!IsLoaded) return;
+        string path = GamePathBox.Text.Trim().Trim('"');
+        if (string.IsNullOrWhiteSpace(path))
+            return;
+        if (GamePathLocator.IsValid(path))
+        {
+            ApplyGamePath(path, quiet: true);
+            return;
+        }
+
+        string? normalized = GamePathLocator.TryNormalize(path, out string reason);
+        if (normalized is null)
+        {
+            AppendLog("未保存游戏路径：" + reason);
+            return;
+        }
+
+        ApplyGamePath(normalized, quiet: false);
     }
 
     private void ApplyGamePath(string path, bool quiet)
@@ -517,13 +562,38 @@ public partial class MainWindow : Window
         if (normalized is null)
         {
             if (!quiet)
+            {
                 AppendLog("未保存游戏路径：" + reason);
+                MessageBox.Show(this, reason, "游戏路径", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
             return;
         }
 
         GamePathBox.Text = normalized;
         AutomationConfig config = ConfigStore.Load();
         config.GameExecutablePath = normalized;
+
+        // DMM FastLauncher 快捷方式：保留 .lnk，并把计划任务参数记下来备查。
+        if (GamePathLocator.IsShortcut(normalized))
+        {
+            (string? target, string? workDir) = GamePathLocator.TryResolveShortcutDetails(normalized);
+            string? lnkArgs = GamePathLocator.TryResolveShortcutArguments(normalized);
+            if (GamePathLocator.IsSchtasksLauncher(target) &&
+                GamePathLocator.HasSchtasksRunArguments(lnkArgs))
+            {
+                config.GameLaunchArguments = lnkArgs!;
+                if (!quiet)
+                    AppendLog(
+                        $"已保存 DMM 快速启动快捷方式：{normalized}\n" +
+                        $"启动方式：schtasks {lnkArgs}" +
+                        (string.IsNullOrWhiteSpace(workDir) ? "" : $"\n工作目录：{workDir}"));
+            }
+            else if (!quiet)
+            {
+                AppendLog($"已保存快捷方式（启动时按系统双击方式打开）：{normalized}");
+            }
+        }
+
         ConfigStore.Save(config);
         if (!quiet)
             AppendLog($"已永久保存游戏路径：{normalized}\n配置文件：{ConfigStore.UserConfigPath}");
@@ -532,22 +602,30 @@ public partial class MainWindow : Window
     private void EnsureGamePathResolved()
     {
         AutomationConfig config = ConfigStore.Load();
-        if (GamePathLocator.IsValid(config.GameExecutablePath))
+        if (GamePathLocator.IsValid(config.GameExecutablePath, config.GameLaunchArguments))
         {
             GamePathBox.Text = config.GameExecutablePath;
             return;
         }
 
-        // 配置里是无效路径（如误选的 schtasks.exe）时尝试自动找回并写回。
-        string? found = GamePathLocator.TryFind(null);
+        // 裸 schtasks 或缺文件时：优先找回桌面 DMM 快捷方式（支持这种启动方式）。
+        string? found = GamePathLocator.TryRecoverLaunchPath(
+            config.GameExecutablePath, config.GameLaunchArguments);
         if (found is null)
         {
             GamePathBox.Text = config.GameExecutablePath;
+            if (GamePathLocator.IsSchtasksLauncher(config.GameExecutablePath) &&
+                !GamePathLocator.HasSchtasksRunArguments(config.GameLaunchArguments))
+            {
+                AppendLog(
+                    "当前是 schtasks.exe 但缺少 /run /tn 参数。" +
+                    "DMM 快速启动请浏览选择桌面上的 .lnk（会按快捷方式原样启动）。");
+            }
             return;
         }
 
         ApplyGamePath(found, quiet: true);
-        AppendLog("已自动纠正并永久保存游戏路径：" + found);
+        AppendLog("已自动恢复游戏启动路径：" + found);
     }
 
     private void SaveGameLaunchSettings()
@@ -585,6 +663,10 @@ public partial class MainWindow : Window
             DailyExercisesStatusText.Text = "正在启动截图器…";
         else if (statusTarget == "dailySimulationTower")
             DailySimulationTowerStatusText.Text = "正在启动截图器…";
+        else if (statusTarget == "dailyActivity")
+            DailyActivityStatusText.Text = "正在启动截图器…";
+        else if (statusTarget == "dailyMgArena")
+            DailyMgArenaStatusText.Text = "正在启动截图器…";
         else if (statusTarget == "dailyMissions")
             DailyMissionsStatusText.Text = "正在启动截图器…";
         else if (statusTarget == "dailyCircle")
@@ -617,6 +699,10 @@ public partial class MainWindow : Window
                 DailyExercisesStatusText.Text = message;
             else if (statusTarget == "dailySimulationTower")
                 DailySimulationTowerStatusText.Text = message;
+            else if (statusTarget == "dailyActivity")
+                DailyActivityStatusText.Text = message;
+            else if (statusTarget == "dailyMgArena")
+                DailyMgArenaStatusText.Text = message;
             else if (statusTarget == "dailyMissions")
                 DailyMissionsStatusText.Text = message;
             else if (statusTarget == "dailyCircle")
@@ -736,6 +822,36 @@ public partial class MainWindow : Window
         if (!await EnsureCaptureForRunAsync("dailySimulationTower"))
             return;
         await StartDailySimulationTowerAsync();
+    }
+
+    private async void RunDailyActivityButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_activeTask == ActiveTask.DailyActivity && (_runCancellation is not null || _isPaused))
+        {
+            PauseResumeButton_Click(sender, e);
+            return;
+        }
+        if (_runCancellation is not null || _isPaused)
+            return;
+        OpenLogDrawer();
+        if (!await EnsureCaptureForRunAsync("dailyActivity"))
+            return;
+        await StartDailyActivityAsync();
+    }
+
+    private async void RunDailyMgArenaButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_activeTask == ActiveTask.DailyMgArena && (_runCancellation is not null || _isPaused))
+        {
+            PauseResumeButton_Click(sender, e);
+            return;
+        }
+
+        if (_runCancellation is not null || _isPaused)
+            return;
+        if (!await EnsureCaptureForRunAsync("dailyMgArena"))
+            return;
+        await StartDailyMgArenaAsync();
     }
 
     private async void RunDailyMissionsButton_Click(object sender, RoutedEventArgs e)
@@ -866,6 +982,7 @@ public partial class MainWindow : Window
         BeginDiagnosticRun(resume);
         _isPaused = false;
         _pauseRequested = false;
+        _userStopRequested = false;
         _activeTask = ActiveTask.Maze;
         _runCancellation = new CancellationTokenSource();
         UpdateRunUi();
@@ -899,6 +1016,7 @@ public partial class MainWindow : Window
         BeginDiagnosticRun(resume);
         _isPaused = false;
         _pauseRequested = false;
+        _userStopRequested = false;
         _activeTask = ActiveTask.MainQuest;
         _runCancellation = new CancellationTokenSource();
         UpdateRunUi();
@@ -932,6 +1050,7 @@ public partial class MainWindow : Window
         BeginDiagnosticRun(resume);
         _isPaused = false;
         _pauseRequested = false;
+        _userStopRequested = false;
         _activeTask = ActiveTask.HardMainQuest;
         _runCancellation = new CancellationTokenSource();
         UpdateRunUi();
@@ -965,6 +1084,7 @@ public partial class MainWindow : Window
         BeginDiagnosticRun(resume);
         _isPaused = false;
         _pauseRequested = false;
+        _userStopRequested = false;
         _activeTask = ActiveTask.DailyShop;
         _runCancellation = new CancellationTokenSource();
         UpdateRunUi();
@@ -998,6 +1118,7 @@ public partial class MainWindow : Window
         BeginDiagnosticRun(resume);
         _isPaused = false;
         _pauseRequested = false;
+        _userStopRequested = false;
         _activeTask = ActiveTask.DailyFreeGift;
         _runCancellation = new CancellationTokenSource();
         UpdateRunUi();
@@ -1031,6 +1152,7 @@ public partial class MainWindow : Window
         BeginDiagnosticRun(resume);
         _isPaused = false;
         _pauseRequested = false;
+        _userStopRequested = false;
         _activeTask = ActiveTask.DailyExercises;
         _runCancellation = new CancellationTokenSource();
         UpdateRunUi();
@@ -1064,6 +1186,7 @@ public partial class MainWindow : Window
         BeginDiagnosticRun(resume);
         _isPaused = false;
         _pauseRequested = false;
+        _userStopRequested = false;
         _activeTask = ActiveTask.DailySimulationTower;
         _runCancellation = new CancellationTokenSource();
         UpdateRunUi();
@@ -1078,6 +1201,11 @@ public partial class MainWindow : Window
             if (_pauseRequested)
             {
                 AppendLog("每日模拟战斗爬塔已暂停。");
+            }
+            else if (_userStopRequested)
+            {
+                AppendLog("每日模拟战斗爬塔已停止。");
+                CaptureOnAutoStop("dailySimulationTower-stop");
             }
             else
             {
@@ -1114,6 +1242,74 @@ public partial class MainWindow : Window
         }
     }
 
+    private async Task StartDailyActivityAsync()
+    {
+        if (_runCancellation is not null) return;
+        bool resume = _isPaused;
+        BeginRunLogSession(resume);
+        _resumeDiagnosticTask = resume;
+        BeginDiagnosticRun(resume);
+        _isPaused = false;
+        _pauseRequested = false;
+        _userStopRequested = false;
+        _activeTask = ActiveTask.DailyActivity;
+        _runCancellation = new CancellationTokenSource();
+        UpdateRunUi();
+        try
+        {
+            WindowState = WindowState.Minimized;
+            await Task.Delay(250, _runCancellation.Token);
+            await RunDailyActivityCoreAsync(_runCancellation.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            AppendLog(_pauseRequested ? "每日课外活动已暂停。" : "每日课外活动已停止。");
+        }
+        catch (Exception exception)
+        {
+            AppendLog("每日课外活动错误：" + exception.Message);
+            CaptureOnAutoStop("dailyActivity");
+        }
+        finally
+        {
+            FinishRunSession();
+        }
+    }
+
+    private async Task StartDailyMgArenaAsync()
+    {
+        if (_runCancellation is not null) return;
+        bool resume = _isPaused;
+        BeginRunLogSession(resume);
+        _resumeDiagnosticTask = resume;
+        BeginDiagnosticRun(resume);
+        _isPaused = false;
+        _pauseRequested = false;
+        _userStopRequested = false;
+        _activeTask = ActiveTask.DailyMgArena;
+        _runCancellation = new CancellationTokenSource();
+        UpdateRunUi();
+        try
+        {
+            WindowState = WindowState.Minimized;
+            await Task.Delay(250, _runCancellation.Token);
+            await RunDailyMgArenaCoreAsync(_runCancellation.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            AppendLog(_pauseRequested ? "公式MG竞技已暂停。" : "公式MG竞技已停止。");
+        }
+        catch (Exception exception)
+        {
+            AppendLog("公式MG竞技错误：" + exception.Message);
+            CaptureOnAutoStop("dailyMgArena");
+        }
+        finally
+        {
+            FinishRunSession();
+        }
+    }
+
     private async Task StartDailyMissionsAsync()
     {
         if (_runCancellation is not null) return;
@@ -1123,6 +1319,7 @@ public partial class MainWindow : Window
         BeginDiagnosticRun(resume);
         _isPaused = false;
         _pauseRequested = false;
+        _userStopRequested = false;
         _activeTask = ActiveTask.DailyMissions;
         _runCancellation = new CancellationTokenSource();
         UpdateRunUi();
@@ -1156,6 +1353,7 @@ public partial class MainWindow : Window
         BeginDiagnosticRun(resume);
         _isPaused = false;
         _pauseRequested = false;
+        _userStopRequested = false;
         _activeTask = ActiveTask.DailyCircle;
         _runCancellation = new CancellationTokenSource();
         UpdateRunUi();
@@ -1190,6 +1388,7 @@ public partial class MainWindow : Window
         BeginDiagnosticRun(resume);
         _isPaused = false;
         _pauseRequested = false;
+        _userStopRequested = false;
         _activeTask = ActiveTask.DailyHarvest;
         _runCancellation = new CancellationTokenSource();
         UpdateRunUi();
@@ -1223,6 +1422,7 @@ public partial class MainWindow : Window
         BeginDiagnosticRun(resume);
         _isPaused = false;
         _pauseRequested = false;
+        _userStopRequested = false;
         _activeTask = ActiveTask.DailyFreeBoost;
         _runCancellation = new CancellationTokenSource();
         UpdateRunUi();
@@ -1257,6 +1457,7 @@ public partial class MainWindow : Window
         BeginDiagnosticRun(resume);
         _isPaused = false;
         _pauseRequested = false;
+        _userStopRequested = false;
         if (!resume)
         {
             // 以当前任务列表 UI（顺序 + 开关）为准并写回配置，避免“看起来开了但没跑”。
@@ -1278,6 +1479,10 @@ public partial class MainWindow : Window
                 else if (id == "dailyExercises" && config.DailyExercisesTaskEnabled)
                     _pipelineQueue.Add(id);
                 else if (id == "dailySimulationTower" && config.DailySimulationTowerTaskEnabled)
+                    _pipelineQueue.Add(id);
+                else if (id == "dailyActivity" && config.DailyActivityTaskEnabled)
+                    _pipelineQueue.Add(id);
+                else if (id == "dailyMgArena" && config.DailyMgArenaTaskEnabled)
                     _pipelineQueue.Add(id);
                 else if (id == "dailyMissions" && config.DailyMissionsTaskEnabled)
                     _pipelineQueue.Add(id);
@@ -1371,18 +1576,27 @@ public partial class MainWindow : Window
                         throw;
                     }
 
-                    // 停止（非暂停）：当前任务记失败，并走退出回主页，避免卡在战斗/结算页。
-                    SetPipelineResultHint(id, PipelineHintState.Failure, "运行中停止");
-                    AppendLog($"一条龙：{PipelineTaskDisplayName(id)} 已停止，标记失败并执行退出回主页。");
+                    // 用户停止：立刻结束整条队列，不再逐项恢复/继续。
+                    SetPipelineResultHint(id, PipelineHintState.Failure, "用户停止");
+                    int remaining = Math.Max(0, _pipelineQueue.Count - _pipelineIndex - 1);
+                    for (int i = _pipelineIndex + 1; i < _pipelineQueue.Count; i++)
+                        SetPipelineResultHint(_pipelineQueue[i], PipelineHintState.Cancelled, "未执行");
+                    AppendLog(remaining > 0
+                        ? $"一条龙：已停止「{PipelineTaskDisplayName(id)}」，跳过后续 {remaining} 项。"
+                        : $"一条龙：已停止「{PipelineTaskDisplayName(id)}」。");
                     CaptureOnAutoStop(id + "-stop");
-                    try
+                    if (!_userStopRequested)
                     {
-                        await new TaskFailureHandler(ConfigStore.Load(), AppendLog)
-                            .RecoverToHomeAsync(PipelineTaskDisplayName(id), CancellationToken.None);
-                    }
-                    catch
-                    {
-                        // 退出恢复失败不掩盖停止本身。
+                        // 非用户停止的取消（极少）：仍尝试退回主页。
+                        try
+                        {
+                            await new TaskFailureHandler(ConfigStore.Load(), AppendLog)
+                                .RecoverToHomeAsync(PipelineTaskDisplayName(id), CancellationToken.None);
+                        }
+                        catch
+                        {
+                            // 退出恢复失败不掩盖停止本身。
+                        }
                     }
 
                     throw;
@@ -1493,6 +1707,8 @@ public partial class MainWindow : Window
         yield return DailyFreeGiftPipelineResultText;
         yield return DailyExercisesPipelineResultText;
         yield return DailySimulationTowerPipelineResultText;
+        yield return DailyActivityPipelineResultText;
+        yield return DailyMgArenaPipelineResultText;
         yield return DailyMissionsPipelineResultText;
         yield return DailyCirclePipelineResultText;
         yield return DailyHarvestPipelineResultText;
@@ -1508,6 +1724,8 @@ public partial class MainWindow : Window
         "dailyFreeGift" => DailyFreeGiftPipelineResultText,
         "dailyExercises" => DailyExercisesPipelineResultText,
         "dailySimulationTower" => DailySimulationTowerPipelineResultText,
+        "dailyActivity" => DailyActivityPipelineResultText,
+        "dailyMgArena" => DailyMgArenaPipelineResultText,
         "dailyMissions" => DailyMissionsPipelineResultText,
         "dailyCircle" => DailyCirclePipelineResultText,
         "dailyHarvest" => DailyHarvestPipelineResultText,
@@ -1554,6 +1772,8 @@ public partial class MainWindow : Window
         config.DailyFreeGiftTaskEnabled = DailyFreeGiftPipelineToggle.IsChecked == true;
         config.DailyExercisesTaskEnabled = DailyExercisesPipelineToggle.IsChecked == true;
         config.DailySimulationTowerTaskEnabled = DailySimulationTowerPipelineToggle.IsChecked == true;
+        config.DailyActivityTaskEnabled = DailyActivityPipelineToggle.IsChecked == true;
+        config.DailyMgArenaTaskEnabled = DailyMgArenaPipelineToggle.IsChecked == true;
         config.DailyMissionsTaskEnabled = DailyMissionsPipelineToggle.IsChecked == true;
         config.DailyCircleTaskEnabled = DailyCirclePipelineToggle.IsChecked == true;
         config.DailyHarvestTaskEnabled = DailyHarvestPipelineToggle.IsChecked == true;
@@ -1575,6 +1795,8 @@ public partial class MainWindow : Window
         "dailyFreeGift" => RunDailyFreeGiftCoreAsync(cancellationToken),
         "dailyExercises" => RunDailyExercisesCoreAsync(cancellationToken),
         "dailySimulationTower" => RunDailySimulationTowerCoreAsync(cancellationToken),
+        "dailyActivity" => RunDailyActivityCoreAsync(cancellationToken),
+        "dailyMgArena" => RunDailyMgArenaCoreAsync(cancellationToken),
         "dailyMissions" => RunDailyMissionsCoreAsync(cancellationToken),
         "dailyCircle" => RunDailyCircleCoreAsync(cancellationToken),
         "dailyHarvest" => RunDailyHarvestCoreAsync(cancellationToken),
@@ -1624,6 +1846,18 @@ public partial class MainWindow : Window
     private Task<TaskRunResult> RunDailySimulationTowerCoreAsync(CancellationToken cancellationToken)
     {
         var automation = new DailySimulationTowerAutomation(PrepareDiagnosticTask("dailySimulationTower"), AppendLog);
+        return automation.RunOnceAsync(cancellationToken);
+    }
+
+    private Task<TaskRunResult> RunDailyActivityCoreAsync(CancellationToken cancellationToken)
+    {
+        var automation = new DailyActivityAutomation(PrepareDiagnosticTask("dailyActivity"), AppendLog);
+        return automation.RunOnceAsync(cancellationToken);
+    }
+
+    private Task<TaskRunResult> RunDailyMgArenaCoreAsync(CancellationToken cancellationToken)
+    {
+        var automation = new DailyMgArenaAutomation(PrepareDiagnosticTask("dailyMgArena"), AppendLog);
         return automation.RunOnceAsync(cancellationToken);
     }
 
@@ -1687,9 +1921,10 @@ public partial class MainWindow : Window
         _runCancellation?.Dispose();
         _runCancellation = null;
         // 仅用户点「暂停」时保留可继续；停止键 / 任务自行结束一律清空。
-        bool keepPaused = _pauseRequested;
+        bool keepPaused = _pauseRequested && !_userStopRequested;
         _isPaused = keepPaused;
         _pauseRequested = false;
+        _userStopRequested = false;
         if (!_isPaused)
         {
             _activeTask = ActiveTask.None;
@@ -1703,7 +1938,7 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// 错误自动停止：只截游戏界面到诊断目录，不打包；手动「导出」时一并打进 ZIP。
+    /// 错误自动停止：只截游戏界面到诊断目录，不打包；手动「导出日志」时一并打进 ZIP。
     /// 须在恢复本窗口之前调用（此时游戏仍在前台）。
     /// </summary>
     private void CaptureOnAutoStop(string reason)
@@ -1736,6 +1971,8 @@ public partial class MainWindow : Window
         "dailyFreeGift" => "每日免费礼包",
         "dailyExercises" => "每日演习",
         "dailySimulationTower" => "每日模拟战斗爬塔",
+        "dailyActivity" => "每日课外活动",
+        "dailyMgArena" => "公式MG竞技",
         "dailyMissions" => "每日任务",
         "dailyCircle" => "每日社团",
         "dailyHarvest" => "每日收菜",
@@ -1762,6 +1999,10 @@ public partial class MainWindow : Window
                 _ = StartDailyExercisesAsync();
             else if (_activeTask == ActiveTask.DailySimulationTower)
                 _ = StartDailySimulationTowerAsync();
+            else if (_activeTask == ActiveTask.DailyActivity)
+                _ = StartDailyActivityAsync();
+            else if (_activeTask == ActiveTask.DailyMgArena)
+                _ = StartDailyMgArenaAsync();
             else if (_activeTask == ActiveTask.DailyMissions)
                 _ = StartDailyMissionsAsync();
             else if (_activeTask == ActiveTask.DailyCircle)
@@ -1785,6 +2026,8 @@ public partial class MainWindow : Window
             RunDailyFreeGiftButton.IsEnabled = false;
             RunDailyExercisesButton.IsEnabled = false;
             RunDailySimulationTowerButton.IsEnabled = false;
+            RunDailyActivityButton.IsEnabled = false;
+            RunDailyMgArenaButton.IsEnabled = false;
             RunDailyMissionsButton.IsEnabled = false;
             RunDailyCircleButton.IsEnabled = false;
             RunDailyHarvestButton.IsEnabled = false;
@@ -1796,11 +2039,11 @@ public partial class MainWindow : Window
 
     private void StopButton_Click(object sender, RoutedEventArgs e)
     {
+        bool wasRunning = _runCancellation is not null || _isPaused;
+        _userStopRequested = true;
         _pauseRequested = false;
         _isPaused = false;
-        _activeTask = ActiveTask.None;
-        _pipelineQueue.Clear();
-        _pipelineIndex = 0;
+        // 不在这里清空 _activeTask / 队列：等 FinishRunSession，避免停止中被当成空闲再次启动。
         StopButton.IsEnabled = false;
         StopMainQuestButton.IsEnabled = false;
         StopHardMainQuestButton.IsEnabled = false;
@@ -1808,13 +2051,25 @@ public partial class MainWindow : Window
         StopDailyFreeGiftButton.IsEnabled = false;
         StopDailyExercisesButton.IsEnabled = false;
         StopDailySimulationTowerButton.IsEnabled = false;
+        StopDailyActivityButton.IsEnabled = false;
+        StopDailyMgArenaButton.IsEnabled = false;
         StopDailyMissionsButton.IsEnabled = false;
         StopDailyCircleButton.IsEnabled = false;
         StopDailyHarvestButton.IsEnabled = false;
         StopDailyFreeBoostButton.IsEnabled = false;
         StopPipelineButton.IsEnabled = false;
+        if (wasRunning && _runCancellation is not null && !_runCancellation.IsCancellationRequested)
+        {
+            int remaining = _activeTask == ActiveTask.Pipeline
+                ? Math.Max(0, _pipelineQueue.Count - _pipelineIndex)
+                : 1;
+            AppendLog(remaining > 1
+                ? $"正在停止全部任务（含当前共 {remaining} 项）…"
+                : "正在停止当前任务…");
+        }
+
         _runCancellation?.Cancel();
-        if (_runCancellation is null) UpdateRunUi();
+        UpdateRunUi();
     }
 
     private void UpdateRunUi()
@@ -1828,6 +2083,8 @@ public partial class MainWindow : Window
         bool dailyFreeGiftUi = _activeTask == ActiveTask.DailyFreeGift;
         bool dailyExercisesUi = _activeTask == ActiveTask.DailyExercises;
         bool dailySimulationTowerUi = _activeTask == ActiveTask.DailySimulationTower;
+        bool dailyActivityUi = _activeTask == ActiveTask.DailyActivity;
+        bool dailyMgArenaUi = _activeTask == ActiveTask.DailyMgArena;
         bool dailyMissionsUi = _activeTask == ActiveTask.DailyMissions;
         bool dailyCircleUi = _activeTask == ActiveTask.DailyCircle;
         bool dailyHarvestUi = _activeTask == ActiveTask.DailyHarvest;
@@ -1843,6 +2100,8 @@ public partial class MainWindow : Window
         RunDailyFreeGiftButton.IsEnabled = idle || dailyFreeGiftUi;
         RunDailyExercisesButton.IsEnabled = idle || dailyExercisesUi;
         RunDailySimulationTowerButton.IsEnabled = idle || dailySimulationTowerUi;
+        RunDailyActivityButton.IsEnabled = idle || dailyActivityUi;
+        RunDailyMgArenaButton.IsEnabled = idle || dailyMgArenaUi;
         RunDailyMissionsButton.IsEnabled = idle || dailyMissionsUi;
         RunDailyCircleButton.IsEnabled = idle || dailyCircleUi;
         RunDailyHarvestButton.IsEnabled = idle || dailyHarvestUi;
@@ -1855,6 +2114,8 @@ public partial class MainWindow : Window
         DailyFreeGiftPipelineToggle.IsEnabled = idle;
         DailyExercisesPipelineToggle.IsEnabled = idle;
         DailySimulationTowerPipelineToggle.IsEnabled = idle;
+        DailyActivityPipelineToggle.IsEnabled = idle;
+        DailyMgArenaPipelineToggle.IsEnabled = idle;
         DailyMissionsPipelineToggle.IsEnabled = idle;
         DailyCirclePipelineToggle.IsEnabled = idle;
         DailyHarvestPipelineToggle.IsEnabled = idle;
@@ -1867,6 +2128,8 @@ public partial class MainWindow : Window
         PauseDailyShopButton.Visibility = Visibility.Collapsed;
         PauseDailyFreeGiftButton.Visibility = Visibility.Collapsed;
         PauseDailyExercisesButton.Visibility = Visibility.Collapsed;
+        PauseDailyActivityButton.Visibility = Visibility.Collapsed;
+        PauseDailyMgArenaButton.Visibility = Visibility.Collapsed;
         PauseDailyMissionsButton.Visibility = Visibility.Collapsed;
         PauseDailyCircleButton.Visibility = Visibility.Collapsed;
         PauseDailyHarvestButton.Visibility = Visibility.Collapsed;
@@ -1880,6 +2143,8 @@ public partial class MainWindow : Window
         StopDailyFreeGiftButton.Visibility = showControls && dailyFreeGiftUi ? Visibility.Visible : Visibility.Collapsed;
         StopDailyExercisesButton.Visibility = showControls && dailyExercisesUi ? Visibility.Visible : Visibility.Collapsed;
         StopDailySimulationTowerButton.Visibility = showControls && dailySimulationTowerUi ? Visibility.Visible : Visibility.Collapsed;
+        StopDailyActivityButton.Visibility = showControls && dailyActivityUi ? Visibility.Visible : Visibility.Collapsed;
+        StopDailyMgArenaButton.Visibility = showControls && dailyMgArenaUi ? Visibility.Visible : Visibility.Collapsed;
         StopDailyMissionsButton.Visibility = showControls && dailyMissionsUi ? Visibility.Visible : Visibility.Collapsed;
         StopDailyCircleButton.Visibility = showControls && dailyCircleUi ? Visibility.Visible : Visibility.Collapsed;
         StopDailyHarvestButton.Visibility = showControls && dailyHarvestUi ? Visibility.Visible : Visibility.Collapsed;
@@ -1896,6 +2161,8 @@ public partial class MainWindow : Window
         RunDailyFreeGiftButton.Content = dailyFreeGiftUi && showControls ? runGlyph : FluentPlay;
         RunDailyExercisesButton.Content = dailyExercisesUi && showControls ? runGlyph : FluentPlay;
         RunDailySimulationTowerButton.Content = dailySimulationTowerUi && showControls ? runGlyph : FluentPlay;
+        RunDailyActivityButton.Content = dailyActivityUi && showControls ? runGlyph : FluentPlay;
+        RunDailyMgArenaButton.Content = dailyMgArenaUi && showControls ? runGlyph : FluentPlay;
         RunDailyMissionsButton.Content = dailyMissionsUi && showControls ? runGlyph : FluentPlay;
         RunDailyCircleButton.Content = dailyCircleUi && showControls ? runGlyph : FluentPlay;
         RunDailyHarvestButton.Content = dailyHarvestUi && showControls ? runGlyph : FluentPlay;
@@ -1907,6 +2174,8 @@ public partial class MainWindow : Window
         RunDailyFreeGiftButton.ToolTip = dailyFreeGiftUi && running ? "暂停" : dailyFreeGiftUi && _isPaused ? "继续" : "运行";
         RunDailyExercisesButton.ToolTip = dailyExercisesUi && running ? "暂停" : dailyExercisesUi && _isPaused ? "继续" : "运行";
         RunDailySimulationTowerButton.ToolTip = dailySimulationTowerUi && running ? "暂停" : dailySimulationTowerUi && _isPaused ? "继续" : "运行";
+        RunDailyActivityButton.ToolTip = dailyActivityUi && running ? "暂停" : dailyActivityUi && _isPaused ? "继续" : "运行";
+        RunDailyMgArenaButton.ToolTip = dailyMgArenaUi && running ? "暂停" : dailyMgArenaUi && _isPaused ? "继续" : "运行";
         RunDailyMissionsButton.ToolTip = dailyMissionsUi && running ? "暂停" : dailyMissionsUi && _isPaused ? "继续" : "运行";
         RunDailyCircleButton.ToolTip = dailyCircleUi && running ? "暂停" : dailyCircleUi && _isPaused ? "继续" : "运行";
         RunDailyHarvestButton.ToolTip = dailyHarvestUi && running ? "暂停" : dailyHarvestUi && _isPaused ? "继续" : "运行";
@@ -1922,6 +2191,8 @@ public partial class MainWindow : Window
         StopDailyFreeGiftButton.Content = FluentStop;
         StopDailyExercisesButton.Content = FluentStop;
         StopDailySimulationTowerButton.Content = FluentStop;
+        StopDailyActivityButton.Content = FluentStop;
+        StopDailyMgArenaButton.Content = FluentStop;
         StopDailyMissionsButton.Content = FluentStop;
         StopDailyCircleButton.Content = FluentStop;
         StopDailyHarvestButton.Content = FluentStop;
@@ -1934,6 +2205,8 @@ public partial class MainWindow : Window
         StopDailyFreeGiftButton.ToolTip = "停止";
         StopDailyExercisesButton.ToolTip = "停止";
         StopDailySimulationTowerButton.ToolTip = "停止";
+        StopDailyActivityButton.ToolTip = "停止";
+        StopDailyMgArenaButton.ToolTip = "停止";
         StopDailyMissionsButton.ToolTip = "停止";
         StopDailyCircleButton.ToolTip = "停止";
         StopDailyHarvestButton.ToolTip = "停止";
@@ -1946,6 +2219,8 @@ public partial class MainWindow : Window
         StopDailyFreeGiftButton.IsEnabled = true;
         StopDailyExercisesButton.IsEnabled = true;
         StopDailySimulationTowerButton.IsEnabled = true;
+        StopDailyActivityButton.IsEnabled = true;
+        StopDailyMgArenaButton.IsEnabled = true;
         StopDailyMissionsButton.IsEnabled = true;
         StopDailyCircleButton.IsEnabled = true;
         StopDailyHarvestButton.IsEnabled = true;
@@ -1973,6 +2248,18 @@ public partial class MainWindow : Window
         DailySimulationTowerStatusText.Text = dailySimulationTowerUi && running ? "每日模拟战斗爬塔运行中。"
             : dailySimulationTowerUi && _isPaused ? "每日模拟战斗爬塔已暂停。"
             : "";
+        DailyActivityStatusText.Text = dailyActivityUi && running ? "每日课外活动运行中。"
+            : dailyActivityUi && _isPaused ? "每日课外活动已暂停。"
+            : "";
+        DailyActivityStatusText.Visibility = string.IsNullOrEmpty(DailyActivityStatusText.Text)
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+        DailyMgArenaStatusText.Text = dailyMgArenaUi && running ? "公式MG竞技运行中。"
+            : dailyMgArenaUi && _isPaused ? "公式MG竞技已暂停。"
+            : "";
+        DailyMgArenaStatusText.Visibility = string.IsNullOrEmpty(DailyMgArenaStatusText.Text)
+            ? Visibility.Collapsed
+            : Visibility.Visible;
         DailyMissionsStatusText.Text = dailyMissionsUi && running ? "每日任务运行中。"
             : dailyMissionsUi && _isPaused ? "每日任务已暂停。"
             : "";
@@ -2118,6 +2405,8 @@ public partial class MainWindow : Window
         DailyFreeGiftPipelineToggle.IsChecked = config.DailyFreeGiftTaskEnabled;
         DailyExercisesPipelineToggle.IsChecked = config.DailyExercisesTaskEnabled;
         DailySimulationTowerPipelineToggle.IsChecked = config.DailySimulationTowerTaskEnabled;
+        DailyActivityPipelineToggle.IsChecked = config.DailyActivityTaskEnabled;
+        DailyMgArenaPipelineToggle.IsChecked = config.DailyMgArenaTaskEnabled;
         DailyMissionsPipelineToggle.IsChecked = config.DailyMissionsTaskEnabled;
         DailyCirclePipelineToggle.IsChecked = config.DailyCircleTaskEnabled;
         DailyHarvestPipelineToggle.IsChecked = config.DailyHarvestTaskEnabled;
@@ -2131,19 +2420,8 @@ public partial class MainWindow : Window
     private void PipelineTaskToggle_Changed(object sender, RoutedEventArgs e)
     {
         if (!IsLoaded || _suppressPipelineToggle) return;
-        AutomationConfig config = ConfigStore.Load();
-        config.MazeTaskEnabled = MazePipelineToggle.IsChecked == true;
-        config.MainQuestTaskEnabled = MainQuestPipelineToggle.IsChecked == true;
-        config.HardMainQuestTaskEnabled = HardMainQuestPipelineToggle.IsChecked == true;
-        config.DailyShopTaskEnabled = DailyShopPipelineToggle.IsChecked == true;
-        config.DailyFreeGiftTaskEnabled = DailyFreeGiftPipelineToggle.IsChecked == true;
-        config.DailyExercisesTaskEnabled = DailyExercisesPipelineToggle.IsChecked == true;
-        config.DailySimulationTowerTaskEnabled = DailySimulationTowerPipelineToggle.IsChecked == true;
-        config.DailyMissionsTaskEnabled = DailyMissionsPipelineToggle.IsChecked == true;
-        config.DailyCircleTaskEnabled = DailyCirclePipelineToggle.IsChecked == true;
-        config.DailyHarvestTaskEnabled = DailyHarvestPipelineToggle.IsChecked == true;
-        config.DailyFreeBoostTaskEnabled = DailyFreeBoostPipelineToggle.IsChecked == true;
-        ConfigStore.Save(config);
+        // 开关与当前拖拽顺序一并写回，避免只存开关把界面顺序冲掉。
+        PersistPipelineSelectionFromUi();
     }
 
     private void TaskCard_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -2305,14 +2583,8 @@ public partial class MainWindow : Window
 
     private void PersistTaskListOrder()
     {
-        AutomationConfig config = ConfigStore.Load();
-        config.PipelineTaskOrder = TaskListPanel.Children
-            .OfType<FrameworkElement>()
-            .Select(card => card.Tag as string)
-            .Where(id => !string.IsNullOrWhiteSpace(id))
-            .Cast<string>()
-            .ToList();
-        ConfigStore.Save(config);
+        // 与开关持久化共用同一路径，确保顺序写入 config.json 后重启仍生效。
+        PersistPipelineSelectionFromUi();
     }
 
     private void ApplyTaskListOrder(IEnumerable<string> order)
@@ -2326,6 +2598,8 @@ public partial class MainWindow : Window
             ["dailyFreeGift"] = DailyFreeGiftTaskCard,
             ["dailyExercises"] = DailyExercisesTaskCard,
             ["dailySimulationTower"] = DailySimulationTowerTaskCard,
+            ["dailyActivity"] = DailyActivityTaskCard,
+            ["dailyMgArena"] = DailyMgArenaTaskCard,
             ["dailyMissions"] = DailyMissionsTaskCard,
             ["dailyCircle"] = DailyCircleTaskCard,
             ["dailyHarvest"] = DailyHarvestTaskCard,
@@ -2517,21 +2791,7 @@ public partial class MainWindow : Window
 
     private void HotkeyBoxes_LostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
     {
-        string pause = PauseHotkeyBox.Text.Trim().ToUpperInvariant();
-        string stop = StopHotkeyBox.Text.Trim().ToUpperInvariant();
-        if ((!string.IsNullOrWhiteSpace(pause) && !AutomationConfig.IsSupportedFunctionKey(pause)) ||
-            !AutomationConfig.IsSupportedFunctionKey(stop) ||
-            (!string.IsNullOrWhiteSpace(pause) && pause == stop))
-        {
-            AppendLog("启动键可留空；已填写的快捷键须为不同的 F1–F12。已恢复原设置。");
-            LoadSettings();
-            return;
-        }
-        AutomationConfig config = ConfigStore.Load();
-        config.PauseHotkey = pause;
-        config.StopHotkey = stop;
-        ConfigStore.Save(config);
-        RegisterConfiguredHotkeys();
+        PersistHotkeysFromBoxes();
     }
 
     private void SelectLocatorTemplateButton_Click(object sender, RoutedEventArgs e)
@@ -2607,37 +2867,48 @@ public partial class MainWindow : Window
     /// <summary>分身已拉起并主动交接时，允许关掉主界面（只留分身观看窗）。</summary>
     internal bool AllowCloseWhileChildSessionActive { get; set; }
 
-    private void Window_Closing(object? sender, CancelEventArgs e)
+    /// <summary>关主窗前已请求顺带注销桌面分身，避免二次进入清理逻辑。</summary>
+    private bool _closingAfterChildCleanup;
+
+    private async void Window_Closing(object? sender, CancelEventArgs e)
     {
-        if (AppInstance.IsRoot &&
-            App.SharedChildSessionService?.HasActiveChildSession() == true &&
-            !AllowCloseWhileChildSessionActive)
+        // 分身交接关主窗：只留观看窗，不在这里注销会话。
+        if (AllowCloseWhileChildSessionActive || _closingAfterChildCleanup)
         {
-            bool childViewerOpen = false;
-            foreach (Window w in Application.Current.Windows)
+            PersistMazeSettings(quiet: true);
+            PersistShopPurchases(quiet: true);
+            PersistPipelineSelectionFromUi();
+            _runCancellation?.Cancel();
+            if (_captureSession.IsRunning) _captureSession.Stop();
+            ReleaseHotkeys();
+            return;
+        }
+
+        // 本进程确实管着分身时，关主程序顺带注销并关掉观看窗（不再弹「请先关分身」）。
+        // 系统残留 Child Session 不算「已启动」，不拦截关闭；真正退出时 Dispose 仍会尝试清理。
+        ChildSessionService? childService = AppInstance.IsRoot ? App.SharedChildSessionService : null;
+        if (childService?.IsManagedByThisProcess() == true)
+        {
+            e.Cancel = true;
+            AppendLog("正在关闭桌面分身并退出…");
+            try
             {
-                if (w is ChildSessionWindow { IsLoaded: true })
-                {
-                    childViewerOpen = true;
-                    break;
-                }
+                await childService.ShutdownForAppExitAsync();
+            }
+            catch (Exception ex)
+            {
+                AppendLog("关闭桌面分身时出错：" + ex.Message);
             }
 
-            if (!childViewerOpen)
-            {
-                e.Cancel = true;
-                MessageBox.Show(
-                    this,
-                    "桌面分身仍在运行，请先关闭桌面分身，再关闭主窗口。",
-                    "桌面分身未关闭",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Warning);
-                return;
-            }
+            _closingAfterChildCleanup = true;
+            AllowCloseWhileChildSessionActive = true;
+            Close();
+            return;
         }
 
         PersistMazeSettings(quiet: true);
         PersistShopPurchases(quiet: true);
+        PersistPipelineSelectionFromUi();
         _runCancellation?.Cancel();
         if (_captureSession.IsRunning) _captureSession.Stop();
         ReleaseHotkeys();

@@ -24,6 +24,9 @@ public sealed class MainQuestAutomation
     private const int ScenarioLaunchStuckMs = 4000;
     /// <summary>加速后箭头仍在超过此时长，视为选项卡住。</summary>
     private const int ScenarioChoiceStuckMs = 15000;
+    /// <summary>剧情页已进但右上角箭头长时间未识别：盲点菜单 ROI / 点一下画面推进。</summary>
+    private const int ScenarioArrowBlindClickMs = 3500;
+    private const int ScenarioAdvanceTapMs = 8000;
 
     private enum Phase { Start, Sortie, AwaitBranch, Battle, Scenario, Reward, Next }
 
@@ -574,6 +577,27 @@ public sealed class MainQuestAutomation
                             continue;
                         }
 
+                        // 蓝箭头模板未过阈值时：盲点右上角菜单区，再点画面中下部推进对白/关掉加载失败提示。
+                        if (missTimer.ElapsedMilliseconds >= ScenarioArrowBlindClickMs &&
+                            ReadyToClick(lastClick, lastClickAt, "scenarioMenuBlind"))
+                        {
+                            MarkClick(ref lastClick, ref lastClickAt, "scenarioMenuBlind");
+                            await ClickScenarioMenuRoiAsync(window, "剧情菜单(盲点)", cancellationToken);
+                            scenarioMenuOpened = true;
+                            missTimer.Restart();
+                            await Task.Delay(450, cancellationToken);
+                            continue;
+                        }
+
+                        if (missTimer.ElapsedMilliseconds >= ScenarioAdvanceTapMs &&
+                            ReadyToClick(lastClick, lastClickAt, "scenarioAdvanceTap"))
+                        {
+                            MarkClick(ref lastClick, ref lastClickAt, "scenarioAdvanceTap");
+                            await ClickScenarioAdvanceTapAsync(window, cancellationToken);
+                            missTimer.Restart();
+                            continue;
+                        }
+
                         if (missTimer.ElapsedMilliseconds >= MissTimeoutMs)
                             throw new TimeoutException($"自动主线剧情持续 {MissTimeoutMs / 1000} 秒未点到右上角箭头。");
 
@@ -912,7 +936,8 @@ public sealed class MainQuestAutomation
                 "skipAlt" => 0.62,
                 "skip" or "next" => 0.52,
                 "scenarioMenu" => 0.50,
-                "scenarioMenuBack" => 0.82,
+                // 部分剧情页蓝箭头背景不同，旧模板约 0.61；关卡页负样本约 0.14–0.20。
+                "scenarioMenuBack" => 0.55,
                 "scenarioSpeed" => 0.58,
                 "scenarioVoiceNone" => 0.80,
                 "scenarioOk" or "scenarioChoice" or "scenarioChoiceAlt" => 0.55,
@@ -1115,5 +1140,25 @@ public sealed class MainQuestAutomation
         _log($"剧情选项命中 {probe.Score:F3}，偏移点击 ({point.X:F0},{point.Y:F0})");
         await _screen.ClickScreenAsync(window, point, cancellationToken);
         await Task.Delay(100, cancellationToken);
+    }
+
+    /// <summary>右上角剧情菜单 ROI 中心（1080p 逻辑坐标）。</summary>
+    private async Task ClickScenarioMenuRoiAsync(
+        GameWindow window, string reason, CancellationToken cancellationToken)
+    {
+        ConfigPoint topLeft = _config.MainQuestScenarioMenuTopLeft;
+        ConfigSize size = _config.MainQuestScenarioMenuSize;
+        var click = new ConfigPoint(topLeft.X + size.Width / 2, topLeft.Y + size.Height / 2);
+        _log($"{reason}：点击菜单区 ({click.X},{click.Y})。");
+        await _screen.ClickAsync(window, click, reason, cancellationToken);
+    }
+
+    /// <summary>点对白区域推进剧情 / 关掉加载失败浮层。</summary>
+    private async Task ClickScenarioAdvanceTapAsync(GameWindow window, CancellationToken cancellationToken)
+    {
+        var click = new ConfigPoint(960, 820);
+        _log($"剧情推进点击画面 ({click.X},{click.Y})。");
+        await _screen.ClickAsync(window, click, "剧情推进", cancellationToken);
+        await Task.Delay(350, cancellationToken);
     }
 }

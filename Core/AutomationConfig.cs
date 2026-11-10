@@ -45,6 +45,32 @@ public sealed class AutomationConfig
     /// <summary>任务页「活動」入口搜索区（1080p）。</summary>
     public ConfigPoint QuestActivityTopLeft { get; set; } = new(1410, 820);
     public ConfigSize QuestActivitySize { get; set; } = new(340, 130);
+    /// <summary>任务页「公式MG競技」入口搜索区（1080p）。</summary>
+    public ConfigPoint QuestMgArenaTopLeft { get; set; } = new(1500, 600);
+    public ConfigSize QuestMgArenaSize { get; set; } = new(400, 200);
+    /// <summary>MG 大厅「対戦相手選択」搜索区（1080p；模板约 980 宽）。</summary>
+    public ConfigPoint MgArenaChallengeTopLeft { get; set; } = new(1200, 850);
+    public ConfigSize MgArenaChallengeSize { get; set; } = new(700, 160);
+    /// <summary>対戦相手選択固定点击（1080p）。模板中心偏下会擦到底栏；900 偏上易点飞，用 915。</summary>
+    public ConfigPoint MgArenaChallengeClick { get; set; } = new(1600, 915);
+    /// <summary>对手选择页「対戦準備」搜索区（1080p）。</summary>
+    public ConfigPoint MgArenaPrepareTopLeft { get; set; } = new(1200, 850);
+    public ConfigSize MgArenaPrepareSize { get; set; } = new(700, 160);
+    /// <summary>対戦準備固定点击（1080p；偏左易点到挑戦回数，偏下易擦底栏）。</summary>
+    public ConfigPoint MgArenaPrepareClick { get; set; } = new(1680, 920);
+    /// <summary>准备页「出撃」搜索区（1080p）。</summary>
+    public ConfigPoint MgArenaSortieTopLeft { get; set; } = new(1480, 880);
+    public ConfigSize MgArenaSortieSize { get; set; } = new(460, 160);
+    /// <summary>出撃固定点击（1080p；模板中心可用，偏上会点空）。</summary>
+    public ConfigPoint MgArenaSortieClick { get; set; } = new(1730, 985);
+    /// <summary>对手选择页默认点选的对手卡中心（1080p；偏右常战力较低；有槽位时按槽覆盖）。</summary>
+    public ConfigPoint MgArenaOpponentClick { get; set; } = new(890, 550);
+    /// <summary>对手卡底「変更」Y（1080p；与槽位 X 组合成点）。</summary>
+    public int MgArenaChangeClickY { get; set; } = 810;
+    /// <summary>五张对手卡「変更」/ 选卡的 X（1080p，左→右）。</summary>
+    public int[] MgArenaOpponentSlotXs { get; set; } = [190, 370, 580, 890, 1140];
+    /// <summary>変更弹窗「抽選」（1080p；默认保留「戦力下位」）。</summary>
+    public ConfigPoint MgArenaDrawClick { get; set; } = new(1140, 955);
     /// <summary>通用返回箭头搜索区（1080p）。</summary>
     public ConfigPoint NavBackTopLeft { get; set; } = new(0, 0);
     public ConfigSize NavBackSize { get; set; } = new(160, 130);
@@ -213,9 +239,20 @@ public sealed class AutomationConfig
     public bool DailyCircleTaskEnabled { get; set; }
     public bool DailyHarvestTaskEnabled { get; set; }
     public bool DailyFreeBoostTaskEnabled { get; set; }
-    /// <summary>一条龙任务顺序，项为 maze / mainQuest / hardMainQuest / dailyShop / dailyFreeGift / dailyExercises / dailyMissions / dailyCircle / dailyHarvest / dailyFreeBoost。</summary>
-    public List<string> PipelineTaskOrder { get; set; } =
-        ["maze", "mainQuest", "hardMainQuest", "dailyShop", "dailyFreeGift", "dailyExercises", "dailySimulationTower", "dailyMissions", "dailyCircle", "dailyHarvest", "dailyFreeBoost"];
+    public bool DailyActivityTaskEnabled { get; set; }
+    public bool DailyMgArenaTaskEnabled { get; set; }
+    /// <summary>
+    /// 一条龙默认任务顺序（收菜/日常靠前，长线迷宫与主线靠后；拖拽后写入 config 永久保存）。
+    /// </summary>
+    public static readonly string[] DefaultPipelineTaskOrder =
+    [
+        "dailyHarvest", "dailyExercises", "dailySimulationTower", "dailyShop", "dailyFreeGift",
+        "dailyCircle", "dailyFreeBoost", "dailyActivity", "dailyMgArena", "dailyMissions",
+        "maze", "mainQuest", "hardMainQuest"
+    ];
+
+    /// <summary>一条龙任务顺序（用户拖拽后持久化到 config.json）。</summary>
+    public List<string> PipelineTaskOrder { get; set; } = [.. DefaultPipelineTaskOrder];
     // 每日商店入口兜底坐标（1080p）；4K 为 (3620,2080)。正常流程优先识别图标。
     public ConfigPoint DailyShopEntryClick { get; set; } = new(1840, 1025);
     /// <summary>商店内「交換所」入口点击中心（1080p）。</summary>
@@ -373,6 +410,33 @@ public sealed class AutomationConfig
     public ConfigSize MiningOkSize { get; set; } = new(520, 200);
     /// <summary>已废弃：收菜可随时进行，不再按日限次。保留字段仅兼容旧配置。</summary>
     public string? LastDailyHarvestDay { get; set; }
+    /// <summary>課外活動弹窗标题「課外活動」搜索区（1080p；模板约 540×120@4K）。</summary>
+    public ConfigPoint DailyActivityTitleTopLeft { get; set; } = new(780, 50);
+    public ConfigSize DailyActivityTitleSize { get; set; } = new(360, 120);
+    /// <summary>「一括受取」粉钮（1080p）。</summary>
+    public ConfigPoint DailyActivityClaimTopLeft { get; set; } = new(1140, 940);
+    public ConfigSize DailyActivityClaimSize { get; set; } = new(300, 100);
+    /// <summary>「一括活動」粉钮（1080p）。</summary>
+    public ConfigPoint DailyActivityStartTopLeft { get; set; } = new(800, 940);
+    public ConfigSize DailyActivityStartSize { get; set; } = new(300, 100);
+    /// <summary>「閉じる」（1080p）。</summary>
+    public ConfigPoint DailyActivityCloseTopLeft { get; set; } = new(460, 940);
+    public ConfigSize DailyActivityCloseSize { get; set; } = new(300, 100);
+    public ConfigPoint DailyActivityCloseClick { get; set; } = new(600, 990);
+    /// <summary>一括活動确认弹窗 OK（1080p）。</summary>
+    public ConfigPoint DailyActivityBatchOkTopLeft { get; set; } = new(1000, 920);
+    public ConfigSize DailyActivityBatchOkSize { get; set; } = new(280, 120);
+    public ConfigPoint DailyActivityBatchOkClick { get; set; } = new(1140, 970);
+    /// <summary>领取后奖励确认 OK 搜索区（1080p）。</summary>
+    /// <summary>奖励 OK 搜索区（需盖住确认弹窗底部粉钮；过矮会漏点 OK）。</summary>
+    public ConfigPoint DailyActivityRewardOkTopLeft { get; set; } = new(700, 700);
+    public ConfigSize DailyActivityRewardOkSize { get; set; } = new(520, 360);
+    /// <summary>奖励 OK 固定点击（1080p，确认弹窗底部中央）。</summary>
+    public ConfigPoint DailyActivityRewardOkClick { get; set; } = new(960, 960);
+    /// <summary>上次完成课外活动的游戏日（yyyy-MM-dd，5:00 刷新）。</summary>
+    public string? LastDailyActivityDay { get; set; }
+    /// <summary>上次完成公式 MG 竞技的游戏日（yyyy-MM-dd，5:00 刷新）。</summary>
+    public string? LastDailyMgArenaDay { get; set; }
     /// <summary>每日免费加速上次用完日（每天 5:00 刷新）。</summary>
     public string? LastDailyFreeBoostDay { get; set; }
     // 主线 ROI（1080p）；模板匹配后点中心。
@@ -556,6 +620,9 @@ public sealed class AutomationConfig
             DailyFreeGiftOtokuSize, DailyFreeGiftTitleSize,
             DailyFreeGiftPurchaseSize, DailyFreeGiftOkSize,
             DailyExercisesPrepareSize, DailyExercisesRemainingSize, DailySimulationPrepareSize,
+            DailyActivityTitleSize, DailyActivityClaimSize, DailyActivityStartSize, DailyActivityCloseSize,
+            DailyActivityBatchOkSize, DailyActivityRewardOkSize,
+            QuestMgArenaSize, MgArenaChallengeSize, MgArenaPrepareSize, MgArenaSortieSize,
             DailySimulationTitleSize, DailySimulationListSize, DailySimulationRemainingSize,
             MazeNormalModeSize,
             DailyMissionsEntrySize, DailyMissionsTitleSize, DailyMissionsClearedSize,
@@ -648,11 +715,7 @@ public sealed class AutomationConfig
 
     public static IReadOnlyList<string> NormalizePipelineTaskOrder(IEnumerable<string>? order)
     {
-        string[] known =
-        [
-            "maze", "mainQuest", "hardMainQuest", "dailyShop", "dailyFreeGift",
-            "dailyExercises", "dailySimulationTower", "dailyMissions", "dailyCircle", "dailyHarvest", "dailyFreeBoost"
-        ];
+        string[] known = DefaultPipelineTaskOrder;
         var result = new List<string>();
         if (order is not null)
         {
@@ -672,6 +735,27 @@ public sealed class AutomationConfig
         }
 
         return result;
+    }
+
+    /// <summary>旧版内置默认顺序（用于迁移到新默认，不覆盖用户自定义排序）。</summary>
+    public static bool IsLegacyDefaultPipelineTaskOrder(IEnumerable<string>? order)
+    {
+        string[] legacy =
+        [
+            "maze", "mainQuest", "hardMainQuest", "dailyShop", "dailyFreeGift",
+            "dailyExercises", "dailySimulationTower", "dailyActivity", "dailyMgArena", "dailyMissions",
+            "dailyCircle", "dailyHarvest", "dailyFreeBoost"
+        ];
+        string[] normalized = NormalizePipelineTaskOrder(order).ToArray();
+        if (normalized.Length != legacy.Length)
+            return false;
+        for (int i = 0; i < legacy.Length; i++)
+        {
+            if (!normalized[i].Equals(legacy[i], StringComparison.OrdinalIgnoreCase))
+                return false;
+        }
+
+        return true;
     }
 
     public static bool IsSupportedFunctionKey(string? key) =>

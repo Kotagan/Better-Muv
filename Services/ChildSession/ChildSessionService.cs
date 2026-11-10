@@ -39,6 +39,8 @@ public sealed class ChildSessionService : IDisposable
     private bool _statusTickInProgress;
     private bool _disposed;
     private string? _lastOperationMessage;
+    /// <summary>本进程是否打开过分身观看窗 / 发起过连接（与系统残留 Child Session 区分）。</summary>
+    private bool _managedByThisProcess;
 
     public event EventHandler? StateChanged;
 
@@ -83,12 +85,65 @@ public sealed class ChildSessionService : IDisposable
         return ChildSessionNativeMethods.IsRdpWrapperEnabled();
     }
 
-    public bool HasActiveChildSession()
+    /// <summary>
+    /// 系统级是否存在 Child Session（可能含上次残留，不代表本进程已启动分身）。
+    /// </summary>
+    public bool HasOsChildSession()
     {
         if (!AppInstance.IsRoot)
             return false;
         RefreshState();
         return ChildSessionId is not null;
+    }
+
+    /// <summary>
+    /// 本进程是否正在管理桌面分身（已创建观看窗或已发起连接）。
+    /// 关主窗时用这个判断，避免「没启动仍提示先关分身」。
+    /// </summary>
+    public bool IsManagedByThisProcess()
+    {
+        if (!AppInstance.IsRoot || _disposed)
+            return false;
+        return _managedByThisProcess ||
+               _desktopWindow is not null ||
+               ConnectedState != 0;
+    }
+
+    /// <summary>兼容旧调用：仅表示本进程在管分身，不再把系统残留当成「已启动」。</summary>
+    public bool HasActiveChildSession() => IsManagedByThisProcess();
+
+    /// <summary>主程序退出时注销分身并关掉观看窗。</summary>
+    public async Task ShutdownForAppExitAsync()
+    {
+        if (_disposed || !AppInstance.IsRoot)
+            return;
+
+        try
+        {
+            await LogoffAndHideAsync();
+        }
+        catch (Exception exception) when (IsExpectedChildSessionException(exception))
+        {
+            Log($"退出时注销桌面分身失败：{exception.GetBaseException().Message}");
+        }
+
+        if (_desktopWindow is not null)
+        {
+            try
+            {
+                _desktopWindow.AllowClose = true;
+                if (_desktopWindow.IsLoaded)
+                    _desktopWindow.Close();
+            }
+            catch
+            {
+                // 退出时关窗失败不阻断
+            }
+
+            _desktopWindow = null;
+        }
+
+        _managedByThisProcess = false;
     }
 
     private readonly Action<string>? _log;
@@ -231,6 +286,7 @@ public sealed class ChildSessionService : IDisposable
     public void ShowWindow()
     {
         ThrowIfDisposed();
+        _managedByThisProcess = true;
         ShowDesktopWindow(EnsureDesktopWindow());
         RefreshState();
     }
@@ -239,6 +295,7 @@ public sealed class ChildSessionService : IDisposable
     public async Task ShowWindowAndStartAsync()
     {
         ThrowIfDisposed();
+        _managedByThisProcess = true;
         ChildSessionWindow window = EnsureDesktopWindow();
         ShowDesktopWindow(window);
         RefreshState();
@@ -453,6 +510,8 @@ public sealed class ChildSessionService : IDisposable
             RefreshState(terminatedSessionId is null
                 ? "当前没有桌面分身会话"
                 : $"已请求注销分身会话 {terminatedSessionId.Value}");
+            // 已发起注销：本进程不再把系统残留当成「需要用户先关分身」。
+            _managedByThisProcess = false;
         }
         finally
         {
@@ -566,6 +625,7 @@ public sealed class ChildSessionService : IDisposable
 
     private void ConnectCore(string operationMessage)
     {
+        _managedByThisProcess = true;
         var existingSessionId = ChildSessionNativeMethods.TryGetChildSessionId();
         var window = EnsureDesktopWindow();
         ShowDesktopWindow(window);
@@ -608,9 +668,11 @@ public sealed class ChildSessionService : IDisposable
     {
         if (_desktopWindow is not null)
         {
+            _managedByThisProcess = true;
             return _desktopWindow;
         }
 
+        _managedByThisProcess = true;
         _desktopWindow = new ChildSessionWindow(this);
         _desktopWindow.IsVisibleChanged += OnDesktopWindowVisibilityChanged;
         _desktopWindow.RdpHost.ConnectionFailed += OnRdpConnectionFailed;

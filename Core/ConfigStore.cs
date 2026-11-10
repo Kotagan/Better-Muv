@@ -49,9 +49,71 @@ public static class ConfigStore
         }
         // 使用非短路 OR，确保一次启动会执行全部迁移，而非首个变更后跳过其余迁移。
         if (MigrateShopEntryDefaults(config) | MigrateTreasureRecognitionDefaults(config) | MigrateExecutionDefaults(config) |
-            MigrateDiagnosticDirectory(config))
+            MigrateDiagnosticDirectory(config) | MigrateDailyActivityRoiDefaults(config) |
+            MigrateMgArenaClickDefaults(config) | MigratePipelineTaskOrderDefaults(config))
             Save(config);
         return config;
+    }
+
+    /// <summary>仅当仍是旧版内置默认顺序时，迁到新默认；用户拖拽过的自定义顺序不改。</summary>
+    private static bool MigratePipelineTaskOrderDefaults(AutomationConfig config)
+    {
+        if (!AutomationConfig.IsLegacyDefaultPipelineTaskOrder(config.PipelineTaskOrder))
+            return false;
+        config.PipelineTaskOrder = [.. AutomationConfig.DefaultPipelineTaskOrder];
+        return true;
+    }
+
+    /// <summary>MG 粉钮固定点：旧 1600,900 偏上易点飞；対戦準備需更靠右。</summary>
+    private static bool MigrateMgArenaClickDefaults(AutomationConfig config)
+    {
+        bool changed = false;
+        if (config.MgArenaChallengeClick == new ConfigPoint(1600, 900))
+        {
+            config.MgArenaChallengeClick = new ConfigPoint(1600, 915);
+            changed = true;
+        }
+
+        if (config.MgArenaPrepareClick == new ConfigPoint(1600, 900) ||
+            config.MgArenaPrepareClick == new ConfigPoint(1600, 915))
+        {
+            config.MgArenaPrepareClick = new ConfigPoint(1680, 920);
+            changed = true;
+        }
+
+        return changed;
+    }
+
+    /// <summary>课外活动标题模板偏宽；奖励 OK 区需避开底栏粉钮。</summary>
+    private static bool MigrateDailyActivityRoiDefaults(AutomationConfig config)
+    {
+        bool changed = false;
+        if (config.DailyActivityTitleTopLeft == new ConfigPoint(840, 90) &&
+            config.DailyActivityTitleSize == new ConfigSize(280, 70))
+        {
+            config.DailyActivityTitleTopLeft = new ConfigPoint(780, 50);
+            config.DailyActivityTitleSize = new ConfigSize(360, 120);
+            changed = true;
+        }
+
+        if (config.DailyActivityRewardOkTopLeft == new ConfigPoint(550, 700) &&
+            config.DailyActivityRewardOkSize == new ConfigSize(820, 360))
+        {
+            config.DailyActivityRewardOkTopLeft = new ConfigPoint(700, 700);
+            config.DailyActivityRewardOkSize = new ConfigSize(520, 360);
+            changed = true;
+        }
+
+        // 旧奖励 OK ROI 偏矮，漏掉确认弹窗底部粉钮（实机约 0.25）。
+        if (config.DailyActivityRewardOkTopLeft == new ConfigPoint(700, 720) &&
+            config.DailyActivityRewardOkSize == new ConfigSize(520, 200))
+        {
+            config.DailyActivityRewardOkTopLeft = new ConfigPoint(700, 700);
+            config.DailyActivityRewardOkSize = new ConfigSize(520, 360);
+            changed = true;
+        }
+
+        return changed;
     }
 
     private static bool MigrateShopEntryDefaults(AutomationConfig config)
@@ -175,6 +237,25 @@ public static class ConfigStore
         {
             config.GameLaunchTimeoutSeconds = 90;
             changed = true;
+        }
+        // 旧逻辑把 DMM 快捷方式拆成裸 schtasks.exe（丢了 /run /tn）；改回桌面 .lnk，仍用计划任务启动。
+        if (GamePathLocator.IsSchtasksLauncher(config.GameExecutablePath) &&
+            !GamePathLocator.HasSchtasksRunArguments(config.GameLaunchArguments))
+        {
+            string? recovered = GamePathLocator.TryRecoverLaunchPath(
+                config.GameExecutablePath, config.GameLaunchArguments);
+            if (!string.IsNullOrWhiteSpace(recovered) &&
+                !recovered.Equals(config.GameExecutablePath, StringComparison.OrdinalIgnoreCase))
+            {
+                config.GameExecutablePath = recovered;
+                if (GamePathLocator.IsShortcut(recovered))
+                {
+                    string? lnkArgs = GamePathLocator.TryResolveShortcutArguments(recovered);
+                    if (GamePathLocator.HasSchtasksRunArguments(lnkArgs))
+                        config.GameLaunchArguments = lnkArgs!;
+                }
+                changed = true;
+            }
         }
         // 底栏「ショップ」购物车中心；旧点偏上/偏左会打到活动条或打不开枢纽。
         if (config.DailyShopEntryClick is { X: 1780, Y: 965 } or { X: 1810, Y: 1040 })

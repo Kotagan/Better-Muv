@@ -45,7 +45,10 @@ public sealed class PromoPopupDismisser
     /// <summary>居中宣传弹窗关闭钮搜索区（避开右上 HUD）。</summary>
     private static readonly ConfigPoint PopupCloseAltTopLeft = new(1400, 40);
     private static readonly ConfigSize PopupCloseAltSize = new(320, 200);
-    private const double PopupCloseAltThreshold = 0.58;
+    /// <summary>
+    /// 过低会把任务/主页顶栏图标当成 X（实机常见 0.63 误命中），再点固定点落到 ホーム。
+    /// </summary>
+    private const double PopupCloseAltThreshold = 0.75;
 
     public PromoPopupDismisser(AutomationConfig config, ScreenAutomation screen, Action<string> log)
     {
@@ -96,6 +99,7 @@ public sealed class PromoPopupDismisser
             window, _closeMatcher,
             _config.PopupCloseTopLeft, _config.PopupCloseSize,
             cancellationToken, CloseThreshold);
+        bool usedAltRoi = false;
         // FLASH SALE 等居中弹窗的 X 常在默认右上 ROI 外；补扫中上区域（避开 HUD 角）。
         if (!probe.IsMatch)
         {
@@ -104,11 +108,14 @@ public sealed class PromoPopupDismisser
                 PopupCloseAltTopLeft, PopupCloseAltSize,
                 cancellationToken, PopupCloseAltThreshold);
             if (alt.IsMatch)
+            {
                 probe = alt;
+                usedAltRoi = true;
+            }
         }
 
         if (probe.IsMatch)
-            return await DismissPromoCloseAsync(window, probe, cancellationToken);
+            return await DismissPromoCloseAsync(window, probe, usedAltRoi, cancellationToken);
 
         // お知らせ优先：标题或閉じる任一命中即关，避免挡住クエスト。
         if (await TryDismissOshiraseOrTojiruAsync(window, cancellationToken))
@@ -122,18 +129,20 @@ public sealed class PromoPopupDismisser
     }
 
     private async Task<bool> DismissPromoCloseAsync(
-        GameWindow window, TemplateProbeResult probe, CancellationToken cancellationToken)
+        GameWindow window,
+        TemplateProbeResult probe,
+        bool usedAltRoi,
+        CancellationToken cancellationToken)
     {
-        // 居中弹窗 X 与右上 HUD 关闭钮分属不同 ROI；复查须用同一区域，避免误判「仍在」。
-        bool usedAlt = probe.Center.X < 1700;
-        ConfigPoint roiTopLeft = usedAlt ? PopupCloseAltTopLeft : _config.PopupCloseTopLeft;
-        ConfigSize roiSize = usedAlt ? PopupCloseAltSize : _config.PopupCloseSize;
-        double threshold = usedAlt ? PopupCloseAltThreshold : CloseThreshold;
-        ConfigPoint fallbackClick = usedAlt
+        // 必须按实际命中的 ROI 复查；勿用 Center.X 推断——alt 右缘与主 ROI 重叠时会误切到 HUD 固定点。
+        ConfigPoint roiTopLeft = usedAltRoi ? PopupCloseAltTopLeft : _config.PopupCloseTopLeft;
+        ConfigSize roiSize = usedAltRoi ? PopupCloseAltSize : _config.PopupCloseSize;
+        double threshold = usedAltRoi ? PopupCloseAltThreshold : CloseThreshold;
+        ConfigPoint fallbackClick = usedAltRoi
             ? new ConfigPoint((int)Math.Round(probe.Center.X), (int)Math.Round(probe.Center.Y))
             : _config.PopupCloseClick;
 
-        _log($"检测到宣传弹窗关闭钮（{probe.Score:F3}），点击关闭。");
+        _log($"检测到宣传弹窗关闭钮（{probe.Score:F3}{(usedAltRoi ? "，居中区" : "")}），点击关闭。");
         await _screen.ClickScreenAsync(window, probe.Center, cancellationToken);
         await Task.Delay(400, cancellationToken);
 
@@ -145,7 +154,16 @@ public sealed class PromoPopupDismisser
             return true;
         }
 
-        _log($"关闭钮仍在（{still.Score:F3}），再点一次固定点。");
+        // 右上主 ROI 高分仍在：多半是 HUD 图标误匹配，再点 PopupCloseClick 会误触ホーム。
+        if (!usedAltRoi && still.Score >= 0.90)
+        {
+            _log($"宣传关闭疑似 HUD 误匹配（仍 {still.Score:F3}），跳过固定点并抑制 {SuppressAfterFailMs / 1000}s。");
+            _suppressUntilUtc = DateTime.UtcNow.AddMilliseconds(SuppressAfterFailMs);
+            _failedBursts = 0;
+            return false;
+        }
+
+        _log($"关闭钮仍在（{still.Score:F3}），再点一次{(usedAltRoi ? "识别中心" : "固定点")}。");
         await _screen.ClickAsync(window, fallbackClick, "宣传弹窗关闭", cancellationToken);
         await Task.Delay(400, cancellationToken);
 
@@ -159,7 +177,7 @@ public sealed class PromoPopupDismisser
 
         _failedBursts++;
         _log($"宣传弹窗关闭无效（仍 {after.Score:F3}），连续失败 {_failedBursts}/{MaxFailedBursts}。");
-        if (_failedBursts >= MaxFailedBursts)
+        if (_failedBursts >= MaxFailedBursts || after.Score >= 0.90)
         {
             _suppressUntilUtc = DateTime.UtcNow.AddMilliseconds(SuppressAfterFailMs);
             _failedBursts = 0;
