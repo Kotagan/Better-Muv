@@ -14,6 +14,17 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         AppInstance.Initialize(e.Args);
+        if (AppInstance.ShowHelpAndExit)
+        {
+            MessageBox.Show(
+                AppInstance.HelpText,
+                "Better-Muv 命令行帮助",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            Shutdown(0);
+            return;
+        }
+
         base.OnStartup(e);
 
         if (AppInstance.IsChildSession)

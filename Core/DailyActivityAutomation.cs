@@ -51,7 +51,8 @@ public sealed class DailyActivityAutomation
         _batchOkMatcher = TemplateAssets.Load("activity-batch-ok.png");
         _rewardOkMatcher = TemplateAssets.Load("settlement-confirm.png");
         _rewardOkMatcherAlt = TemplateAssets.Load("daily-shop-ok.png");
-        _rewardOkMatcherPink = TemplateAssets.Load("settlement-confirm-ok.png");
+        // 粉钮 OK 与结算确认同图；旧名 settlement-confirm-ok.png 已废弃。
+        _rewardOkMatcherPink = TemplateAssets.Load("settlement-confirm.png");
     }
 
     public async Task<TaskRunResult> RunOnceAsync(CancellationToken cancellationToken)

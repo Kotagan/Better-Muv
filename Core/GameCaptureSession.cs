@@ -51,8 +51,21 @@ public sealed class GameCaptureSession
             !config.WindowSelectionMode.Equals("selected", StringComparison.OrdinalIgnoreCase))
             await LaunchGameAndWaitAsync(config, screen, cancellationToken);
 
+        bool launchedNow = existingWindow is null;
         GameWindow window = existingWindow ?? screen.FindWindow(config.WindowTitleKeyword);
-        if (!await screen.FocusAsync(window.Handle, cancellationToken))
+        bool focused = false;
+        for (int i = 0; i < 6; i++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            window = screen.Refresh(window);
+            if (await screen.FocusAsync(window.Handle, cancellationToken))
+            {
+                focused = true;
+                break;
+            }
+            await Task.Delay(700, cancellationToken);
+        }
+        if (!focused)
             throw new InvalidOperationException("无法将游戏置于前台。请先手动恢复游戏窗口。");
         window = await screen.EnsurePreferredClientAsync(window, cancellationToken);
         Window = window;
@@ -60,6 +73,15 @@ public sealed class GameCaptureSession
         ScreenRect viewport = screen.Viewport(window);
         string mode = config.WindowSelectionMode == "selected" ? "选择窗口/客户区" : "默认游戏/显示器";
         _log($"截图器已启动：{window.Title}（{mode} {viewport.Width}×{viewport.Height}）。");
+
+        // 刚拉起时常停在 TOUCH TO START / 过渡屏，需连点几次；已在跑的游戏只在识别到标题页时才点。
+        var titleEnter = new TitleScreenEnter(config, screen, _log);
+        bool entered = launchedNow
+            ? await titleEnter.EnsureHomeAfterLaunchAsync(window, cancellationToken)
+            : await titleEnter.TryPassAsync(window, cancellationToken);
+        Window = screen.Refresh(window);
+        if (launchedNow && !entered)
+            _log("截图器：启动后尚未确认主界面，后续任务将再尝试进入。");
     }
 
     public void Stop()
@@ -113,8 +135,23 @@ public sealed class GameCaptureSession
             cancellationToken.ThrowIfCancellationRequested();
             try
             {
-                _ = screen.FindWindow(config.WindowTitleKeyword);
-                _log($"已检测到游戏窗口（{timeout.Elapsed.TotalSeconds:0.0}s），继续启动截图器。");
+                GameWindow found = screen.FindWindow(config.WindowTitleKeyword);
+                _log($"已检测到游戏窗口（{timeout.Elapsed.TotalSeconds:0.0}s）：{found.Title}");
+                // DMM 刚弹出时常常抢不到前台，稍等再继续。
+                await Task.Delay(2500, cancellationToken);
+                for (int i = 0; i < 8; i++)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    found = screen.Refresh(found);
+                    if (await screen.FocusAsync(found.Handle, cancellationToken))
+                    {
+                        _log($"游戏已置于前台（额外等待 {(i + 1) * 0.8:0.0}s）。");
+                        return;
+                    }
+                    await Task.Delay(800, cancellationToken);
+                }
+
+                _log("窗口已出现但前台聚焦仍不稳定，继续启动截图器。");
                 return;
             }
             catch (InvalidOperationException)

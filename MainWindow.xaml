@@ -869,7 +869,7 @@
                                         <RadioButton x:Name="DifficultyKeepRadio" Content="保持不变" GroupName="Difficulty" Checked="DifficultyMode_Changed"/>
                                         <RadioButton x:Name="DifficultyCustomRadio" Content="自选" GroupName="Difficulty" Margin="16,0,0,0" Checked="DifficultyMode_Changed"/>
                                         <RadioButton x:Name="DifficultyTowerRadio" Content="爬塔" GroupName="Difficulty" Margin="16,0,0,0" Checked="DifficultyMode_Changed"
-                                                     ToolTip="层选界面须无右箭头；保持当前层进入"/>
+                                                     ToolTip="自动点右箭头升到当前可进最高层，再进入"/>
                                     </StackPanel>
                                 </StackPanel>
                                 <TextBox x:Name="DifficultyTargetBox" Grid.Column="1" VerticalAlignment="Center" LostKeyboardFocus="DifficultyTargetBox_LostKeyboardFocus"/>

@@ -29,9 +29,9 @@
   </ItemGroup>
 
   <PropertyGroup>
-    <Version>1.4.0</Version>
-    <AssemblyVersion>1.4.0.0</AssemblyVersion>
-    <FileVersion>1.4.0.0</FileVersion>
+    <Version>2.0.0</Version>
+    <AssemblyVersion>2.0.0.0</AssemblyVersion>
+    <FileVersion>2.0.0.0</FileVersion>
     <Product>Better-Muv</Product>
     <Company>Kotagan</Company>
     <Authors>Kotagan</Authors>
@@ -168,6 +168,8 @@
     <Content Include="Assets\Templates\hard-quest-difficulty.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\hard-quest-battle.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\hud-home.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\title-touch-to-start.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Templates\title-world-bar.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\hud-menu.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\serial-code-entry.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Templates\serial-code-confirm.png" CopyToOutputDirectory="PreserveNewest" />

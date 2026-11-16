@@ -16,10 +16,10 @@ public sealed class DailyMgArenaAutomation
 {
     private const int AfterOpenDelayMs = 1400;
     private const int AfterChallengeDelayMs = 1400;
-    private const int AfterChangeDelayMs = 900;
-    private const int AfterDrawDelayMs = 1400;
-    private const int AfterOpponentDelayMs = 800;
-    private const int AfterPrepareDelayMs = 1400;
+    private const int AfterChangeDelayMs = 1000;
+    private const int AfterDrawDelayMs = 2800;
+    private const int AfterOpponentDelayMs = 1000;
+    private const int AfterPrepareDelayMs = 1800;
     private const int AfterSortieDelayMs = 1600;
     private const int AfterNextDelayMs = 900;
     /// <summary>轮换前 4 槽（最右常已 WIN）。</summary>
@@ -28,11 +28,11 @@ public sealed class DailyMgArenaAutomation
     private const int BattlePhaseTimeoutMs = 180_000;
     private const int MaxRunsPerDay = 5;
     private const int ChallengeEnterAttempts = 3;
-    private const int PrepareEnterAttempts = 3;
+    private const int PrepareEnterAttempts = 5;
     private const double EntryThreshold = 0.72;
     private const double ChallengeThreshold = 0.70;
     private const double PrepareThreshold = 0.68;
-    private const double SortieThreshold = 0.62;
+    private const double SortieThreshold = 0.55;
     private const double NextThreshold = 0.70;
     private const int ResetHour = 5;
 
@@ -143,6 +143,13 @@ public sealed class DailyMgArenaAutomation
                 break;
             }
 
+            if (onOpponent && await IsChallengeQuotaExhaustedAsync(window, cancellationToken))
+            {
+                _log("公式MG竞技：OCR 见挑戦回数已满（5/5），结束。");
+                exhausted = true;
+                break;
+            }
+
             if (onLobby)
             {
                 _log($"公式MG竞技：第 {run}/{MaxRunsPerDay} 次，进入对手选择。");
@@ -159,18 +166,35 @@ public sealed class DailyMgArenaAutomation
                 _log($"公式MG竞技：第 {run}/{MaxRunsPerDay} 次，已在对手选择。");
             }
 
-            // 同人重复挑战不计进度：先変更→抽選换人，再点卡出撃。
-            int slot = (run - 1) % ChangeSlotCount;
-            window = await RefreshOpponentAsync(window, slot, cancellationToken);
-            ConfigPoint opponent = OpponentCardClick(slot);
-            await _screen.ClickAsync(window, opponent, $"对手卡#{slot + 1}", cancellationToken, parkCursor: false);
-            await Task.Delay(AfterOpponentDelayMs, cancellationToken);
-            _screen.ParkCursorAway(window);
-            window = _screen.Refresh(window);
-
-            if (!await EnterSortiePageAsync(window, cancellationToken))
+            // 同人/已 LOSE 不计进度：先変更→抽選换人，再点卡出撃。
+            // 准备失败时换下一槽再抽，避免死点同一张 LOSE 卡。
+            bool enteredSortie = false;
+            for (int slotTry = 0; slotTry < ChangeSlotCount && !enteredSortie; slotTry++)
             {
-                _log("公式MG竞技：多次未能进入出撃页，结束本轮。");
+                int slot = (run - 1 + slotTry) % ChangeSlotCount;
+                window = await RefreshOpponentAsync(window, slot, cancellationToken);
+                ConfigPoint opponent = OpponentCardClick(slot);
+                await _screen.ClickAsync(
+                    window, opponent, $"对手卡#{slot + 1}", cancellationToken, parkCursor: false);
+                await Task.Delay(AfterOpponentDelayMs, cancellationToken);
+                _screen.ParkCursorAway(window);
+                window = _screen.Refresh(window);
+
+                enteredSortie = await EnterSortiePageAsync(window, cancellationToken);
+                if (!enteredSortie && slotTry < ChangeSlotCount - 1)
+                    _log($"公式MG竞技：槽{slot + 1}未能进出击，换下一槽重抽。");
+            }
+
+            if (!enteredSortie)
+            {
+                // 已打过场后准备钮仍在但点不进出击：多半挑戦回数已满。
+                if (completed > 0)
+                {
+                    _log("公式MG竞技：已有完成场次且无法再进出击，视为今日次数用尽。");
+                    exhausted = true;
+                }
+                else
+                    _log("公式MG竞技：多次未能进入出撃页，结束本轮。");
                 break;
             }
 
@@ -290,16 +314,19 @@ public sealed class DailyMgArenaAutomation
             cancellationToken.ThrowIfCancellationRequested();
             window = _screen.Refresh(window);
 
-            if (await FindSortieAsync(window, cancellationToken) is { IsMatch: true })
+            if (await FindSortieAsync(window, cancellationToken) is { IsMatch: true } already)
             {
-                _log("公式MG竞技：已在出撃页。");
+                _log($"公式MG竞技：已在出撃页（{already.Score:F3}）。");
                 return true;
             }
 
             TemplateProbeResult prepare = await _screen.WaitForProbeAsync(
                 window, _prepareMatcher,
                 _config.MgArenaPrepareTopLeft, _config.MgArenaPrepareSize,
-                cancellationToken, timeoutMs: 4000, matchThreshold: PrepareThreshold);
+                cancellationToken, timeoutMs: 5000, matchThreshold: PrepareThreshold);
+
+            // 模板中心常偏左（实机 3200 vs 固定 3360），出击页进不去；一律固定坐标。
+            await _screen.FocusAsync(window.Handle, cancellationToken);
             if (prepare.IsMatch)
             {
                 _log($"公式MG竞技：固定点击「対戦準備」（识别 {prepare.Score:F3}，{attempt}/{PrepareEnterAttempts}）。");
@@ -309,9 +336,9 @@ public sealed class DailyMgArenaAutomation
                 _log($"公式MG竞技：対戦準備弱（最高 {prepare.Score:F4}），仍点固定坐标（{attempt}/{PrepareEnterAttempts}）。");
             }
 
-            await _screen.FocusAsync(window.Handle, cancellationToken);
             await _screen.ClickAsync(
                 window, _config.MgArenaPrepareClick, "対戦準備", cancellationToken, parkCursor: false);
+
             await Task.Delay(AfterPrepareDelayMs, cancellationToken);
             _screen.ParkCursorAway(window);
             window = _screen.Refresh(window);
@@ -356,7 +383,7 @@ public sealed class DailyMgArenaAutomation
             TemplateProbeResult hit = await _screen.WaitForProbeAsync(
                 window, matcher,
                 _config.MgArenaSortieTopLeft, _config.MgArenaSortieSize,
-                cancellationToken, timeoutMs: 2500, matchThreshold: SortieThreshold);
+                cancellationToken, timeoutMs: 4500, matchThreshold: SortieThreshold);
             if (best is null || hit.Score > best.Score)
                 best = hit;
             if (hit.IsMatch)
@@ -422,44 +449,56 @@ public sealed class DailyMgArenaAutomation
         return prepare.IsMatch;
     }
 
-    /// <summary>战斗中等到 SKIP/次へ；点次へ后通常停在对手选择（也可能回大厅）。</summary>
+    /// <summary>右侧记录区 OCR：「挑戦回数 5/5」表示今日打完。</summary>
+    private async Task<bool> IsChallengeQuotaExhaustedAsync(
+        GameWindow window, CancellationToken cancellationToken)
+    {
+        RegionCapture region = _screen.CaptureRegion(
+            window, new ConfigPoint(1480, 520), new ConfigSize(420, 280));
+        string? raw = await DigitOcrService.TryReadTextAsync(region.Image, cancellationToken);
+        if (string.IsNullOrWhiteSpace(raw))
+            return false;
+        string compact = new string(raw.Where(c => !char.IsWhiteSpace(c)).ToArray());
+        return compact.Contains("5/5", StringComparison.Ordinal) ||
+               compact.Contains("5／5", StringComparison.Ordinal) ||
+               compact.Contains("5の5", StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// 战斗中等到 SKIP/次へ；必须先点完结算「次へ」再认对手选择。
+    /// 结算粉钮「次へ」会被 prepare 模板误命中（约 0.71），若先判对手选择会直接跳过下一步。
+    /// </summary>
     private async Task<bool> RunBattleUntilReadyAsync(
         GameWindow window, int run, CancellationToken cancellationToken)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
         DateTime lastSkipAt = DateTime.MinValue;
         DateTime lastNextAt = DateTime.MinValue;
+        int nextClicks = 0;
         _log($"公式MG竞技：第 {run} 次战斗中，等待 SKIP / 次へ / 对手选择。");
+
+        // 结算「次へ」ROI 略放宽，盖住得分页右下粉钮。
+        var nextTl = new ConfigPoint(
+            Math.Min(_config.MainQuestNextTopLeft.X, 1400),
+            Math.Min(_config.MainQuestNextTopLeft.Y, 820));
+        var nextSize = new ConfigSize(
+            Math.Max(_config.MainQuestNextSize.Width, 480),
+            Math.Max(_config.MainQuestNextSize.Height, 220));
 
         while (sw.ElapsedMilliseconds < BattlePhaseTimeoutMs)
         {
             cancellationToken.ThrowIfCancellationRequested();
             window = _screen.Refresh(window);
 
-            if (sw.ElapsedMilliseconds > 2500)
-            {
-                if (await IsLobbyAsync(window, cancellationToken))
-                {
-                    _log("公式MG竞技：已回到大厅。");
-                    return true;
-                }
-
-                // 对手选择：prepare 命中且非大厅（大厅粉钮也会误触 prepare）。
-                if (await IsOpponentSelectAsync(window, cancellationToken))
-                {
-                    _log("公式MG竞技：已回到对手选择。");
-                    return true;
-                }
-            }
-
+            // 1) 优先点「次へ」：得分页/翻页绝不能被 prepare 误判截走。
             TemplateProbeResult next = await _screen.ProbeAsync(
-                window, _nextMatcher,
-                _config.MainQuestNextTopLeft, _config.MainQuestNextSize,
-                cancellationToken, NextThreshold);
-            if (next.IsMatch && ReadyToClick(lastNextAt, 800))
+                window, _nextMatcher, nextTl, nextSize,
+                cancellationToken, 0.62);
+            if (next.IsMatch && ReadyToClick(lastNextAt, 700))
             {
                 lastNextAt = DateTime.UtcNow;
-                _log($"公式MG竞技：点击「次へ」（{next.Score:F3}）。");
+                nextClicks++;
+                _log($"公式MG竞技：点击「次へ」（{next.Score:F3}，第 {nextClicks} 次）。");
                 await _screen.ClickProbeAsync(
                     window, next, "次へ", cancellationToken,
                     settleDelayMs: AfterNextDelayMs, parkCursor: false);
@@ -467,6 +506,7 @@ public sealed class DailyMgArenaAutomation
                 continue;
             }
 
+            // 2) SKIP
             if (ReadyToClick(lastSkipAt, 1200))
             {
                 foreach (TemplateMatcher skip in new[] { _skipMatcher, _skipAltMatcher })
@@ -483,6 +523,26 @@ public sealed class DailyMgArenaAutomation
                         window, hit, "SKIP", cancellationToken, settleDelayMs: 200, parkCursor: false);
                     _screen.ParkCursorAway(window);
                     break;
+                }
+            }
+
+            // 3) 回到大厅/对手选择：须无「次へ」，且准备钮分足够高，避免得分页粉钮假阳性。
+            if (sw.ElapsedMilliseconds > 2500 && !next.IsMatch)
+            {
+                if (await IsLobbyAsync(window, cancellationToken))
+                {
+                    _log("公式MG竞技：已回到大厅。");
+                    return true;
+                }
+
+                TemplateProbeResult prepare = await _screen.ProbeAsync(
+                    window, _prepareMatcher,
+                    _config.MgArenaPrepareTopLeft, _config.MgArenaPrepareSize,
+                    cancellationToken, 0.85);
+                if (prepare.IsMatch && !await IsLobbyAsync(window, cancellationToken))
+                {
+                    _log($"公式MG竞技：已回到对手选择（対戦準備 {prepare.Score:F3}）。");
+                    return true;
                 }
             }
 

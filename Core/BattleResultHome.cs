@@ -8,7 +8,8 @@ namespace BetterMuv.Core;
 public sealed class BattleResultHome
 {
     private const double ResultHomeThreshold = 0.72;
-    private const double DefeatBannerThreshold = 0.70;
+    /// <summary>MG 对手卡 LOSE 条会误触 0.88；真正 DEFEAT 横幅通常 ≥0.93。</summary>
+    private const double DefeatBannerThreshold = 0.92;
     private const double RematchThreshold = 0.70;
 
     private readonly AutomationConfig _config;
@@ -42,11 +43,15 @@ public sealed class BattleResultHome
             return true;
         }
 
-        bool defeatLike = await LooksLikeDefeatOrRematchAsync(window, cancellationToken);
-        if (!defeatLike)
+        // 坐标兜底只认顶部 DEFEAT 横幅：MG 对手卡「LOSE」会在宽 ROI 里假阳性。
+        TemplateProbeResult defeat = await _screen.ProbeAsync(
+            window, _defeatBanner,
+            new ConfigPoint(560, 0), new ConfigSize(800, 160),
+            cancellationToken, DefeatBannerThreshold);
+        if (!defeat.IsMatch)
             return false;
 
-        _log($"{reason}：已像战败/再戦页但「ホームへ」未命中，点击配置坐标兜底。");
+        _log($"{reason}：识别战败横幅（{defeat.Score:F3}）但「ホームへ」未命中，点击配置坐标兜底。");
         await _screen.ClickAsync(
             window, _config.MainQuestToHomeClick, $"{reason}ホームへ(坐标)", cancellationToken);
         await Task.Delay(800, cancellationToken);
@@ -75,7 +80,7 @@ public sealed class BattleResultHome
     {
         TemplateProbeResult defeat = await _screen.ProbeAsync(
             window, _defeatBanner,
-            new ConfigPoint(400, 0), new ConfigSize(1100, 280),
+            new ConfigPoint(560, 0), new ConfigSize(800, 160),
             cancellationToken, DefeatBannerThreshold);
         if (defeat.IsMatch)
             return true;

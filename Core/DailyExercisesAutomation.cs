@@ -9,7 +9,7 @@ namespace BetterMuv.Core;
 public sealed class DailyExercisesAutomation
 {
     private const int AfterHomeDelayMs = 1100;
-    private const int AfterPrepareDelayMs = 1400;
+    private const int AfterPrepareDelayMs = 1800;
     private const int AfterSortieDelayMs = 1500;
     private const int AfterNextDelayMs = 1100;
     private const int AfterSkipDelayMs = 200;
@@ -19,7 +19,7 @@ public sealed class DailyExercisesAutomation
     private const int MaxRunsPerDay = 5;
     private const int PrepareClickAttempts = 3;
     private const double PrepareThreshold = 0.72;
-    private const double SortieThreshold = 0.70;
+    private const double SortieThreshold = 0.55;
     private const double SkipThreshold = 0.58;
     private const double SkipFallbackScore = 0.28;
     private const double NextThreshold = 0.70;

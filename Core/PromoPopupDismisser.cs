@@ -7,8 +7,10 @@ namespace BetterMuv.Core;
 /// </summary>
 public sealed class PromoPopupDismisser
 {
-    /// <summary>过低会把右上角 HUD 误当成关闭钮，形成连点死循环。</summary>
-    private const double CloseThreshold = 0.78;
+    /// <summary>过低会把右上角 HUD 误当成关闭钮，形成连点死循环；任务页右上角常 0.95+ 假阳性。</summary>
+    private const double CloseThreshold = 0.86;
+    /// <summary>主 ROI 高分点击后若「关闭钮」马上弹回，视为 HUD 误匹配。</summary>
+    private const double CloseHudReboundThreshold = 0.88;
     private const double RewardOkThreshold = 0.58;
     private const double TojiruThreshold = 0.72;
     private const double OshiraseTitleThreshold = 0.72;
@@ -144,18 +146,33 @@ public sealed class PromoPopupDismisser
 
         _log($"检测到宣传弹窗关闭钮（{probe.Score:F3}{(usedAltRoi ? "，居中区" : "")}），点击关闭。");
         await _screen.ClickScreenAsync(window, probe.Center, cancellationToken);
-        await Task.Delay(400, cancellationToken);
+        await Task.Delay(450, cancellationToken);
 
         TemplateProbeResult still = await _screen.ProbeAsync(
             window, _closeMatcher, roiTopLeft, roiSize, cancellationToken, threshold);
         if (!still.IsMatch)
         {
+            // 任务页 HUD 点一下会短暂掉分，再探一次；弹回高分则抑制，避免毁掉メイズ进关。
+            if (!usedAltRoi && probe.Score >= CloseHudReboundThreshold)
+            {
+                await Task.Delay(350, cancellationToken);
+                TemplateProbeResult rebound = await _screen.ProbeAsync(
+                    window, _closeMatcher, roiTopLeft, roiSize, cancellationToken, CloseHudReboundThreshold);
+                if (rebound.IsMatch)
+                {
+                    _log($"宣传关闭疑似 HUD 误匹配（弹回 {rebound.Score:F3}），抑制 {SuppressAfterFailMs / 1000}s。");
+                    _suppressUntilUtc = DateTime.UtcNow.AddMilliseconds(SuppressAfterFailMs);
+                    _failedBursts = 0;
+                    return false;
+                }
+            }
+
             _failedBursts = 0;
             return true;
         }
 
         // 右上主 ROI 高分仍在：多半是 HUD 图标误匹配，再点 PopupCloseClick 会误触ホーム。
-        if (!usedAltRoi && still.Score >= 0.90)
+        if (!usedAltRoi && still.Score >= CloseHudReboundThreshold)
         {
             _log($"宣传关闭疑似 HUD 误匹配（仍 {still.Score:F3}），跳过固定点并抑制 {SuppressAfterFailMs / 1000}s。");
             _suppressUntilUtc = DateTime.UtcNow.AddMilliseconds(SuppressAfterFailMs);

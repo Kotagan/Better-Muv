@@ -64,8 +64,8 @@ internal static class FlowCatalog
             Flow("dailyShop", "每日商店", "Core/DailyShopAutomation.cs", null,
             [
                 "HudHomeReturn → 商店 → 交換所",
-                "100%OFF（可跳过）→ 小步滚轮找金币价 2,500/3,000 → 交換 → OK（目标×2）",
-                "可选：左侧サークル → 按 CirclePurchases 配置购买"
+                "可选：左侧サークル → 按 CirclePurchases 配置购买（先于金币价）",
+                "切回定期交換 → 小步滚轮找金币价 2,500/3,000 → 交換 → OK（目标×2）"
             ]),
             Flow("dailyFreeGift", "每日免费礼包", "Core/DailyFreeGiftAutomation.cs", null,
             [

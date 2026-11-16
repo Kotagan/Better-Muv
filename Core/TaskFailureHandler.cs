@@ -61,6 +61,16 @@ public sealed class TaskFailureHandler
                 return true;
             }
 
+            // 仅处理标题/过渡屏；不得把「看得见クエスト」当成已回主页（子页也可能有底栏）。
+            await new TitleScreenEnter(_config, _screen, _log)
+                .TryPassAsync(window, cancellationToken);
+            window = _screen.Refresh(window);
+            if (await IsHomeVisibleAsync(window, cancellationToken))
+            {
+                _log($"失败处理：{taskName} — 过标题页后已确认主界面。");
+                return true;
+            }
+
             // 战败/结算页先点ホームへ，再 Esc（Esc 对 DEFEAT 往往无效）。
             if (await TryLeaveSettlementAsync(window, cancellationToken))
             {
@@ -115,6 +125,15 @@ public sealed class TaskFailureHandler
             await new HudHomeReturn(_config, _screen, _log).TryAsync(window, cancellationToken);
             await Task.Delay(AfterHomeMs, cancellationToken);
             window = _screen.Refresh(window);
+            await new TitleScreenEnter(_config, _screen, _log)
+                .TryPassAsync(window, cancellationToken);
+            window = _screen.Refresh(window);
+            if (await IsHomeVisibleAsync(window, cancellationToken))
+            {
+                _log($"失败处理：{taskName} — 点主页钮后已确认主界面。");
+                return true;
+            }
+
             await _promo.DismissAllAsync(window, cancellationToken);
             window = _screen.Refresh(window);
 

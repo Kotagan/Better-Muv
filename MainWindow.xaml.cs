@@ -128,6 +128,12 @@ public partial class MainWindow : Window
             }
         }
 
+        if (AppInstance.AutoStartPipeline)
+        {
+            await RunCliAutostartPipelineAsync();
+            return;
+        }
+
         if (!string.Equals(Environment.GetEnvironmentVariable("BETTER_MUV_AUTO_MAIN_QUEST"), "1", StringComparison.Ordinal))
             return;
         AppendLog("调试模式：自动启动主线任务。");
@@ -142,6 +148,66 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             AppendLog("调试自动启动失败：" + ex.Message);
+        }
+    }
+
+    /// <summary>千机链 / 命令行：无弹窗启动一条龙，结束后按 -c/-q 关游戏、退出。</summary>
+    private async Task RunCliAutostartPipelineAsync()
+    {
+        AppendLog("命令行调度：自动启动一条龙"
+            + (AppInstance.CloseGameAfterRun ? "（结束后关游戏）" : "")
+            + (AppInstance.QuitAfterRun ? "（结束后退出）" : "")
+            + "。");
+        try
+        {
+            SetPage(Page.Execute);
+            OpenLogDrawer();
+            PersistPipelineSelectionFromUi();
+            if (!await EnsureCaptureForRunAsync("pipeline"))
+            {
+                AppendLog("命令行调度：截图器/游戏未就绪，结束。");
+                return;
+            }
+
+            await StartPipelineAsync();
+        }
+        catch (Exception ex)
+        {
+            AppendLog("命令行调度失败：" + ex.GetBaseException().Message);
+        }
+        finally
+        {
+            await CompleteCliAutostartAsync();
+        }
+    }
+
+    private async Task CompleteCliAutostartAsync()
+    {
+        if (AppInstance.CloseGameAfterRun)
+        {
+            try
+            {
+                AppendLog("命令行调度：正在关闭游戏…");
+                await GameProcessCloser.CloseAsync(ConfigStore.Load(), AppendLog, CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                AppendLog("命令行调度：关闭游戏失败 — " + ex.Message);
+            }
+        }
+
+        if (!AppInstance.QuitAfterRun)
+            return;
+
+        AppendLog("命令行调度：退出程序。");
+        try
+        {
+            await Task.Delay(400);
+            Application.Current?.Shutdown(0);
+        }
+        catch
+        {
+            Environment.Exit(0);
         }
     }
 
@@ -639,6 +705,10 @@ public partial class MainWindow : Window
     private async Task<bool> EnsureCaptureForRunAsync(string statusTarget)
     {
         AutomationConfig config = ConfigStore.Load();
+        // 千机链无人值守：若已配置游戏路径，本次会话允许自动拉起游戏（不改写磁盘配置）。
+        if (AppInstance.AutoStartPipeline && !string.IsNullOrWhiteSpace(config.GameExecutablePath))
+            config.LaunchGameWithCapture = true;
+
         if (_captureSession.IsRunning && !_captureSession.HasLiveWindow(config))
         {
             AppendLog(config.LaunchGameWithCapture
@@ -949,6 +1019,15 @@ public partial class MainWindow : Window
         AutomationConfig config = ConfigStore.Load();
         if (config.SettlementShopHintAccepted || config.SettlementPurchases.HasAnyPurchase())
             return true;
+
+        // 无人值守（千机链 -o）不弹窗，默认跳过结算商店配置提示。
+        if (AppInstance.IsCliScheduled)
+        {
+            config.SettlementShopHintAccepted = true;
+            ConfigStore.Save(config);
+            AppendLog("命令行调度：已跳过结算商店配置提示。");
+            return true;
+        }
 
         MessageBoxResult choice = MessageBox.Show(
             this,
@@ -2292,6 +2371,12 @@ public partial class MainWindow : Window
             if (result.Kind == UpdateCheckKind.Available && result.Latest is not null)
             {
                 AppendLog(result.Message);
+                if (AppInstance.IsCliScheduled)
+                {
+                    AppendLog("命令行调度：跳过更新弹窗。");
+                    return;
+                }
+
                 var dialog = new UpdateAvailableWindow(result.Current, result.Latest, updater) { Owner = this };
                 dialog.ShowDialog();
                 if (dialog.ResultChoice == UpdateAvailableWindow.Choice.IgnoreLine)

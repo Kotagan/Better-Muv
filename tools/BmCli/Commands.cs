@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Media.Imaging;
@@ -38,7 +39,8 @@ BmCli — Better-Muv 调试 CLI（不进安装包，给 AI/人工联调用）
   crop <key> --preset <p> [--out path]
   rois [all|maze|main|hard|entry] [--json]
   points              常用点击点（FirstClick 等）
-  run <flow>          实机跑一条自动化（dailyActivity / dailyMgArena）；--force 忽略今日已完成
+  run <flow>          实机跑一条自动化（enterHome / maze / dailyActivity / dailyMgArena / dailyShop）；--force 忽略今日已完成
+                      enterHome 可用 --relaunch 先关游戏再拉起
 
 示例见: tools/README.md
 """);
@@ -49,19 +51,39 @@ BmCli — Better-Muv 调试 CLI（不进安装包，给 AI/人工联调用）
     {
         if (rest.Length == 0)
         {
-            Console.Error.WriteLine("用法: run <dailyActivity|dailyMgArena> [--force]");
+            Console.Error.WriteLine("用法: run <enterHome|maze|dailyActivity|dailyMgArena|dailyShop> [--force] [--relaunch]");
             return 1;
         }
 
         string flow = rest[0].Trim();
         bool force = rest.Any(a => a is "--force" or "-f") ||
                      ctx.RawArgs.Any(a => a is "--force" or "-f");
+        bool relaunch = rest.Any(a => a is "--relaunch") ||
+                        ctx.RawArgs.Any(a => a is "--relaunch");
         EnsureTemplatesBesideExe(ctx.TemplatesDir);
 
         AutomationConfig config = ctx.Config;
         TaskRunResult result;
         switch (flow.ToLowerInvariant())
         {
+            case "enterhome":
+            case "title":
+            case "进主页":
+            case "启动进入":
+                result = await RunEnterHomeAsync(config, relaunch, ct);
+                break;
+            case "maze":
+            case "迷宫":
+            case "迷宫探索":
+                // 实测默认只跑 1 轮，避免长时间卡在迷宫循环。
+                if (config.MazeRunLimit == 0 || config.MazeRunLimit > 1)
+                {
+                    config.MazeRunLimit = 1;
+                    Console.WriteLine("迷宫测试：MazeRunLimit=1。");
+                }
+                result = await new MazeAutomation(config, msg => Console.WriteLine(msg))
+                    .RunOnceAsync(ct);
+                break;
             case "dailyactivity":
             case "activity":
             case "课外活动":
@@ -78,6 +100,7 @@ BmCli — Better-Muv 调试 CLI（不进安装包，给 AI/人工联调用）
             case "dailymgarena":
             case "mgarena":
             case "公式mg竞技":
+            case "对战":
                 if (force)
                 {
                     config.LastDailyMgArenaDay = null;
@@ -88,8 +111,22 @@ BmCli — Better-Muv 调试 CLI（不进安装包，给 AI/人工联调用）
                 result = await new DailyMgArenaAutomation(config, msg => Console.WriteLine(msg))
                     .RunOnceAsync(ct);
                 break;
+            case "dailyshop":
+            case "shop":
+            case "每日商店":
+                if (force)
+                {
+                    config.LastDailyShopDay = null;
+                    config.LastDailyShopDayVerified = false;
+                    ConfigStore.Save(config);
+                    Console.WriteLine("已清除 LastDailyShopDay（--force）。");
+                }
+
+                result = await new DailyShopAutomation(config, msg => Console.WriteLine(msg))
+                    .RunOnceAsync(ct);
+                break;
             default:
-                Console.Error.WriteLine($"暂不支持 run「{flow}」。可用: dailyActivity, dailyMgArena");
+                Console.Error.WriteLine($"暂不支持 run「{flow}」。可用: enterHome, maze, dailyActivity, dailyMgArena, dailyShop");
                 return 1;
         }
 
@@ -98,6 +135,161 @@ BmCli — Better-Muv 调试 CLI（不进安装包，给 AI/人工联调用）
             : $"失败：{result.Detail}");
         return result.Ok ? 0 : 2;
     }
+
+    private static async Task<TaskRunResult> RunEnterHomeAsync(
+        AutomationConfig config, bool relaunch, CancellationToken ct)
+    {
+        void Log(string msg) => Console.WriteLine(msg);
+        var screen = new ScreenAutomation(config, Log);
+
+        if (relaunch)
+        {
+            await TryCloseGameAsync(config, screen, Log, ct);
+            config.LaunchGameWithCapture = true;
+            var session = new GameCaptureSession(Log);
+            await session.StartAsync(config, ct);
+            return session.Window is not null &&
+                   await new HomePresence(config, screen, Log).IsHomeAsync(session.Window, ct)
+                ? TaskRunResult.Success("已进入主界面")
+                : TaskRunResult.Fail("启动后仍未确认主界面");
+        }
+
+        GameWindow window;
+        try
+        {
+            window = screen.FindWindow(config.WindowTitleKeyword);
+        }
+        catch (InvalidOperationException)
+        {
+            Log("未找到游戏窗口，改为拉起后进入。");
+            var session = new GameCaptureSession(Log);
+            config.LaunchGameWithCapture = true;
+            await session.StartAsync(config, ct);
+            return session.Window is not null &&
+                   await new HomePresence(config, screen, Log).IsHomeAsync(session.Window, ct)
+                ? TaskRunResult.Success("已进入主界面")
+                : TaskRunResult.Fail("启动后仍未确认主界面");
+        }
+
+        if (!await screen.FocusAsync(window.Handle, ct))
+            return TaskRunResult.Fail("未能将游戏置于前台");
+        window = await screen.EnsurePreferredClientAsync(window, ct);
+        bool ok = await new TitleScreenEnter(config, screen, Log)
+            .EnsureHomeAfterLaunchAsync(window, ct);
+        return ok ? TaskRunResult.Success("已进入主界面") : TaskRunResult.Fail("未能进入主界面");
+    }
+
+    private static readonly string[] GameProcessNameHints =
+    [
+        "muv_luv_girlsgarden",
+        "muv_luv_girlsgardenx",
+        "muv_luv_girlsgardenx_cl"
+    ];
+
+    private static async Task TryCloseGameAsync(
+        AutomationConfig config, ScreenAutomation screen, Action<string> log, CancellationToken ct)
+    {
+        nint? hwnd = null;
+        string? processName = null;
+        try
+        {
+            GameWindow window = screen.FindWindow(config.WindowTitleKeyword);
+            hwnd = window.Handle;
+            log($"关闭现有游戏窗口：{window.Title}");
+            try
+            {
+                GetWindowThreadProcessId(window.Handle, out uint pid);
+                processName = Process.GetProcessById((int)pid).ProcessName;
+            }
+            catch
+            {
+                // 忽略取进程名失败。
+            }
+
+            NativeCloseWindow(window.Handle);
+        }
+        catch (InvalidOperationException)
+        {
+            log("当前没有游戏窗口。");
+        }
+
+        var timer = System.Diagnostics.Stopwatch.StartNew();
+        while (timer.ElapsedMilliseconds < 15000)
+        {
+            ct.ThrowIfCancellationRequested();
+            bool visible;
+            try
+            {
+                _ = screen.FindWindow(config.WindowTitleKeyword);
+                visible = true;
+            }
+            catch (InvalidOperationException)
+            {
+                visible = false;
+            }
+
+            if (!visible)
+            {
+                log("游戏窗口已关闭。");
+                break;
+            }
+
+            await Task.Delay(500, ct);
+        }
+
+        KillGameProcesses(log, processName);
+        // DMM FastLauncher 有时占着“任务正在运行”，稍等再拉起。
+        await Task.Delay(3000, ct);
+    }
+
+    private static void KillGameProcesses(Action<string> log, string? knownProcessName)
+    {
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (!string.IsNullOrWhiteSpace(knownProcessName))
+            names.Add(knownProcessName);
+        foreach (string hint in GameProcessNameHints)
+            names.Add(hint);
+
+        foreach (string name in names)
+        {
+            Process[] procs;
+            try
+            {
+                procs = Process.GetProcessesByName(name);
+            }
+            catch
+            {
+                continue;
+            }
+
+            foreach (Process proc in procs)
+            {
+                try
+                {
+                    log($"结束残留进程：{proc.ProcessName} ({proc.Id})");
+                    proc.Kill(entireProcessTree: true);
+                    proc.WaitForExit(5000);
+                }
+                catch (Exception ex)
+                {
+                    log($"结束进程失败：{proc.ProcessName} — {ex.Message}");
+                }
+                finally
+                {
+                    proc.Dispose();
+                }
+            }
+        }
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool PostMessage(nint hWnd, uint msg, nint wParam, nint lParam);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(nint hWnd, out uint processId);
+
+    private static void NativeCloseWindow(nint hwnd) =>
+        PostMessage(hwnd, 0x0010 /* WM_CLOSE */, 0, 0);
 
     /// <summary>DailyActivity 等走 TemplateAssets.DirectoryPath（exe 旁 Assets/Templates）。</summary>
     private static void EnsureTemplatesBesideExe(string sourceDir)

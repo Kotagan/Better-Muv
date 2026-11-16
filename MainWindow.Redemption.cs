@@ -34,7 +34,8 @@ public partial class MainWindow
         }
 
         RefreshRedemptionUi();
-        _ = SyncRedemptionCodesAsync(quiet: true, promptIfNew: true);
+        // 千机链 / -o 自动跑时不弹兑换询问，避免卡住无人值守。
+        _ = SyncRedemptionCodesAsync(quiet: true, promptIfNew: !AppInstance.IsCliScheduled);
     }
 
     private async void RunRedeemUnusedButton_Click(object sender, RoutedEventArgs e)

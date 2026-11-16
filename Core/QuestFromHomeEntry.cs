@@ -78,15 +78,23 @@ public sealed class QuestFromHomeEntry
             _log("未能将游戏置于前台，クエスト识别可能失败。");
         await Task.Delay(250, cancellationToken);
 
+        // 启动后常停在「TOUCH TO START」/过渡屏；先连点进入再认底栏。
+        window = _screen.Refresh(window);
+        var titleEnter = new TitleScreenEnter(_config, _screen, _log);
+        await titleEnter.TryPassAsync(window, cancellationToken);
+        window = _screen.Refresh(window);
+
         _log("识别主界面“クエスト”（窗口已就绪，短探测）。");
         TemplateProbeResult quest = await WaitForQuestAsync(
             window, cancellationToken, timeoutMs: QuestPresenceTimeoutMs);
         if (!quest.IsMatch)
         {
-            // 再聚焦一次并放宽底栏 ROI 重试。
+            // 标题特征可能已消失但仍在过渡屏，改用启动连点再等底栏。
             window = _screen.Refresh(window);
             await _screen.FocusAsync(window.Handle, cancellationToken);
             await Task.Delay(200, cancellationToken);
+            await titleEnter.EnsureHomeAfterLaunchAsync(window, cancellationToken);
+            window = _screen.Refresh(window);
             quest = await WaitForQuestAsync(
                 window, cancellationToken, widen: true, timeoutMs: QuestPresenceRetryMs);
         }

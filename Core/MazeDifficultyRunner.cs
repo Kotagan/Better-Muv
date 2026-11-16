@@ -96,8 +96,8 @@ public sealed class MazeDifficultyRunner
 
         if (mode == "tower")
         {
-            // 进关前已确认无右箭头；此处只保持当前层。
-            _log("难度选择：爬塔模式，保持当前层（层选无右箭头）。");
+            // 进关前 EnsureTowerFloorSelect 已点到无右箭头（或层数不再升）；此处只保持。
+            _log("难度选择：爬塔模式，保持当前最高层。");
             return true;
         }
 
@@ -698,35 +698,100 @@ public sealed class MazeDifficultyRunner
     public static bool RequiresRecognizedFloor(string? mode) =>
         NormalizeMode(mode) is "custom" or "tower";
 
-    /// <summary>爬塔层选：可读层数，且右箭头不存在。</summary>
+    /// <summary>
+    /// 爬塔层选：有右箭头则连点升到顶（箭头消失，或层数不再增加）。
+    /// 旧逻辑只“等待无右箭头”会在已解锁更高层时卡死（例如停在 200 仍有 &gt;）。
+    /// </summary>
     public async Task<bool> EnsureTowerFloorSelectAsync(
         GameWindow window, CancellationToken cancellationToken, int attempts = 3)
     {
-        for (int i = 0; i < attempts; i++)
+        const int maxClimbClicks = 120;
+        const int climbSettleMs = 220;
+        int climbClicks = 0;
+        int? lastFloor = null;
+        int noProgress = 0;
+
+        while (climbClicks <= maxClimbClicks)
         {
             cancellationToken.ThrowIfCancellationRequested();
             int? floor = await TryReadTrustedFloorAsync(window, cancellationToken);
-            bool hasRight = await HasRightArrowAsync(window, cancellationToken);
+            bool hasRight = await HasRightArrowAsync(
+                window, cancellationToken, logHit: climbClicks == 0 || climbClicks % 10 == 0);
+
             if (floor is int ok && !hasRight)
             {
-                _log($"爬塔层选确认：层数 {ok}，右箭头未出现。");
+                _log($"爬塔层选确认：层数 {ok}，右箭头未出现（已到顶）。");
                 return true;
             }
 
-            if (floor is null)
-                _log($"爬塔层选：层数未读出（{i + 1}/{attempts}）。");
-            else if (hasRight)
-                _log($"爬塔层选：读到层数 {floor}，但仍检测到右箭头（非爬塔层选，{i + 1}/{attempts}）。");
+            if (!hasRight)
+            {
+                // 箭头已无但层数偶发读不出：再探几次。
+                for (int i = 0; i < attempts; i++)
+                {
+                    floor = await TryReadTrustedFloorAsync(window, cancellationToken);
+                    if (floor is int recovered)
+                    {
+                        _log($"爬塔层选确认：层数 {recovered}，右箭头未出现（已到顶）。");
+                        return true;
+                    }
 
-            if (i + 1 < attempts)
-                await Task.Delay(350, cancellationToken);
+                    await Task.Delay(350, cancellationToken);
+                }
+
+                _log("爬塔层选：右箭头已无，但层数仍未读出，禁止点击探索準備。");
+                return false;
+            }
+
+            if (floor is null)
+                _log($"爬塔：层数未读出，仍见右箭头，继续升层（{climbClicks + 1}/{maxClimbClicks}）。");
+            else
+                _log($"爬塔：当前层 {floor}，点右箭头升层（{climbClicks + 1}/{maxClimbClicks}）。");
+
+            if (!await ClickTowerClimbRightArrowAsync(window, cancellationToken))
+            {
+                _log("爬塔：右箭头点击失败，停止升层。");
+                break;
+            }
+
+            climbClicks++;
+            await Task.Delay(climbSettleMs, cancellationToken);
+            window = _screen.Refresh(window);
+
+            int? after = await TryReadTrustedFloorAsync(window, cancellationToken);
+            if (after is int a && lastFloor is int l && a <= l)
+            {
+                noProgress++;
+                if (noProgress >= 3)
+                {
+                    // 灰态/假阳右箭头：层数顶住不再涨，视为已到可进最高层。
+                    _log($"爬塔层选确认：层数 {a} 连续不再增加，右箭头视为已到顶。");
+                    return true;
+                }
+            }
+            else
+            {
+                noProgress = 0;
+            }
+
+            lastFloor = after ?? floor ?? lastFloor;
         }
 
-        _log("爬塔层选未确认（需可读层数且无右箭头），禁止点击探索準備。");
+        int? finalFloor = await TryReadTrustedFloorAsync(window, cancellationToken);
+        bool finalRight = await HasRightArrowAsync(window, cancellationToken);
+        if (finalFloor is int done && !finalRight)
+        {
+            _log($"爬塔层选确认：层数 {done}，右箭头未出现（已到顶）。");
+            return true;
+        }
+
+        _log($"爬塔层选未确认（层数 {(finalFloor?.ToString() ?? "未读")}，右箭头 {(finalRight ? "仍在" : "无")}），禁止点击探索準備。");
         return false;
     }
 
-    public async Task<bool> HasRightArrowAsync(GameWindow window, CancellationToken cancellationToken)
+    /// <summary>爬塔专用：允许点右箭头（自选路径里的 ClickDifficultyArrow 对 tower 禁右键）。</summary>
+    private async Task<bool> ClickTowerClimbRightArrowAsync(
+        GameWindow window, CancellationToken cancellationToken)
     {
         TemplateProbeResult probe = await _screen.ProbeAsync(
             window,
@@ -735,10 +800,34 @@ public sealed class MazeDifficultyRunner
             _config.DifficultyIncreaseSize,
             cancellationToken,
             ArrowPresenceThreshold);
-        if (probe.IsMatch)
-            _log($"右箭头模板命中 {probe.Score:F2}（阈值 {ArrowPresenceThreshold:F2}）。");
-        else
-            _log($"右箭头未命中（最高 {probe.Score:F2} < {ArrowPresenceThreshold:F2}）。");
+        if (!probe.IsMatch)
+        {
+            _log($"爬塔右箭头未命中（{probe.Score:F3} < {ArrowPresenceThreshold:F2}），不盲点。");
+            return false;
+        }
+
+        await _screen.ClickProbeAsync(window, probe, "爬塔右箭头", cancellationToken, settleDelayMs: 0);
+        return true;
+    }
+
+    public async Task<bool> HasRightArrowAsync(
+        GameWindow window, CancellationToken cancellationToken, bool logHit = true)
+    {
+        TemplateProbeResult probe = await _screen.ProbeAsync(
+            window,
+            _increaseArrowMatcher,
+            _config.DifficultyIncreaseTopLeft,
+            _config.DifficultyIncreaseSize,
+            cancellationToken,
+            ArrowPresenceThreshold);
+        if (logHit)
+        {
+            if (probe.IsMatch)
+                _log($"右箭头模板命中 {probe.Score:F2}（阈值 {ArrowPresenceThreshold:F2}）。");
+            else
+                _log($"右箭头未命中（最高 {probe.Score:F2} < {ArrowPresenceThreshold:F2}）。");
+        }
+
         return probe.IsMatch;
     }
 }
